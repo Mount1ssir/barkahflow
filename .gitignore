@@ -39,3 +39,28 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+# JVM crash logs
+hs_err_pid*
+# Env
+.env*
+!.env.example
+
+# Logs
+*.log
+hs_err_pid*
+
+# Node
+node_modules
+
+# Next
+.next
+out
+
+# Android
+android/.gradle
+android/build
+android/app/build
+
+# Tauri
+src-tauri/target
+src-tauri/gen
