@@ -2,10 +2,10 @@ import { dbSelect } from '@/src/lib/db'
 
 export interface ChartDataPoint {
   date: string        // format affichage : "Lun 15"
-  fullDate: string     // format ISO pour tri : "2026-06-15"
-  ventes: number        // en MAD (pas centimes, pour affichage direct)
-  depenses: number      // en MAD
-  solde: number          // ventes - depenses
+  fullDate: string    // format ISO pour tri : "2026-06-15"
+  ventes: number      // en MAD (pas centimes)
+  depenses: number    // en MAD
+  solde: number       // ventes - depenses
 }
 
 interface TransactionRow {
@@ -23,40 +23,48 @@ function formatDayLabel(date: Date): string {
 }
 
 function toISODate(date: Date): string {
-  return date.toISOString().split('T')[0] // "2026-06-15"
+  return date.toISOString().split('T')[0]
 }
 
-// Récupère les données des 7 derniers jours pour le graphique
-export async function getRevenueChartData(): Promise<ChartDataPoint[]> {
+/**
+ * Récupère les données des `days` derniers jours, avec un décalage optionnel.
+ * @param offset Nombre de jours à décaler vers le passé (0 = aujourd'hui)
+ * @param days Nombre de jours à inclure (défaut 7)
+ */
+export async function getRevenueChartData(
+  offset: number = 0,
+  days: number = 7
+): Promise<ChartDataPoint[]> {
   const today = new Date()
-  const sevenDaysAgo = new Date(today)
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6) // 7 jours incluant aujourd'hui
+  // On décale la période de `offset` jours
+  const endDate = new Date(today)
+  endDate.setDate(endDate.getDate() - offset)
 
-  const startDate = new Date(
-    sevenDaysAgo.getFullYear(),
-    sevenDaysAgo.getMonth(),
-    sevenDaysAgo.getDate()
-  ).toISOString()
+  const startDate = new Date(endDate)
+  startDate.setDate(startDate.getDate() - (days - 1)) // on inclut `days` jours
 
-  // Récupère toutes les transactions des 7 derniers jours
+  // Format ISO pour la requête SQL (début de journée)
+  const startISO = startDate.toISOString().split('T')[0]
+  const endISO = endDate.toISOString().split('T')[0]
+
+  // Récupère toutes les transactions de la période
   const transactions = await dbSelect<TransactionRow>(
     `SELECT transaction_date, type, amount FROM transactions
-     WHERE transaction_date >= ?
+     WHERE transaction_date >= ? AND transaction_date <= ?
      ORDER BY transaction_date ASC`,
-    [startDate]
+    [startISO, endISO]
   )
 
-  // Initialise les 7 jours avec des valeurs à zéro
+  // Initialise le dictionnaire des jours (vide au départ)
   const dayMap = new Map<string, { ventes: number; depenses: number }>()
-
-  for (let i = 0; i < 7; i++) {
-    const day = new Date(sevenDaysAgo)
+  for (let i = 0; i < days; i++) {
+    const day = new Date(startDate)
     day.setDate(day.getDate() + i)
     const isoDate = toISODate(day)
     dayMap.set(isoDate, { ventes: 0, depenses: 0 })
   }
 
-  // Additionne les transactions réelles dans le bon jour
+  // Agrège les transactions par jour
   for (const tx of transactions) {
     const isoDate = tx.transaction_date.split('T')[0]
     const entry = dayMap.get(isoDate)
@@ -69,10 +77,10 @@ export async function getRevenueChartData(): Promise<ChartDataPoint[]> {
     }
   }
 
-  // Transforme en tableau final pour le graphique
+  // Construit le tableau final (dans l'ordre chronologique)
   const result: ChartDataPoint[] = []
-  for (let i = 0; i < 7; i++) {
-    const day = new Date(sevenDaysAgo)
+  for (let i = 0; i < days; i++) {
+    const day = new Date(startDate)
     day.setDate(day.getDate() + i)
     const isoDate = toISODate(day)
     const entry = dayMap.get(isoDate)!

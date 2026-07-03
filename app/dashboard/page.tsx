@@ -12,6 +12,7 @@ import { RadialStockChart } from '@/components/dashboard/radial-stock-chart'
 import { TopProducts } from '@/components/dashboard/top-products'
 import { SalesDistribution } from '@/components/dashboard/sales-distribution'
 import { RecentInvoices } from '@/components/dashboard/recent-invoices'
+import { InsightToast } from '@/components/dashboard/insight-toast'
 
 export default function DashboardPage() {
   const [user, setUser] = useState<any>(null)
@@ -22,6 +23,9 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6 max-w-7xl mx-auto w-full">
+
+      {/* 🔔 Notification intelligente — glisse depuis le haut, une fois par jour */}
+      <InsightToast />
 
       <WelcomeHeader user={user} />
 

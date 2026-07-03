@@ -95,10 +95,16 @@ export async function capturePhoto(source: 'camera' | 'gallery' = 'gallery'): Pr
   return captureDesktop()
 }
 
-// Convertit un chemin de fichier en URL affichable dans <img>
+// ✅ AMÉLIORATION : gestion du base64 + fallback pour anciens chemins
 export function getDisplayUrl(path: string | null): string {
   if (!path) return ''
 
+  // 🔥 Si c'est déjà un base64, on le retourne tel quel
+  if (path.startsWith('data:image/')) {
+    return path
+  }
+
+  // Sinon, conversion selon la plateforme (fichier local)
   if (isMobilePlatform()) {
     return Capacitor.convertFileSrc(path)
   }

@@ -1,43 +1,32 @@
-import { dbSelect } from '@/src/lib/db'
+import { dbSelectWithRetry } from '@/src/lib/db'
 
 export interface RecentInvoice {
   id: string
   invoiceNumber: string
-  clientName: string
+  clientId: string | null
+  clientName: string | null
   total: number
-  status: 'PAID' | 'PARTIAL' | 'UNPAID'
+  status: string
   createdAt: string
 }
 
-interface InvoiceRow {
-  id: string
-  invoice_number: string
-  total: number
-  status: 'PAID' | 'PARTIAL' | 'UNPAID'
-  created_at: string
-  full_name: string | null
-}
-
 export async function getRecentInvoices(limit: number = 5): Promise<RecentInvoice[]> {
-  const rows = await dbSelect<InvoiceRow>(
-    `SELECT
-       invoices.id,
-       invoices.invoice_number,
-       invoices.total,
-       invoices.status,
-       invoices.created_at,
-       clients.full_name
-     FROM invoices
-     LEFT JOIN clients ON clients.id = invoices.client_id
-     ORDER BY invoices.created_at DESC
+  const rows = await dbSelectWithRetry<any>(
+    `SELECT i.id, i.invoice_number, i.client_id, c.full_name as clientName,
+            i.total, i.status, i.created_at
+     FROM invoices i
+     LEFT JOIN clients c ON c.id = i.client_id
+     WHERE i.status = 'PAID'
+     ORDER BY i.created_at DESC
      LIMIT ?`,
     [limit]
   )
 
-  return rows.map((row) => ({
+  return rows.map((row: any) => ({
     id: row.id,
     invoiceNumber: row.invoice_number,
-    clientName: row.full_name || 'Client anonyme',
+    clientId: row.client_id,
+    clientName: row.clientName,
     total: row.total,
     status: row.status,
     createdAt: row.created_at,

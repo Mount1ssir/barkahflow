@@ -1,6 +1,5 @@
 import { Capacitor } from '@capacitor/core'
 
-// ── Types communs aux deux plateformes ──────────────────────────
 export interface DbDriver {
   select<T>(query: string, params?: any[]): Promise<T[]>
   execute(query: string, params?: any[]): Promise<void>
@@ -23,18 +22,43 @@ CREATE TABLE IF NOT EXISTS clients (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS categories (
+  id TEXT PRIMARY KEY,
+  name_fr TEXT NOT NULL,
+  name_ar TEXT,
+  color TEXT DEFAULT '#3B82F6',
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS products (
   id TEXT PRIMARY KEY,
   sku TEXT UNIQUE NOT NULL,
+  barcode TEXT UNIQUE,
   name_ar TEXT NOT NULL,
-  name_en TEXT,
+  name_fr TEXT,
+  category_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
+  unit TEXT NOT NULL DEFAULT 'piece',
   cost_price INTEGER NOT NULL,
   retail_price INTEGER NOT NULL,
   stock_qty INTEGER NOT NULL DEFAULT 0,
+  reserved_stock INTEGER NOT NULL DEFAULT 0,
   alert_threshold INTEGER NOT NULL DEFAULT 5,
   tax_rate REAL DEFAULT 0,
   image_path TEXT,
+  supplier_name TEXT,
+  description TEXT,
+  is_active INTEGER NOT NULL DEFAULT 1,
   updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS stock_movements (
+  id TEXT PRIMARY KEY,
+  product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK(type IN ('in', 'out')),
+  quantity INTEGER NOT NULL,
+  unit_price INTEGER,
+  reason TEXT,
+  created_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS invoices (
@@ -45,7 +69,7 @@ CREATE TABLE IF NOT EXISTS invoices (
   tax INTEGER NOT NULL DEFAULT 0,
   discount INTEGER NOT NULL DEFAULT 0,
   total INTEGER NOT NULL,
-  status TEXT NOT NULL CHECK(status IN ('PAID', 'PARTIAL', 'UNPAID')),
+  status TEXT NOT NULL DEFAULT 'DRAFT' CHECK(status IN ('DRAFT', 'PENDING', 'CONFIRMED', 'PAID', 'CANCELLED', 'RETURNED')),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -84,13 +108,126 @@ CREATE TABLE IF NOT EXISTS debt_ledger (
   updated_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
+  action TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT,
+  before_state TEXT,
+  after_state TEXT,
+  ip_address TEXT,
+  user_agent TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS sequence_numbers (
+  id TEXT PRIMARY KEY,
+  prefix TEXT NOT NULL,
+  last_number INTEGER NOT NULL DEFAULT 0,
+  year TEXT NOT NULL
+);
+
+-- ✅ Table des paramètres de l'entreprise (sans contrainte NOT NULL)
+CREATE TABLE IF NOT EXISTS company_settings (
+  id TEXT PRIMARY KEY DEFAULT 'single',
+  company_name TEXT,
+  address TEXT,
+  city TEXT,
+  phone TEXT,
+  email TEXT,
+  website TEXT,
+  logo_url TEXT,
+  ice TEXT,
+  rc TEXT,
+  if_number TEXT,
+  cnss TEXT,
+  rib TEXT,
+  bank_name TEXT,
+  tva_rate REAL,
+  invoice_prefix TEXT,
+  invoice_footer TEXT,
+  currency TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Insertion d'une ligne vide si la table est nouvellement créée
+INSERT OR IGNORE INTO company_settings (id, company_name) VALUES ('single', '');
+
 CREATE INDEX IF NOT EXISTS idx_products_sku ON products(sku);
-CREATE INDEX IF NOT EXISTS idx_products_name ON products(name_ar, name_en);
+CREATE INDEX IF NOT EXISTS idx_products_name ON products(name_ar, name_fr);
 CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_clients_phone ON clients(phone);
+CREATE INDEX IF NOT EXISTS idx_products_barcode ON products(barcode);
+CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_id);
+CREATE INDEX IF NOT EXISTS idx_categories_name ON categories(name_fr);
+CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON stock_movements(product_id, created_at);
 `
 
-// ── Détection de plateforme fiable ──────────────────────────────
+// ── Migrations ─────────────────────────────────────────────────────
+const MIGRATIONS = [
+  `ALTER TABLE products ADD COLUMN reserved_stock INTEGER NOT NULL DEFAULT 0;`,
+  `ALTER TABLE invoices ADD COLUMN status TEXT NOT NULL DEFAULT 'DRAFT' 
+   CHECK(status IN ('DRAFT', 'PENDING', 'CONFIRMED', 'PAID', 'CANCELLED', 'RETURNED'));`,
+  `CREATE TABLE IF NOT EXISTS audit_logs (
+    id TEXT PRIMARY KEY,
+    user_id TEXT,
+    action TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT,
+    before_state TEXT,
+    after_state TEXT,
+    ip_address TEXT,
+    user_agent TEXT,
+    created_at TEXT NOT NULL
+  );`,
+  `CREATE TABLE IF NOT EXISTS sequence_numbers (
+    id TEXT PRIMARY KEY,
+    prefix TEXT NOT NULL,
+    last_number INTEGER NOT NULL DEFAULT 0,
+    year TEXT NOT NULL
+  );`,
+  `ALTER TABLE products ADD COLUMN category_id TEXT REFERENCES categories(id) ON DELETE SET NULL;`,
+  `ALTER TABLE products ADD COLUMN image_path TEXT;`,
+  `ALTER TABLE products ADD COLUMN supplier_name TEXT;`,
+  `ALTER TABLE products ADD COLUMN description TEXT;`,
+  `ALTER TABLE products ADD COLUMN tax_rate REAL DEFAULT 0;`,
+  `ALTER TABLE products ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;`,
+  `ALTER TABLE products ADD COLUMN alert_threshold INTEGER NOT NULL DEFAULT 5;`,
+  `ALTER TABLE products ADD COLUMN stock_qty INTEGER NOT NULL DEFAULT 0;`,
+  `ALTER TABLE categories ADD COLUMN color TEXT DEFAULT '#3B82F6';`
+
+  // ⚠️ ATTENTION : NE PAS SUPPRIMER LA TABLE company_settings !
+  // La table est déjà créée dans le SCHEMA initial avec toutes les colonnes.
+  // Supprimer et recréer effacerait les données de l'entreprise à chaque rechargement.
+  // Les migrations suivantes sont donc SUPPRIMÉES :
+  // `DROP TABLE IF EXISTS company_settings;`,
+  // `CREATE TABLE company_settings ( ... );`,
+  // `INSERT OR IGNORE INTO company_settings (id, company_name) VALUES ('single', '');`
+]
+
+async function runMigrations(db: any) {
+  for (const sql of MIGRATIONS) {
+    try {
+      await db.execute(sql)
+    } catch (e: any) {
+      const msg = e?.message || ''
+      if (
+        msg.includes('duplicate column name') ||
+        msg.includes('already exists') ||
+        msg.includes('no such table') ||
+        msg.includes('SQLITE_ERROR')
+      ) {
+        // ignoré
+      } else {
+        console.warn('Migration warning:', msg)
+      }
+    }
+  }
+}
+
+// ── Détection de plateforme ──────────────────────────────────────
 function isTauriEnv(): boolean {
   if (typeof window === 'undefined') return false
   return (
@@ -111,12 +248,13 @@ function isCapacitorMobile(): boolean {
 
 // ── Driver Desktop (Tauri) ──────────────────────────────────────
 async function createTauriDriver(): Promise<DbDriver> {
-  console.log('🖥️ BarkahFlow: Initialisation SQLite Tauri Desktop...')
+  console.log('BarkahFlow: Initialisation SQLite Tauri Desktop...')
 
   const Database = (await import('@tauri-apps/plugin-sql')).default
   const db = await Database.load('sqlite:barkahflow.db')
 
-  // Exécute le schéma statement par statement
+  await db.execute('PRAGMA busy_timeout = 10000;')
+
   const statements = SCHEMA
     .split(';')
     .map((s) => s.trim())
@@ -132,7 +270,9 @@ async function createTauriDriver(): Promise<DbDriver> {
     }
   }
 
-  console.log('✅ BarkahFlow: SQLite Tauri prêt')
+  await runMigrations(db)
+
+  console.log('BarkahFlow: SQLite Tauri prêt avec migrations')
 
   return {
     select: async <T>(query: string, params: any[] = []) => {
@@ -146,7 +286,7 @@ async function createTauriDriver(): Promise<DbDriver> {
 
 // ── Driver Mobile (Capacitor) ───────────────────────────────────
 async function createCapacitorDriver(): Promise<DbDriver> {
-  console.log('📱 BarkahFlow: Initialisation SQLite Capacitor Mobile...')
+  console.log('BarkahFlow: Initialisation SQLite Capacitor Mobile...')
 
   const { CapacitorSQLite, SQLiteConnection } = await import(
     '@capacitor-community/sqlite'
@@ -162,6 +302,8 @@ async function createCapacitorDriver(): Promise<DbDriver> {
   )
   await db.open()
 
+  await db.execute('PRAGMA busy_timeout = 10000;')
+
   const statements = SCHEMA
     .split(';')
     .map((s) => s.trim())
@@ -177,7 +319,9 @@ async function createCapacitorDriver(): Promise<DbDriver> {
     }
   }
 
-  console.log('✅ BarkahFlow: SQLite Capacitor prêt')
+  await runMigrations(db)
+
+  console.log('BarkahFlow: SQLite Capacitor prêt avec migrations')
 
   return {
     select: async <T>(query: string, params: any[] = []) => {
@@ -190,17 +334,17 @@ async function createCapacitorDriver(): Promise<DbDriver> {
   }
 }
 
-// ── Mock pour navigateur web pur (npm run dev) ──────────────────
+// ── Mock ──────────────────────────────────────────────────────────
 function createMockDriver(): DbDriver {
-  console.warn('⚠️ BarkahFlow: Mode navigateur web — SQLite non disponible.')
-  console.warn('   → Lance "npm run tauri dev" pour la vraie base de données.')
+  console.warn('BarkahFlow: Mode navigateur web SQLite non disponible.')
+  console.warn('Lance npm run tauri dev pour la vraie base de données.')
   return {
     select: async <T>() => [] as T[],
     execute: async () => {},
   }
 }
 
-// ── Sélecteur automatique de plateforme ─────────────────────────
+// ── Sélecteur automatique ──────────────────────────────────────
 export async function getDriver(): Promise<DbDriver> {
   if (driverInstance) return driverInstance
 
@@ -215,7 +359,7 @@ export async function getDriver(): Promise<DbDriver> {
   return driverInstance
 }
 
-// ── Fonctions publiques utilisées partout dans l'app ────────────
+// ─── Fonctions publiques ──────────────────────────────────────────
 export async function dbSelect<T>(
   query: string,
   params: any[] = []
@@ -230,4 +374,54 @@ export async function dbExecute(
 ): Promise<void> {
   const driver = await getDriver()
   await driver.execute(query, params)
+}
+
+// ✅ dbSelectWithRetry – pour les lectures
+export async function dbSelectWithRetry<T>(
+  query: string,
+  params: any[] = [],
+  maxRetries: number = 5,
+  delay: number = 300
+): Promise<T[]> {
+  let lastError: any
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await dbSelect<T>(query, params)
+    } catch (error: any) {
+      lastError = error
+      const msg = error?.message || ''
+      if (msg.includes('database is locked') && attempt < maxRetries) {
+        console.warn(`⚠️ Base verrouillée (lecture), tentative ${attempt}/${maxRetries}...`)
+        await new Promise(resolve => setTimeout(resolve, delay * attempt))
+        continue
+      }
+      throw error
+    }
+  }
+  throw lastError
+}
+
+// ✅ dbExecuteWithRetry – pour les écritures
+export async function dbExecuteWithRetry(
+  query: string,
+  params: any[] = [],
+  maxRetries: number = 5,
+  delay: number = 300
+): Promise<void> {
+  let lastError: any
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await dbExecute(query, params)
+    } catch (error: any) {
+      lastError = error
+      const msg = error?.message || ''
+      if (msg.includes('database is locked') && attempt < maxRetries) {
+        console.warn(`⚠️ Base verrouillée (écriture), tentative ${attempt}/${maxRetries}...`)
+        await new Promise(resolve => setTimeout(resolve, delay * attempt))
+        continue
+      }
+      throw error
+    }
+  }
+  throw lastError
 }

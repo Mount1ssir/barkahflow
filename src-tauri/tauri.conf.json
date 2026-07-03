@@ -21,7 +21,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://supabase.co http://localhost:3000 http://localhost:* ws://localhost:*; img-src 'self' data: blob: https://*.supabase.co; font-src 'self' data:"
     }
   },
   "bundle": {

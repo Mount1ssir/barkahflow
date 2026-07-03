@@ -1,105 +1,72 @@
 import { dbSelect } from '@/src/lib/db'
 
 export interface DashboardStats {
-  todayRevenue: number          // Chiffre du jour (en centimes)
-  todayRevenueChange: number    // % vs hier
-  unpaidInvoicesCount: number   // Nombre de factures impayées
-  unpaidInvoicesAmount: number  // Montant total impayé (centimes)
-  lowStockCount: number         // Nombre de produits en stock bas
-  activeDebtsAmount: number     // Total des dettes actives (centimes)
+  todayRevenue: number
+  todayRevenueChange: number
+  totalSales: number        // Ajouté pour le nombre de ventes
+  lowStockCount: number
+  totalProducts: number
+  totalClients: number
 }
 
-interface RevenueRow {
-  total: number | null
-}
-
-interface CountRow {
-  count: number
-}
-
-interface AmountRow {
-  total: number | null
-}
-
-function getTodayDateRange() {
-  const now = new Date()
-  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const startOfYesterday = new Date(startOfDay)
-  startOfYesterday.setDate(startOfYesterday.getDate() - 1)
-
-  return {
-    todayStart: startOfDay.toISOString(),
-    yesterdayStart: startOfYesterday.toISOString(),
-  }
+export function formatMAD(centimes: number): string {
+  return (centimes / 100).toFixed(2) + ' MAD'
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
-  const { todayStart, yesterdayStart } = getTodayDateRange()
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
 
-  // 1. Chiffre du jour (transactions INCOME créées aujourd'hui)
-  const todayResult = await dbSelect<RevenueRow>(
-    `SELECT SUM(amount) as total FROM transactions
-     WHERE type = 'INCOME' AND transaction_date >= ?`,
-    [todayStart]
+  // CA d'aujourd'hui (factures PAID)
+  const todayRows = await dbSelect<{ total: number }>(
+    `SELECT COALESCE(SUM(total), 0) as total
+     FROM invoices
+     WHERE status = 'PAID'
+       AND created_at >= ?`,
+    [today.toISOString()]
   )
-  const todayRevenue = todayResult[0]?.total || 0
 
-  // 2. Chiffre d'hier (pour calculer le pourcentage de variation)
-  const yesterdayResult = await dbSelect<RevenueRow>(
-    `SELECT SUM(amount) as total FROM transactions
-     WHERE type = 'INCOME' AND transaction_date >= ? AND transaction_date < ?`,
-    [yesterdayStart, todayStart]
+  // CA d'hier
+  const yesterdayRows = await dbSelect<{ total: number }>(
+    `SELECT COALESCE(SUM(total), 0) as total
+     FROM invoices
+     WHERE status = 'PAID'
+       AND created_at >= ? AND created_at < ?`,
+    [yesterday.toISOString(), today.toISOString()]
   )
-  const yesterdayRevenue = yesterdayResult[0]?.total || 0
 
-  let todayRevenueChange = 0
-  if (yesterdayRevenue > 0) {
-    todayRevenueChange = ((todayRevenue - yesterdayRevenue) / yesterdayRevenue) * 100
-  } else if (todayRevenue > 0) {
-    todayRevenueChange = 100
-  }
+  const todayRevenue = todayRows[0]?.total || 0
+  const yesterdayRevenue = yesterdayRows[0]?.total || 0
+  const todayRevenueChange = yesterdayRevenue === 0 ? 0 : ((todayRevenue - yesterdayRevenue) / yesterdayRevenue) * 100
 
-  // 3. Factures impayées (UNPAID + PARTIAL)
-  const unpaidCountResult = await dbSelect<CountRow>(
-    `SELECT COUNT(*) as count FROM invoices
-     WHERE status IN ('UNPAID', 'PARTIAL')`
+  // Nombre total de factures payées (ventes)
+  const totalSalesRows = await dbSelect<{ count: number }>(
+    `SELECT COUNT(*) as count FROM invoices WHERE status = 'PAID'`
   )
-  const unpaidInvoicesCount = unpaidCountResult[0]?.count || 0
 
-  const unpaidAmountResult = await dbSelect<AmountRow>(
-    `SELECT SUM(total) as total FROM invoices
-     WHERE status IN ('UNPAID', 'PARTIAL')`
+  // Produits en stock faible
+  const lowStockRows = await dbSelect<{ count: number }>(
+    `SELECT COUNT(*) as count FROM products WHERE is_active = 1 AND stock_qty <= alert_threshold`
   )
-  const unpaidInvoicesAmount = unpaidAmountResult[0]?.total || 0
 
-  // 4. Produits en stock bas
-  const lowStockResult = await dbSelect<CountRow>(
-    `SELECT COUNT(*) as count FROM products
-     WHERE stock_qty <= alert_threshold`
+  // Total produits actifs
+  const totalProductsRows = await dbSelect<{ count: number }>(
+    `SELECT COUNT(*) as count FROM products WHERE is_active = 1`
   )
-  const lowStockCount = lowStockResult[0]?.count || 0
 
-  // 5. Dettes actives (RECEIVABLE non soldées)
-  const debtsResult = await dbSelect<AmountRow>(
-    `SELECT SUM(remaining_debt) as total FROM debt_ledger
-     WHERE type = 'RECEIVABLE' AND status != 'SETTLED'`
+  // Total clients
+  const totalClientsRows = await dbSelect<{ count: number }>(
+    `SELECT COUNT(*) as count FROM clients`
   )
-  const activeDebtsAmount = debtsResult[0]?.total || 0
 
   return {
     todayRevenue,
-    todayRevenueChange,
-    unpaidInvoicesCount,
-    unpaidInvoicesAmount,
-    lowStockCount,
-    activeDebtsAmount,
+    todayRevenueChange: Math.round(todayRevenueChange * 100) / 100,
+    totalSales: totalSalesRows[0]?.count || 0,
+    lowStockCount: lowStockRows[0]?.count || 0,
+    totalProducts: totalProductsRows[0]?.count || 0,
+    totalClients: totalClientsRows[0]?.count || 0,
   }
-}
-
-// Formate un montant en centimes vers un affichage MAD
-export function formatMAD(centimes: number): string {
-  return (centimes / 100).toLocaleString('fr-FR', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }) + ' MAD'
 }

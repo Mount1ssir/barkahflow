@@ -1,0 +1,248 @@
+import { dbExecute, dbSelect } from '@/src/lib/db'
+import { generateInvoiceNumber } from './invoice-number'
+import { logAudit } from './audit-log'
+
+export interface CartItem {
+  productId: string
+  quantity: number
+  unitPrice: number
+  discount?: number
+}
+
+export interface CheckoutInput {
+  cart: CartItem[]
+  customerId?: string | null
+  paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID'
+  paidAmount: number
+  userId?: string | null
+  cashierId?: string | null
+  ipAddress?: string
+  userAgent?: string
+}
+
+// Fonction de réessai pour les cas de verrouillage
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, delay = 300): Promise<T> {
+  let lastError: any
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn()
+    } catch (error: any) {
+      lastError = error
+      const msg = error?.message || ''
+      if (msg.includes('database is locked') && attempt < maxRetries) {
+        console.warn(`⚠️ Base verrouillée, tentative ${attempt}/${maxRetries}...`)
+        await new Promise(resolve => setTimeout(resolve, delay * attempt))
+        continue
+      }
+      throw error
+    }
+  }
+  throw lastError
+}
+
+export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId: string; invoiceNumber: string }> {
+  // 1. Validations (hors transaction)
+  if ((input.paymentStatus === 'PARTIAL' || input.paymentStatus === 'UNPAID') && !input.customerId) {
+    throw new Error('Un client est requis pour les factures partielles ou impayées')
+  }
+
+  if (input.customerId) {
+    const clientRows = await dbSelect<{ id: string }>(
+      `SELECT id FROM clients WHERE id = ?`,
+      [input.customerId]
+    )
+    if (clientRows.length === 0) {
+      throw new Error(`Client introuvable (id: ${input.customerId}).`)
+    }
+  }
+
+  // 2. Vérification du stock (hors transaction)
+  for (const item of input.cart) {
+    const product = await dbSelect<{ stock_qty: number; reserved_stock: number; name_ar: string }>(
+      `SELECT stock_qty, reserved_stock, name_ar FROM products WHERE id = ?`,
+      [item.productId]
+    )
+    if (product.length === 0) throw new Error(`Produit introuvable : ${item.productId}`)
+    const available = (product[0].stock_qty ?? 0) - (product[0].reserved_stock ?? 0)
+    if (available < item.quantity) {
+      throw new Error(`Stock insuffisant pour ${product[0].name_ar}. Disponible : ${available}`)
+    }
+  }
+
+  // 3. Réservation du stock (hors transaction)
+  for (const item of input.cart) {
+    await dbExecute(
+      `UPDATE products SET reserved_stock = COALESCE(reserved_stock, 0) + ? WHERE id = ?`,
+      [item.quantity, item.productId]
+    )
+  }
+
+  // 4. Calcul des totaux
+  let subtotal = 0
+  let totalTax = 0
+  let totalDiscount = 0
+  const lineItems: any[] = []
+
+  for (const item of input.cart) {
+    const product = await dbSelect<{ tax_rate: number; retail_price: number }>(
+      `SELECT tax_rate, retail_price FROM products WHERE id = ?`,
+      [item.productId]
+    )
+    const price = item.unitPrice || product[0].retail_price / 100
+    const discount = item.discount || 0
+    const itemSubtotal = price * item.quantity
+    const itemDiscount = (itemSubtotal * discount) / 100
+    const itemAfterDiscount = itemSubtotal - itemDiscount
+    const tax = (itemAfterDiscount * (product[0].tax_rate || 0)) / 100
+
+    subtotal += itemSubtotal
+    totalDiscount += itemDiscount
+    totalTax += tax
+
+    lineItems.push({
+      productId: item.productId,
+      quantity: item.quantity,
+      unitPrice: price,
+      discount: discount,
+      subtotal: itemAfterDiscount,
+      tax: tax,
+    })
+  }
+
+  const total = subtotal - totalDiscount + totalTax
+  const invoiceNumber = await generateInvoiceNumber('INV')
+  const invoiceId = `inv_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+  const now = new Date().toISOString()
+
+  // 5. Construction de la requête transactionnelle unique
+  let sql = 'BEGIN;\n'
+
+  // Insertion de la facture
+  sql += `
+    INSERT INTO invoices (
+      id, invoice_number, client_id, subtotal, tax, discount, total,
+      status, created_at, updated_at
+    ) VALUES (
+      '${invoiceId}',
+      '${invoiceNumber}',
+      ${input.customerId ? `'${input.customerId}'` : 'NULL'},
+      ${Math.round(subtotal * 100)},
+      ${Math.round(totalTax * 100)},
+      ${Math.round(totalDiscount * 100)},
+      ${Math.round(total * 100)},
+      '${input.paymentStatus}',
+      '${now}',
+      '${now}'
+    );
+  `
+
+  // Insertion des lignes de facture
+  for (const item of lineItems) {
+    const lineId = `line_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+    sql += `
+      INSERT INTO line_items (
+        id, invoice_id, product_id, qty, unit_price, discount, subtotal
+      ) VALUES (
+        '${lineId}',
+        '${invoiceId}',
+        '${item.productId}',
+        ${item.quantity},
+        ${Math.round(item.unitPrice * 100)},
+        ${item.discount},
+        ${Math.round(item.subtotal * 100)}
+      );
+    `
+  }
+
+  // Déduction du stock définitif
+  for (const item of input.cart) {
+    sql += `
+      UPDATE products SET
+        stock_qty = stock_qty - ${item.quantity},
+        reserved_stock = COALESCE(reserved_stock, 0) - ${item.quantity}
+      WHERE id = '${item.productId}';
+    `
+  }
+
+  // Réconciliation comptable
+  if (input.paymentStatus === 'PAID') {
+    const txId = `tx_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+    sql += `
+      INSERT INTO transactions (
+        id, type, amount, source_type, source_id, transaction_date, created_at
+      ) VALUES (
+        '${txId}',
+        'INCOME',
+        ${Math.round(total * 100)},
+        'invoice',
+        '${invoiceId}',
+        '${now}',
+        '${now}'
+      );
+    `
+    // Mettre à jour le statut en PAID (même si on a déjà inséré avec PAID, c'est redondant mais on garde)
+    sql += `
+      UPDATE invoices SET status = 'PAID' WHERE id = '${invoiceId}';
+    `
+  } else if (input.paymentStatus === 'PARTIAL' || input.paymentStatus === 'UNPAID') {
+    const debtId = `debt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+    const remaining = input.paymentStatus === 'UNPAID' ? total : total - input.paidAmount
+    sql += `
+      INSERT INTO debt_ledger (
+        id, type, contact_id, total_debt, remaining_debt, status, invoice_id, created_at, updated_at
+      ) VALUES (
+        '${debtId}',
+        'RECEIVABLE',
+        ${input.customerId ? `'${input.customerId}'` : 'NULL'},
+        ${Math.round(total * 100)},
+        ${Math.round(remaining * 100)},
+        'ACTIVE',
+        '${invoiceId}',
+        '${now}',
+        '${now}'
+      );
+    `
+    if (input.paymentStatus === 'PARTIAL' && input.paidAmount > 0) {
+      const txId = `tx_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+      sql += `
+        INSERT INTO transactions (
+          id, type, amount, source_type, source_id, transaction_date, created_at
+        ) VALUES (
+          '${txId}',
+          'INCOME',
+          ${Math.round(input.paidAmount * 100)},
+          'invoice',
+          '${invoiceId}',
+          '${now}',
+          '${now}'
+        );
+      `
+    }
+  }
+
+  // Audit log
+  sql += `
+    INSERT INTO audit_logs (
+      id, user_id, action, entity_type, entity_id, before_state, after_state, ip_address, user_agent, created_at
+    ) VALUES (
+      'audit_${Date.now()}_${Math.random().toString(36).slice(2, 7)}',
+      ${input.userId ? `'${input.userId}'` : 'NULL'},
+      'checkout_completed',
+      'invoice',
+      '${invoiceId}',
+      NULL,
+      '{"invoiceNumber":"${invoiceNumber}","total":${total}}',
+      '${input.ipAddress || '0.0.0.0'}',
+      '${input.userAgent || ''}',
+      '${now}'
+    );
+  `
+
+  sql += 'COMMIT;'
+
+  // 6. Exécution de la transaction unique avec réessai
+  return await withRetry(async () => {
+    await dbExecute(sql)
+    return { invoiceId, invoiceNumber }
+  })
+}

@@ -45,7 +45,10 @@ const langs = [
   { code: 'AR', flag: 'https://flagcdn.com/w20/ma.png' },
 ]
 
-const GOLD = '#c9a84c'
+// ─── Couleurs ──────────────────────────────────────────────────────
+const BLUE = '#38BDF8'       // Bleu ciel principal
+const BLUE_LIGHT = '#E0F2FE' // Fond très clair
+const BLUE_DARK = '#0284C7'  // Pour les hover / accents
 
 type AuthState =
   | 'checking'
@@ -90,20 +93,17 @@ export default function LoginPage() {
     return index !== -1 ? index : 0
   })
 
-  // ✅ Synchroniser i18n avec la langue stockée au montage
   useEffect(() => {
     const storedLang = getStoredLang()
     const index = langs.findIndex(l => l.code.toLowerCase() === storedLang)
     if (index !== -1) {
       setLangIndex(index)
     }
-    // Force i18n à utiliser la langue stockée (depuis dashboard)
     if (storedLang) {
       initI18n(storedLang)
     }
   }, [])
 
-  // ✅ Écouter les changements dans d'autres onglets
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'barkahflow-language' && e.newValue) {
@@ -247,7 +247,7 @@ export default function LoginPage() {
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div
           className="w-8 h-8 rounded-full border-2 animate-spin"
-          style={{ borderColor: GOLD, borderTopColor: 'transparent' }}
+          style={{ borderColor: BLUE, borderTopColor: 'transparent' }}
         />
       </div>
     )
@@ -288,7 +288,7 @@ export default function LoginPage() {
               style={{
                 width: i === current ? '28px' : '6px',
                 height: '6px',
-                backgroundColor: i === current ? GOLD : 'rgba(255,255,255,0.4)',
+                backgroundColor: i === current ? BLUE : 'rgba(255,255,255,0.4)',
               }}
             />
           ))}
@@ -318,16 +318,15 @@ export default function LoginPage() {
               className="w-[88px] h-[88px] rounded-full flex items-center justify-center"
               style={{
                 background: 'linear-gradient(135deg, #0b252b, #0a1628)',
-                border: '2px solid rgba(201,168,76,0.35)',
-                boxShadow: '0 8px 32px rgba(201,168,76,0.18)',
+                border: `2px solid ${BLUE}55`,
+                boxShadow: `0 8px 32px ${BLUE}33`,
               }}
             >
               <img src="/slides/logo.png" alt="Logo" className="w-[70px] h-[70px] rounded-full object-cover" />
             </div>
             <h1 className="text-[28px] font-bold tracking-tight">
-              {/* ✅ Correction : Barkah passe en text-foreground pour s'adapter au mode sombre/clair */}
               <span className="text-foreground">Barkah</span>
-              <span style={{ color: GOLD, textShadow: '0 0 20px rgba(201,168,76,0.3)' }}>Flow</span>
+              <span style={{ color: BLUE, textShadow: `0 0 20px ${BLUE}55` }}>Flow</span>
             </h1>
           </div>
 
@@ -340,7 +339,7 @@ export default function LoginPage() {
               <div className={`w-full transition-all duration-700 ease-out ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
                 <ShimmerButton
                   onClick={handleGoogleLogin}
-                  shimmerColor={GOLD}
+                  shimmerColor={BLUE}
                   shimmerSize="0.08em"
                   borderRadius="12px"
                   background="linear-gradient(135deg, #0b252b 0%, #0a1628 100%)"
@@ -363,7 +362,7 @@ export default function LoginPage() {
           {/* ÉTAT 2 — PIN */}
           {authState === 'needs-pin' && remembered && (
             <>
-              <Avatar className="h-14 w-14" style={{ boxShadow: `0 0 0 3px rgba(201,168,76,0.3)` }}>
+              <Avatar className="h-14 w-14" style={{ boxShadow: `0 0 0 3px ${BLUE}55` }}>
                 <AvatarImage src={remembered.avatarUrl} />
                 <AvatarFallback>{initials}</AvatarFallback>
               </Avatar>
@@ -383,7 +382,7 @@ export default function LoginPage() {
                 <button
                   onClick={handleBiometricAttempt}
                   className="flex items-center gap-2 text-xs font-medium px-4 py-2 rounded-lg transition-colors hover:bg-muted"
-                  style={{ color: GOLD }}
+                  style={{ color: BLUE }}
                 >
                   <Fingerprint size={16} />
                   {t('login.use_biometric')}
@@ -401,7 +400,7 @@ export default function LoginPage() {
           {/* ÉTAT 3 — Biométrie */}
           {authState === 'needs-biometric' && remembered && (
             <>
-              <Avatar className="h-16 w-16" style={{ boxShadow: `0 0 0 3px rgba(201,168,76,0.3)` }}>
+              <Avatar className="h-16 w-16" style={{ boxShadow: `0 0 0 3px ${BLUE}55` }}>
                 <AvatarImage src={remembered.avatarUrl} />
                 <AvatarFallback className="text-lg">{initials}</AvatarFallback>
               </Avatar>
@@ -410,14 +409,14 @@ export default function LoginPage() {
                   {t('login.pin_welcome', { name: remembered.name.split(' ')[0] })}
                 </h2>
                 <div className="flex items-center justify-center gap-2 mt-3 text-sm text-muted-foreground">
-                  <ScanFace size={18} className="animate-pulse" style={{ color: GOLD }} />
+                  <ScanFace size={18} className="animate-pulse" style={{ color: BLUE }} />
                   {t('login.biometric_verifying')}
                 </div>
               </div>
               <button
                 onClick={() => setAuthState('needs-pin')}
                 className="text-xs font-medium"
-                style={{ color: GOLD }}
+                style={{ color: BLUE }}
               >
                 {t('login.use_pin_instead')}
               </button>
@@ -437,7 +436,7 @@ export default function LoginPage() {
               </div>
               <ShimmerButton
                 onClick={handleChangeAccount}
-                shimmerColor={GOLD}
+                shimmerColor={BLUE}
                 shimmerSize="0.08em"
                 borderRadius="12px"
                 background="linear-gradient(135deg, #0b252b 0%, #0a1628 100%)"

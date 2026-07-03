@@ -1,38 +1,22 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Label, Pie, PieChart } from 'recharts'
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
-import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  type ChartConfig,
-} from '@/components/ui/chart'
+import { Package } from 'lucide-react'
+import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getStockOverview, type StockOverview } from '@/lib/stock-overview-data'
-
-// ✅ AJOUT : Imports pour les traductions
 import { useTranslation } from 'react-i18next'
+import { formatMAD } from '@/lib/stats-data'
 import '@/lib/i18n/config'
 
-// ✅ MODIFICATION : Utilisation des traductions pour les libellés
-const useChartConfig = (t: any): ChartConfig => ({
-  okStock: { label: t('stock.chart.ok', 'En stock'), color: '#10b981' },
-  lowStock: { label: t('stock.chart.low', 'Stock bas'), color: '#f59e0b' },
-  outOfStock: { label: t('stock.chart.out', 'Rupture'), color: '#ef4444' },
-})
+// ─── Couleurs ──────────────────────────────────────────────────────
+const BLUE = '#38BDF8'          // Bleu ciel pour le donut
+const BLUE_LIGHT = '#E0F2FE'    // Très léger bleu pour le fond (optionnel)
+const GRAY_BG = '#E5E7EB'       // Gris clair pour la partie vide
 
 export function RadialStockChart() {
-  // ✅ AJOUT : Hook de traduction
   const { t } = useTranslation()
-  const chartConfig = useChartConfig(t)
-
   const [data, setData] = useState<StockOverview | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -42,58 +26,100 @@ export function RadialStockChart() {
       .finally(() => setLoading(false))
   }, [])
 
-  const chartData = data
-    ? [
-        { name: 'okStock', value: data.okStock, fill: '#10b981' },
-        { name: 'lowStock', value: data.lowStock, fill: '#f59e0b' },
-        { name: 'outOfStock', value: data.outOfStock, fill: '#ef4444' },
-      ]
-    : []
+  if (loading || !data) {
+    return (
+      <Card className="rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm bg-white dark:bg-gray-900">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+            <Package className="h-4 w-4 text-gray-500" />
+            {t('stock.title', 'État du stock')}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex items-center justify-center h-64">
+          <Skeleton className="h-56 w-56 rounded-full" />
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const total = data.totalProducts
+  // Donut : une partie en bleu ciel, le reste en gris
+  const chartData = [
+    { name: 'stock', value: Math.min(total, 1000), fill: BLUE },
+    { name: 'bg', value: Math.max(1000 - total, 0), fill: GRAY_BG },
+  ]
 
   return (
-    <Card className="flex flex-col">
-      <CardHeader>
-        <CardTitle className="text-base">{t('stock.title', 'État du stock')}</CardTitle>
+    <Card className="rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm bg-white dark:bg-gray-900">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+          <Package className="h-4 w-4 text-gray-500" />
+          {t('stock.title', 'État du stock')}
+        </CardTitle>
       </CardHeader>
-      <CardContent className="flex-1 flex items-center justify-center">
-        {loading ? (
-          <Skeleton className="h-56 w-56 rounded-full" />
-        ) : !data || data.totalProducts === 0 ? (
-          <p className="text-sm text-muted-foreground py-10">
-            {t('stock.no_products', 'Aucun produit enregistré')}
-          </p>
-        ) : (
-          <ChartContainer config={chartConfig} className="h-56 w-full">
+      <CardContent className="flex flex-col items-center pt-2">
+        <div className="relative w-48 h-48">
+          <ResponsiveContainer width="100%" height="100%">
             <PieChart>
-              <ChartTooltip content={<ChartTooltipContent hideLabel />} />
               <Pie
                 data={chartData}
                 dataKey="value"
                 nameKey="name"
                 innerRadius={60}
-                outerRadius={85}
-                strokeWidth={4}
+                outerRadius={80}
+                startAngle={0}
+                endAngle={360}
+                paddingAngle={0}
+                cornerRadius={8}
+                stroke="none"
               >
-                <Label
-                  content={({ viewBox }) => {
-                    if (viewBox && 'cx' in viewBox && 'cy' in viewBox) {
-                      return (
-                        <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
-                          <tspan x={viewBox.cx} y={viewBox.cy} className="fill-foreground text-3xl font-bold">
-                            {data.totalProducts}
-                          </tspan>
-                          <tspan x={viewBox.cx} y={(viewBox.cy || 0) + 20} className="fill-muted-foreground text-xs">
-                            {t('stock.products', 'Produits')}
-                          </tspan>
-                        </text>
-                      )
-                    }
-                  }}
-                />
+                {chartData.map((entry, idx) => (
+                  <Cell key={`cell-${idx}`} fill={entry.fill} />
+                ))}
               </Pie>
             </PieChart>
-          </ChartContainer>
-        )}
+          </ResponsiveContainer>
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <Package className="h-5 w-5 text-gray-400 dark:text-gray-500 mb-1" />
+            <span className="text-3xl font-bold text-gray-900 dark:text-white">
+              {total}
+            </span>
+            <span className="text-sm font-medium text-gray-500 dark:text-gray-400">
+              {t('stock.products', 'Produits')}
+            </span>
+            <span className="text-xs text-gray-400 dark:text-gray-500">
+              {t('stock.total', 'au total')}
+            </span>
+          </div>
+        </div>
+
+        {/* KPI */}
+        <div className="grid grid-cols-3 gap-4 w-full mt-6 pt-4 border-t border-gray-100 dark:border-gray-800">
+          <div className="flex flex-col items-center">
+            <span className="text-xl font-bold text-gray-900 dark:text-white">
+              {total}
+            </span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              {t('stock.products', 'Produits')}
+            </span>
+          </div>
+          <div className="flex flex-col items-center">
+            <span className="text-xl font-bold text-gray-900 dark:text-white">
+              {data.totalCategories}
+            </span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              {t('stock.categories', 'Catégories')}
+            </span>
+          </div>
+          <div className="flex flex-col items-center">
+            <span className="text-xl font-bold text-gray-900 dark:text-white">
+              {formatMAD(data.totalStockValue)}
+            </span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              {t('stock.total_value', 'Valeur du stock')}
+            </span>
+          </div>
+        </div>
       </CardContent>
     </Card>
   )
