@@ -28,9 +28,10 @@ import {
 } from '@/lib/invoice-data'
 import { formatMAD } from '@/lib/stats-data'
 
-const GOLD = '#D4A017'
-const DARK_BLUE = '#1D4ED8'
-const DARK_NAVY = '#0F172A'
+// ─── Couleurs ──────────────────────────────────────────────────────
+const ORANGE = '#F59E0B' // Orange de remplacement pour l'or
+const PRIMARY = '#2C3E50' // Bleu marine doux pour les boutons principaux
+const DARK_BLUE = '#1D4ED8' // Gardé pour le numéro de facture (non demandé)
 const WALKIN_CLIENT_ID = '' // ✅ valeur vide pour le client de passage
 
 export default function InvoiceEditPage() {
@@ -67,7 +68,6 @@ export default function InvoiceEditPage() {
       setInvoice(invoiceData)
       setLines(linesData)
       setClients(clientsData)
-      // ✅ Si client_id est NULL, on utilise la valeur vide (client de passage)
       setClientId(invoiceData.clientId || WALKIN_CLIENT_ID)
       setStatus(invoiceData.status)
       setDate(invoiceData.createdAt.split('T')[0])
@@ -83,7 +83,6 @@ export default function InvoiceEditPage() {
     if (!invoice) return
     setSaving(true)
     try {
-      // ✅ Si c'est le client de passage (valeur vide), on envoie NULL
       const finalClientId = clientId === WALKIN_CLIENT_ID ? null : clientId
       await updateInvoice(invoice.id, {
         clientId: finalClientId,
@@ -145,8 +144,8 @@ export default function InvoiceEditPage() {
         <Button
           onClick={handleSave}
           disabled={saving}
-          className="gap-2 rounded-xl text-white px-6"
-          style={{ backgroundColor: DARK_NAVY }}
+          className="gap-2 rounded-xl text-white px-6 font-medium shadow-sm hover:shadow-md transition-all"
+          style={{ backgroundColor: PRIMARY }}
         >
           <Save className="h-4 w-4" />
           {saving ? 'Enregistrement...' : 'Enregistrer'}
@@ -166,7 +165,6 @@ export default function InvoiceEditPage() {
                   <SelectValue placeholder="Sélectionner un client" />
                 </SelectTrigger>
                 <SelectContent>
-                  {/* ✅ Client de passage avec valeur vide */}
                   <SelectItem value={WALKIN_CLIENT_ID}>
                     {t('pos.walkin_client', 'Client de passage')}
                   </SelectItem>
@@ -227,7 +225,7 @@ export default function InvoiceEditPage() {
             </div>
             <div className="flex justify-between py-2 text-lg font-bold">
               <span>Total TTC</span>
-              <span style={{ color: GOLD }}>{formatMAD(invoice.total)}</span>
+              <span style={{ color: ORANGE }}>{formatMAD(invoice.total)}</span>
             </div>
           </CardContent>
         </Card>
@@ -266,7 +264,7 @@ export default function InvoiceEditPage() {
                 <tfoot className="border-t-2 border-gray-200 dark:border-gray-700">
                   <tr>
                     <td colSpan={4} className="py-3 text-right font-bold">Total</td>
-                    <td className="py-3 text-right font-bold" style={{ color: GOLD }}>
+                    <td className="py-3 text-right font-bold" style={{ color: ORANGE }}>
                       {formatMAD(invoice.total)}
                     </td>
                   </tr>

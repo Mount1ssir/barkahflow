@@ -69,7 +69,6 @@ export default function NewClientPage() {
             <Input
               value={form.fullName}
               onChange={(e) => handleChange('fullName', e.target.value)}
-              placeholder="Ex: Jean Dupont"
               className="rounded-xl h-11 border-gray-200 dark:border-gray-700"
             />
           </div>
@@ -80,7 +79,6 @@ export default function NewClientPage() {
             <Input
               value={form.phone}
               onChange={(e) => handleChange('phone', e.target.value)}
-              placeholder="Ex: 06 12 34 56 78"
               className="rounded-xl h-11 border-gray-200 dark:border-gray-700"
             />
           </div>
@@ -91,7 +89,6 @@ export default function NewClientPage() {
             <Input
               value={form.email}
               onChange={(e) => handleChange('email', e.target.value)}
-              placeholder="Ex: jean@exemple.com"
               className="rounded-xl h-11 border-gray-200 dark:border-gray-700"
             />
           </div>
@@ -102,7 +99,6 @@ export default function NewClientPage() {
             <Input
               value={form.address}
               onChange={(e) => handleChange('address', e.target.value)}
-              placeholder="Ex: 12 rue du Commerce, Casablanca"
               className="rounded-xl h-11 border-gray-200 dark:border-gray-700"
             />
           </div>
@@ -113,7 +109,6 @@ export default function NewClientPage() {
             <Textarea
               value={form.notes}
               onChange={(e) => handleChange('notes', e.target.value)}
-              placeholder="Remarques sur ce client..."
               rows={3}
               className="rounded-xl border-gray-200 dark:border-gray-700 resize-none"
             />

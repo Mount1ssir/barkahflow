@@ -23,6 +23,14 @@ const GRAY_200 = '#E5E7EB'
 const GRAY_600 = '#6B7280'
 const GRAY_900 = '#111827'
 
+// ─── Mapping des modes de paiement ──────────────────────────────
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  cash: 'Espèces',
+  card: 'TPE',
+  mobile: 'Mobile',
+  mixed: 'Mixte',
+}
+
 export default function InvoicePage() {
   const { t } = useTranslation()
   const params = useParams()
@@ -114,6 +122,10 @@ export default function InvoicePage() {
   const taxAmount = invoice.tax
   const taxRate = totalHT > 0 ? Math.round((taxAmount / totalHT) * 100) : company.tvaRate || 0
   const totalDiscount = lines.reduce((acc, l) => acc + (l.unitPrice * l.qty * l.discount / 100), 0)
+  
+  // Récupération du mode de paiement (si présent)
+  const paymentMethod = (invoice as any)?.paymentMethod || (invoice as any)?.payment_method
+  const paymentLabel = paymentMethod ? PAYMENT_METHOD_LABELS[paymentMethod] || paymentMethod : '—'
 
   return (
     <>
@@ -250,6 +262,12 @@ export default function InvoicePage() {
               )}
               {invoice.clientEmail && (
                 <p style={{ margin: '2px 0', fontSize: '13px', color: GRAY_600 }}>✉ {invoice.clientEmail}</p>
+              )}
+              {/* Ajout du mode de paiement */}
+              {paymentLabel !== '—' && (
+                <p style={{ margin: '4px 0 0', fontSize: '13px', color: GRAY_600 }}>
+                  <span style={{ fontWeight: 600 }}>Mode de paiement :</span> {paymentLabel}
+                </p>
               )}
             </div>
 

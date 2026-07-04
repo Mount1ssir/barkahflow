@@ -3,7 +3,7 @@ import { dbSelect } from '@/src/lib/db'
 export interface DashboardStats {
   todayRevenue: number
   todayRevenueChange: number
-  totalSales: number        // Ajouté pour le nombre de ventes
+  totalSales: number
   lowStockCount: number
   totalProducts: number
   totalClients: number
@@ -14,49 +14,62 @@ export function formatMAD(centimes: number): string {
 }
 
 export async function getDashboardStats(): Promise<DashboardStats> {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const yesterday = new Date(today)
-  yesterday.setDate(yesterday.getDate() - 1)
+  // ── UTC explicite ──────────────────────────────────────────────
+  const now = new Date()
+  const todayStr = now.toISOString().split('T')[0]
+  const todayStart = `${todayStr}T00:00:00.000Z`
 
-  // CA d'aujourd'hui (factures PAID)
+  const yesterdayDate = new Date(now)
+  yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1)
+  const yesterdayStr = yesterdayDate.toISOString().split('T')[0]
+  const yesterdayStart = `${yesterdayStr}T00:00:00.000Z`
+
+  // ── CA encaissé d'aujourd'hui (PAID) ──────────────────────────
   const todayRows = await dbSelect<{ total: number }>(
     `SELECT COALESCE(SUM(total), 0) as total
      FROM invoices
      WHERE status = 'PAID'
        AND created_at >= ?`,
-    [today.toISOString()]
+    [todayStart]
   )
 
-  // CA d'hier
+  // ── CA encaissé d'hier ─────────────────────────────────────────
   const yesterdayRows = await dbSelect<{ total: number }>(
     `SELECT COALESCE(SUM(total), 0) as total
      FROM invoices
      WHERE status = 'PAID'
        AND created_at >= ? AND created_at < ?`,
-    [yesterday.toISOString(), today.toISOString()]
+    [yesterdayStart, todayStart]
   )
 
   const todayRevenue = todayRows[0]?.total || 0
   const yesterdayRevenue = yesterdayRows[0]?.total || 0
-  const todayRevenueChange = yesterdayRevenue === 0 ? 0 : ((todayRevenue - yesterdayRevenue) / yesterdayRevenue) * 100
 
-  // Nombre total de factures payées (ventes)
+  // ✅ Si aujourd'hui = 0, on affiche 0% (pas -100%)
+  let todayRevenueChange = 0
+  if (todayRevenue > 0 && yesterdayRevenue > 0) {
+    todayRevenueChange = ((todayRevenue - yesterdayRevenue) / yesterdayRevenue) * 100
+  } else if (todayRevenue > 0 && yesterdayRevenue === 0) {
+    todayRevenueChange = 100 // Premier encaissement, progression infinie
+  }
+  // Sinon (todayRevenue === 0) → 0%
+
+  // ── Nombre total de ventes (toutes les factures) ──────────────
   const totalSalesRows = await dbSelect<{ count: number }>(
-    `SELECT COUNT(*) as count FROM invoices WHERE status = 'PAID'`
+    `SELECT COUNT(*) as count FROM invoices`
   )
 
-  // Produits en stock faible
+  // ── Produits en stock faible ────────────────────────────────────
   const lowStockRows = await dbSelect<{ count: number }>(
     `SELECT COUNT(*) as count FROM products WHERE is_active = 1 AND stock_qty <= alert_threshold`
   )
 
-  // Total produits actifs
+  // ── Total produits actifs ──────────────────────────────────────
   const totalProductsRows = await dbSelect<{ count: number }>(
     `SELECT COUNT(*) as count FROM products WHERE is_active = 1`
   )
 
-  // Total clients
+  // ── Total clients ──────────────────────────────────────────────
   const totalClientsRows = await dbSelect<{ count: number }>(
     `SELECT COUNT(*) as count FROM clients`
   )

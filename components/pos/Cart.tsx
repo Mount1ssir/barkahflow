@@ -20,14 +20,14 @@ interface CartProps {
   items: CartItemUI[]
   onUpdateQuantity: (productId: string, quantity: number) => void
   onRemove: (productId: string) => void
-  onClearCart: () => void   // ✅ Ajouté
+  onClearCart: () => void
   onCheckout: () => void
   subtotal: number
   tax: number
   total: number
 }
 
-const GOLD = '#D4A017'
+const BLUE_NAVY = '#1E293B'
 
 export function Cart({
   items,
@@ -56,7 +56,7 @@ export function Cart({
           {items.length > 0 && (
             <button
               className="text-xs font-medium text-red-500 hover:text-red-600 border border-red-200 hover:border-red-300 rounded-lg px-3 py-1 transition-colors"
-              onClick={onClearCart}   // ✅ Utiliser la prop
+              onClick={onClearCart}
             >
               {t('pos.clear_cart', 'Vider')}
             </button>
@@ -129,7 +129,7 @@ export function Cart({
         )}
       </div>
 
-      {/* Totaux + Bouton Continuer en OR */}
+      {/* Totaux + Bouton Continuer en bleu marine avec taille réduite */}
       {items.length > 0 && (
         <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4 space-y-2">
           <div className="flex justify-between text-sm">
@@ -151,8 +151,8 @@ export function Cart({
             </span>
           </div>
           <Button
-            className="w-full rounded-2xl mt-3 text-white font-semibold h-12 shadow-sm hover:shadow-md transition-all"
-            style={{ backgroundColor: GOLD }}
+            className="w-full rounded-2xl mt-3 text-white font-semibold h-10 shadow-sm hover:shadow-md transition-all"
+            style={{ backgroundColor: BLUE_NAVY }}
             onClick={onCheckout}
           >
             {t('pos.continue', 'Continuer')}

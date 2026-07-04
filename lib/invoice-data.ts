@@ -5,14 +5,15 @@ export interface Invoice {
   invoiceNumber: string
   clientId: string | null
   clientName: string | null
-  clientPhone: string | null   // ✅ nouveau
-  clientEmail: string | null   // ✅ nouveau
-  clientAddress: string | null // ✅ nouveau
+  clientPhone: string | null
+  clientEmail: string | null
+  clientAddress: string | null
   subtotal: number
   tax: number
   discount: number
   total: number
   status: string
+  paymentMethod: string // ← AJOUT
   createdAt: string
   updatedAt: string
 }
@@ -40,14 +41,15 @@ function mapInvoice(row: any): Invoice {
     invoiceNumber: row.invoice_number,
     clientId: row.client_id,
     clientName: row.client_name || null,
-    clientPhone: row.client_phone || null,    // ✅
-    clientEmail: row.client_email || null,    // ✅
-    clientAddress: row.client_address || null, // ✅
+    clientPhone: row.client_phone || null,
+    clientEmail: row.client_email || null,
+    clientAddress: row.client_address || null,
     subtotal: row.subtotal,
     tax: row.tax,
     discount: row.discount,
     total: row.total,
     status: row.status,
+    paymentMethod: row.payment_method || 'cash', // ← récupération avec fallback
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }

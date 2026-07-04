@@ -1,26 +1,37 @@
 'use client'
 
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useTranslation } from 'react-i18next'
 import {
   Plus,
   Search,
   Package,
+  Box,
+  AlertTriangle,
+  XCircle,
   Edit,
   Trash2,
   ToggleLeft,
   ToggleRight,
-  Filter,
-  AlertTriangle,
+  MoreHorizontal,
   History,
   RefreshCw,
   Scan,
-  X,
+  Filter,
+  LayoutGrid,
+  List,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
@@ -63,19 +74,113 @@ import '@/lib/i18n/config'
 import { ReplenishStockDialog } from '@/components/products/ReplenishStockDialog'
 import { StockHistoryDialog } from '@/components/products/StockHistoryDialog'
 
+// ─── Couleurs ──────────────────────────────────────────────────────
 const GOLD = '#D4A017'
-const PRIMARY = '#1D4ED8'
+const PRIMARY = '#2C3E50' // Bleu marine doux
 
-// ─── Composant Image 3D ──────────────────────────────────────────
+// ─── Composant KPI avec animation ────────────────────────────────
+interface KpiCardProps {
+  icon: React.ReactNode
+  value: number
+  label: string
+  subtitle: string
+  color: string
+  bg: string
+  progress?: number
+  index: number // pour l'effet stagger
+}
+
+function KpiCard({ icon, value, label, subtitle, color, bg, progress, index }: KpiCardProps) {
+  const [isVisible, setIsVisible] = useState(false)
+  const cardRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const delay = 100 + index * 100 // 100ms, 200ms, 300ms, 400ms
+    const timer = setTimeout(() => setIsVisible(true), delay)
+    return () => clearTimeout(timer)
+  }, [index])
+
+  return (
+    <div
+      ref={cardRef}
+      className={`rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-sm p-5 flex-1 min-w-[140px] transition-all duration-500 ease-out hover:shadow-lg hover:-translate-y-1 ${
+        isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
+      }`}
+    >
+      <div className="flex items-start justify-between">
+        <div
+          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-transform duration-200 hover:scale-110"
+          style={{ backgroundColor: bg }}
+        >
+          {icon}
+        </div>
+        <span className="text-2xl font-bold text-gray-900 dark:text-white">{value}</span>
+      </div>
+      <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mt-1">{label}</p>
+      <p className="text-xs text-gray-400 dark:text-gray-500">{subtitle}</p>
+      {progress !== undefined && (
+        <div className="mt-3 h-1.5 w-full rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all duration-1000 ease-out"
+            style={{
+              width: isVisible ? `${Math.min(progress, 100)}%` : '0%',
+              backgroundColor: color,
+            }}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Skeleton pour les KPI ──────────────────────────────────────
+function KpiCardSkeleton() {
+  return (
+    <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-sm p-5 flex-1 min-w-[140px]">
+      <div className="animate-pulse space-y-3">
+        <div className="w-10 h-10 rounded-xl bg-gray-200 dark:bg-gray-700" />
+        <div className="h-7 w-16 bg-gray-200 dark:bg-gray-700 rounded" />
+        <div className="h-4 w-20 bg-gray-200 dark:bg-gray-700 rounded" />
+        <div className="h-1.5 w-full bg-gray-200 dark:bg-gray-700 rounded" />
+      </div>
+    </div>
+  )
+}
+
+// ─── Déterminer le statut d'un produit ───────────────────────────
+function getProductStatus(product: Product): 'in_stock' | 'low_stock' | 'out_of_stock' {
+  if (!product.isActive) return 'in_stock'
+  if (product.stockQty <= 0) return 'out_of_stock'
+  if (product.stockQty <= product.alertThreshold) return 'low_stock'
+  return 'in_stock'
+}
+
+const statusConfig = {
+  in_stock: {
+    label: 'En stock',
+    color: '#22C55E',
+    bg: 'rgba(34,197,94,0.12)',
+  },
+  low_stock: {
+    label: 'Stock bas',
+    color: '#F59E0B',
+    bg: 'rgba(245,158,11,0.12)',
+  },
+  out_of_stock: {
+    label: 'Rupture',
+    color: '#EF4444',
+    bg: 'rgba(239,68,68,0.12)',
+  },
+}
+
+// ─── Composant Image 3D (pour la vue grille) ────────────────────
 function ProductImage3D({ src, alt }: { src: string; alt: string }) {
-  const ref = useRef<HTMLDivElement>(null)
   const [style, setStyle] = useState({
     transform: 'perspective(400px) rotateX(0deg) rotateY(0deg) scale(1)',
   })
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!ref.current) return
-    const rect = ref.current.getBoundingClientRect()
+    const rect = e.currentTarget.getBoundingClientRect()
     const x = (e.clientX - rect.left) / rect.width - 0.5
     const y = (e.clientY - rect.top) / rect.height - 0.5
     setStyle({
@@ -91,7 +196,6 @@ function ProductImage3D({ src, alt }: { src: string; alt: string }) {
 
   return (
     <div
-      ref={ref}
       className="w-full h-full relative overflow-hidden"
       style={{ transformStyle: 'preserve-3d' }}
       onMouseMove={handleMouseMove}
@@ -111,21 +215,8 @@ function ProductImage3D({ src, alt }: { src: string; alt: string }) {
   )
 }
 
-function ProductCardSkeleton() {
-  return (
-    <Card className="rounded-2xl overflow-hidden">
-      <Skeleton className="h-40 w-full" />
-      <CardContent className="p-4">
-        <Skeleton className="h-4 w-3/4 mb-2" />
-        <Skeleton className="h-3 w-1/2 mb-3" />
-        <Skeleton className="h-4 w-full" />
-      </CardContent>
-    </Card>
-  )
-}
-
+// ─── Page principale ──────────────────────────────────────────────
 export default function ProduitsPage() {
-  const { t } = useTranslation()
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -134,14 +225,37 @@ export default function ProduitsPage() {
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
+  const [statusFilter, setStatusFilter] = useState('all')
   const [stockFilter, setStockFilter] = useState<'all' | 'stock_bas'>('all')
+  const [showInactive, setShowInactive] = useState(false)
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null)
   const [scannerOpen, setScannerOpen] = useState(false)
   const [scannedProduct, setScannedProduct] = useState<Product | null>(null)
   const [replenishProduct, setReplenishProduct] = useState<Product | null>(null)
   const [historyProduct, setHistoryProduct] = useState<Product | null>(null)
+  const [stats, setStats] = useState<{
+    total: number
+    inStock: number
+    lowStock: number
+    outOfStock: number
+  }>({ total: 0, inStock: 0, lowStock: 0, outOfStock: 0 })
 
-  // ─── Détection du paramètre `filter` ──────────────────────────
+  const computeStats = useCallback((products: Product[]) => {
+    let total = 0,
+      inStock = 0,
+      lowStock = 0,
+      outOfStock = 0
+    for (const p of products) {
+      if (!p.isActive) continue
+      total++
+      if (p.stockQty <= 0) outOfStock++
+      else if (p.stockQty <= p.alertThreshold) lowStock++
+      else inStock++
+    }
+    return { total, inStock, lowStock, outOfStock }
+  }, [])
+
   useEffect(() => {
     const filter = searchParams.get('filter')
     if (filter === 'stock_bas') {
@@ -151,7 +265,6 @@ export default function ProduitsPage() {
     }
   }, [searchParams])
 
-  // ─── Détection du paramètre `replenish` ──────────────────────
   useEffect(() => {
     const replenish = searchParams.get('replenish')
     if (replenish) {
@@ -160,7 +273,6 @@ export default function ProduitsPage() {
         setReplenishProduct(found)
         router.replace('/dashboard/produits')
       } else {
-        // Attendre le chargement des produits
         const timer = setTimeout(() => {
           const retry = products.find(p => p.id === replenish)
           if (retry) {
@@ -176,13 +288,26 @@ export default function ProduitsPage() {
     }
   }, [searchParams, products, router])
 
-  // ─── Chargement des produits ────────────────────────────────────
   const loadProducts = useCallback(async () => {
     try {
       let data = query ? await searchProducts(query) : await getAllProducts()
 
+      if (!showInactive) {
+        data = data.filter(p => p.isActive)
+      }
+
       if (categoryFilter !== 'all') {
         data = data.filter((p) => p.categoryId === categoryFilter)
+      }
+
+      if (statusFilter !== 'all') {
+        data = data.filter((p) => {
+          const status = getProductStatus(p)
+          if (statusFilter === 'in_stock') return status === 'in_stock'
+          if (statusFilter === 'low_stock') return status === 'low_stock'
+          if (statusFilter === 'out_of_stock') return status === 'out_of_stock'
+          return true
+        })
       }
 
       if (stockFilter === 'stock_bas') {
@@ -199,12 +324,13 @@ export default function ProduitsPage() {
       }
 
       setProducts(data)
+      setStats(computeStats(data))
     } catch (e) {
       console.error(e)
     } finally {
       setLoading(false)
     }
-  }, [query, categoryFilter, stockFilter, scannedProduct])
+  }, [query, categoryFilter, statusFilter, stockFilter, scannedProduct, showInactive, computeStats])
 
   useEffect(() => {
     loadProducts()
@@ -216,17 +342,47 @@ export default function ProduitsPage() {
 
   const handleDelete = async () => {
     if (!deleteTarget) return
-    await deleteProduct(deleteTarget.id)
-    setDeleteTarget(null)
-    loadProducts()
+    const targetId = deleteTarget.id
+    const targetName = deleteTarget.nameAr
+
+    try {
+      await deleteProduct(targetId)
+      toast.success(`Produit "${targetName}" supprimé avec succès`)
+      setDeleteTarget(null)
+      loadProducts()
+    } catch (error: any) {
+      setDeleteTarget(null)
+      toast.error(
+        error?.message || 'Ce produit ne peut pas être supprimé',
+        {
+          description: 'Vous pouvez le désactiver à la place.',
+          action: {
+            label: 'Désactiver',
+            onClick: async () => {
+              try {
+                await toggleProductStatus(targetId, false)
+                toast.success(`Produit "${targetName}" désactivé`)
+                loadProducts()
+              } catch (toggleError: any) {
+                toast.error(toggleError?.message || 'Erreur lors de la désactivation')
+              }
+            },
+          },
+        }
+      )
+    }
   }
 
   const handleToggle = async (product: Product) => {
-    await toggleProductStatus(product.id, !product.isActive)
-    loadProducts()
+    try {
+      await toggleProductStatus(product.id, !product.isActive)
+      loadProducts()
+    } catch (error: any) {
+      toast.error(error?.message || 'Erreur lors du changement de statut')
+    }
   }
 
-  const formatPrice = (centimes: number) => (centimes / 100).toFixed(2) + ' MAD'
+  const formatPrice = (centimes: number) => (centimes / 100).toFixed(2)
 
   const handleAddProduct = () => {
     router.push('/dashboard/produits/nouveau')
@@ -236,7 +392,6 @@ export default function ProduitsPage() {
     router.push(`/dashboard/produits/nouveau?id=${product.id}`)
   }
 
-  // ─── Scan ────────────────────────────────────────────────────────
   const handleScan = async (barcode: string) => {
     try {
       const product = await findBySkuOrBarcode(barcode)
@@ -273,125 +428,27 @@ export default function ProduitsPage() {
     router.push('/dashboard/produits')
   }
 
-  return (
-    <div className="flex flex-col gap-6 max-w-7xl mx-auto w-full">
-      {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-bold text-foreground">
-            {t('products.title')}
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {products.length} {t('common.total').toLowerCase()}
-          </p>
-          {stockFilter === 'stock_bas' && (
-            <Badge className="ml-2" style={{ backgroundColor: '#ef4444', color: 'white' }}>
-              🔔 Alertes stock
-            </Badge>
-          )}
-          {stockFilter === 'stock_bas' && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={resetStockFilter}
-              className="ml-1 h-7 px-2"
-            >
-              <X className="h-4 w-4" /> Réinitialiser
-            </Button>
-          )}
-        </div>
-        <Button
-          className="gap-2 rounded-xl"
-          style={{ backgroundColor: GOLD, color: '#0a1628' }}
-          onClick={handleAddProduct}
-        >
-          <Plus size={16} />
-          {t('products.add')}
-        </Button>
-      </div>
-
-      {/* Filtres + Scan */}
-      <div className="flex flex-wrap gap-3 items-center">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder={t('products.search')}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            className="pl-9 rounded-xl bg-muted/40 border-none"
-          />
-        </div>
-        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-48 rounded-xl">
-            <SelectValue placeholder={t('products.form.select_category')} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t('products.all')}</SelectItem>
-            {categories.map((cat) => (
-              <SelectItem key={cat.id} value={cat.id}>
-                {cat.nameFr}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => setScannerOpen(true)}
-          className="gap-2 rounded-xl border-slate-200 dark:border-gray-700 hover:bg-blue-50 h-11"
-        >
-          <Scan className="h-4 w-4" style={{ color: PRIMARY }} />
-          Scanner
-        </Button>
-      </div>
-
-      {/* Produit scanné */}
-      {scannedProduct && (
-        <Card className="rounded-2xl border-2 shadow-lg overflow-hidden" style={{ borderColor: GOLD }}>
-          <CardContent className="p-4 flex items-center justify-between bg-gradient-to-r from-amber-50/50 to-blue-50/50 dark:from-amber-900/10 dark:to-blue-900/10">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 bg-slate-100 dark:bg-gray-700 flex items-center justify-center">
-                {scannedProduct.imagePath ? (
-                  <img
-                    src={getDisplayUrl(scannedProduct.imagePath)}
-                    alt={scannedProduct.nameAr}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <Package className="h-6 w-6" style={{ color: GOLD }} />
-                )}
-              </div>
-              <div>
-                <p className="font-extrabold text-lg text-gray-900 dark:text-gray-50">
-                  {scannedProduct.nameAr}
-                </p>
-                <div className="flex items-center gap-3 text-sm text-slate-500 dark:text-gray-400">
-                  <span>SKU: {scannedProduct.sku}</span>
-                  <span>Stock: {scannedProduct.stockQty}</span>
-                  <span>{formatPrice(scannedProduct.retailPrice)}</span>
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <Badge className="text-xs" style={{ backgroundColor: GOLD, color: 'white' }}>
-                Scanné
-              </Badge>
-              <Button variant="ghost" size="icon" onClick={clearScannedProduct} className="rounded-full">
-                <X className="h-4 w-4 text-slate-400" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Grille */}
-      {loading ? (
+  // ─── Rendu conditionnel ─────────────────────────────────────────
+  const renderProducts = () => {
+    if (loading) {
+      return (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-            <ProductCardSkeleton key={i} />
+            <div key={i} className="rounded-2xl overflow-hidden border shadow-sm animate-pulse">
+              <Skeleton className="h-40 w-full" />
+              <div className="p-4 space-y-2">
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-3 w-1/2" />
+                <Skeleton className="h-4 w-full" />
+              </div>
+            </div>
           ))}
         </div>
-      ) : products.length === 0 ? (
+      )
+    }
+
+    if (products.length === 0) {
+      return (
         <Card className="rounded-2xl border shadow-sm">
           <CardContent className="flex flex-col items-center justify-center text-center py-16">
             <div
@@ -400,154 +457,498 @@ export default function ProduitsPage() {
             >
               <Package className="h-9 w-9" style={{ color: GOLD }} />
             </div>
-            <h4 className="text-base font-semibold text-foreground mb-1">
-              {t('products.no_products')}
-            </h4>
+            <h4 className="text-base font-semibold text-foreground mb-1">Aucun produit</h4>
             <p className="text-sm text-muted-foreground mb-5 max-w-xs">
-              {t('products.no_products_subtitle')}
+              Commencez par ajouter votre premier produit
             </p>
             <Button
-              className="gap-2 rounded-xl"
-              style={{ backgroundColor: GOLD, color: '#0a1628' }}
+              className="gap-2 rounded-xl text-white font-semibold"
+              style={{ backgroundColor: PRIMARY }}
               onClick={handleAddProduct}
             >
               <Plus size={16} />
-              {t('products.add_first')}
+              Ajouter un produit
             </Button>
           </CardContent>
         </Card>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {products.map((product) => {
-            const isScanned = scannedProduct && scannedProduct.id === product.id
-            return (
-              <Card
-                key={product.id}
-                className={`rounded-2xl overflow-hidden border shadow-sm hover:shadow-md transition-shadow ${
-                  isScanned ? 'border-2' : ''
-                }`}
-                style={isScanned ? { borderColor: GOLD } : {}}
-              >
-                <div className="h-40 bg-gradient-to-br from-amber-50/50 to-blue-50/50 dark:from-amber-900/10 dark:to-blue-900/10 flex items-center justify-center relative overflow-hidden">
-                  {product.imagePath ? (
-                    <ProductImage3D
-                      src={getDisplayUrl(product.imagePath)}
-                      alt={product.nameAr}
-                    />
-                  ) : (
-                    <div className="flex flex-col items-center gap-2">
-                      <div
-                        className="w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg"
-                        style={{
-                          background: 'linear-gradient(135deg, #D4A017, #1D4ED8)',
-                        }}
-                      >
-                        <Package className="h-8 w-8 text-white" />
-                      </div>
-                      <span className="text-xs text-slate-400 dark:text-gray-500 font-medium">
-                        Aucune image
-                      </span>
-                    </div>
-                  )}
+      )
+    }
 
-                  <div className="absolute top-2 left-2 flex flex-col gap-1">
-                    {!product.isActive && (
-                      <Badge variant="secondary" className="text-[10px]">
-                        {t('common.inactive')}
-                      </Badge>
-                    )}
-                    {product.isActive && product.stockQty === 0 && (
-                      <Badge variant="destructive" className="text-[10px]">
-                        {t('products.out_of_stock')}
-                      </Badge>
-                    )}
-                    {product.isActive && product.stockQty > 0 && product.stockQty <= product.alertThreshold && (
-                      <Badge className="text-[10px]" style={{ backgroundColor: '#f59e0b', color: '#ffffff' }}>
-                        {t('products.low_stock')}
-                      </Badge>
-                    )}
-                    {isScanned && (
-                      <Badge className="text-[10px]" style={{ backgroundColor: GOLD, color: 'white' }}>
-                        Scanné
-                      </Badge>
-                    )}
-                  </div>
+    if (viewMode === 'list') {
+      return (
+        <Card className="rounded-2xl border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                  <TableHead className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Produit
+                  </TableHead>
+                  <TableHead className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    SKU
+                  </TableHead>
+                  <TableHead className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Catégorie
+                  </TableHead>
+                  <TableHead className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">
+                    Stock
+                  </TableHead>
+                  <TableHead className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">
+                    Prix (MAD)
+                  </TableHead>
+                  <TableHead className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">
+                    Achat
+                  </TableHead>
+                  <TableHead className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Statut
+                  </TableHead>
+                  <TableHead className="text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    Actions
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {products.map((product) => {
+                  const status = getProductStatus(product)
+                  const statusInfo = statusConfig[status]
+                  const isScanned = scannedProduct?.id === product.id
 
-                  <div className="absolute top-2 right-2">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="secondary" size="icon" className="h-7 w-7 rounded-lg opacity-80 hover:opacity-100">
-                          <Filter size={12} />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="rounded-xl w-48">
-                        <DropdownMenuItem
-                          onClick={() => handleEditProduct(product)}
-                          className="gap-2"
+                  return (
+                    <TableRow
+                      key={product.id}
+                      className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${
+                        isScanned ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''
+                      }`}
+                    >
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <div className="w-11 h-11 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center overflow-hidden flex-shrink-0">
+                            {product.imagePath ? (
+                              <img
+                                src={getDisplayUrl(product.imagePath)}
+                                alt={product.nameAr}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <Package size={18} className="text-gray-400" />
+                            )}
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                              {product.nameAr}
+                            </p>
+                            {product.nameFr && (
+                              <p className="text-xs text-gray-400 dark:text-gray-500">
+                                {product.nameFr}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </TableCell>
+
+                      <TableCell className="font-mono text-xs text-gray-500 dark:text-gray-400">
+                        {product.sku}
+                      </TableCell>
+
+                      <TableCell>
+                        {product.categoryName && (
+                          <Badge
+                            className="border-0 font-medium text-xs px-2.5 py-0.5"
+                            style={{
+                              backgroundColor: product.categoryColor
+                                ? `${product.categoryColor}20`
+                                : '#E5E7EB',
+                              color: product.categoryColor || '#6B7280',
+                            }}
+                          >
+                            {product.categoryName}
+                          </Badge>
+                        )}
+                      </TableCell>
+
+                      <TableCell className="text-right font-medium text-gray-900 dark:text-white">
+                        {product.stockQty}
+                      </TableCell>
+
+                      <TableCell className="text-right font-medium text-gray-900 dark:text-white">
+                        {formatPrice(product.retailPrice)}
+                      </TableCell>
+
+                      <TableCell className="text-right text-gray-500 dark:text-gray-400">
+                        {formatPrice(product.costPrice)}
+                      </TableCell>
+
+                      <TableCell>
+                        <Badge
+                          className="border-0 font-medium text-xs px-3 py-0.5"
+                          style={{
+                            backgroundColor: statusInfo.bg,
+                            color: statusInfo.color,
+                          }}
                         >
-                          <Edit size={14} /> {t('common.edit')}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setReplenishProduct(product)} className="gap-2">
-                          <RefreshCw size={14} /> {t('stock.replenish.title')}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setHistoryProduct(product)} className="gap-2">
-                          <History size={14} /> {t('stock.history.title')}
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => handleToggle(product)} className="gap-2">
-                          {product.isActive ? <ToggleLeft size={14} /> : <ToggleRight size={14} />}
-                          {product.isActive ? t('common.disabled') : t('common.enabled')}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setDeleteTarget(product)} className="gap-2 text-destructive">
-                          <Trash2 size={14} /> {t('products.delete')}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                          {statusInfo.label}
+                        </Badge>
+                      </TableCell>
+
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
+                              <MoreHorizontal size={16} />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="rounded-xl w-48">
+                            <DropdownMenuItem
+                              onClick={() => handleEditProduct(product)}
+                              className="gap-2"
+                            >
+                              <Edit size={14} /> Modifier
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => setReplenishProduct(product)}
+                              className="gap-2"
+                            >
+                              <RefreshCw size={14} /> Réapprovisionner
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => setHistoryProduct(product)}
+                              className="gap-2"
+                            >
+                              <History size={14} /> Historique
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() => handleToggle(product)}
+                              className="gap-2"
+                            >
+                              {product.isActive ? (
+                                <>
+                                  <ToggleLeft size={14} /> Désactiver
+                                </>
+                              ) : (
+                                <>
+                                  <ToggleRight size={14} /> Activer
+                                </>
+                              )}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => setDeleteTarget(product)}
+                              className="gap-2 text-red-500 hover:text-red-600"
+                            >
+                              <Trash2 size={14} /> Supprimer
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+            <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 text-sm text-gray-500 dark:text-gray-400">
+              Affichage de 1 à {Math.min(products.length, 10)} sur {products.length} produits
+            </div>
+          </CardContent>
+        </Card>
+      )
+    }
+
+    // Vue grille
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        {products.map((product) => {
+          const isScanned = scannedProduct?.id === product.id
+          return (
+            <Card
+              key={product.id}
+              className={`rounded-2xl overflow-hidden border shadow-sm hover:shadow-md transition-shadow ${
+                isScanned ? 'border-2' : ''
+              }`}
+              style={isScanned ? { borderColor: GOLD } : {}}
+            >
+              <div className="h-40 bg-gradient-to-br from-amber-50/50 to-blue-50/50 dark:from-amber-900/10 dark:to-blue-900/10 flex items-center justify-center relative overflow-hidden">
+                {product.imagePath ? (
+                  <ProductImage3D
+                    src={getDisplayUrl(product.imagePath)}
+                    alt={product.nameAr}
+                  />
+                ) : (
+                  <div className="flex flex-col items-center gap-2">
+                    <div
+                      className="w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg"
+                      style={{
+                        background: 'linear-gradient(135deg, #D4A017, #1D4ED8)',
+                      }}
+                    >
+                      <Package className="h-8 w-8 text-white" />
+                    </div>
+                    <span className="text-xs text-slate-400 dark:text-gray-500 font-medium">
+                      Aucune image
+                    </span>
                   </div>
+                )}
+
+                <div className="absolute top-2 left-2 flex flex-col gap-1">
+                  {!product.isActive && (
+                    <Badge variant="secondary" className="text-[10px]">
+                      Inactif
+                    </Badge>
+                  )}
+                  {product.isActive && product.stockQty === 0 && (
+                    <Badge variant="destructive" className="text-[10px]">
+                      Rupture
+                    </Badge>
+                  )}
+                  {product.isActive && product.stockQty > 0 && product.stockQty <= product.alertThreshold && (
+                    <Badge className="text-[10px]" style={{ backgroundColor: '#f59e0b', color: '#ffffff' }}>
+                      Stock bas
+                    </Badge>
+                  )}
+                  {isScanned && (
+                    <Badge className="text-[10px]" style={{ backgroundColor: GOLD, color: 'white' }}>
+                      Scanné
+                    </Badge>
+                  )}
                 </div>
 
-                <CardContent className="p-4">
-                  <h3 className="font-semibold text-sm text-foreground truncate">{product.nameAr}</h3>
-                  {product.nameFr && <p className="text-xs text-muted-foreground truncate">{product.nameFr}</p>}
-                  <div className="flex items-center justify-between mt-2">
-                    <span className="text-xs text-muted-foreground font-mono">{product.sku}</span>
-                    {product.categoryName && <Badge variant="secondary" className="text-[10px]">{product.categoryName}</Badge>}
+                <div className="absolute top-2 right-2">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="secondary" size="icon" className="h-7 w-7 rounded-lg opacity-80 hover:opacity-100">
+                        <Filter size={12} />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="rounded-xl w-48">
+                      <DropdownMenuItem
+                        onClick={() => handleEditProduct(product)}
+                        className="gap-2"
+                      >
+                        <Edit size={14} /> Modifier
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setReplenishProduct(product)} className="gap-2">
+                        <RefreshCw size={14} /> Réapprovisionner
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setHistoryProduct(product)} className="gap-2">
+                        <History size={14} /> Historique
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => handleToggle(product)} className="gap-2">
+                        {product.isActive ? <ToggleLeft size={14} /> : <ToggleRight size={14} />}
+                        {product.isActive ? 'Désactiver' : 'Activer'}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setDeleteTarget(product)} className="gap-2 text-destructive">
+                        <Trash2 size={14} /> Supprimer
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+
+              <CardContent className="p-4">
+                <h3 className="font-semibold text-sm text-foreground truncate">{product.nameAr}</h3>
+                {product.nameFr && <p className="text-xs text-muted-foreground truncate">{product.nameFr}</p>}
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-xs text-muted-foreground font-mono">{product.sku}</span>
+                  {product.categoryName && <Badge variant="secondary" className="text-[10px]">{product.categoryName}</Badge>}
+                </div>
+                <div className="flex items-center justify-between mt-3 pt-3 border-t">
+                  <div>
+                    <p className="text-base font-bold" style={{ color: GOLD }}>{formatPrice(product.retailPrice)} MAD</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      Achat : {formatPrice(product.costPrice)} MAD
+                    </p>
                   </div>
-                  <div className="flex items-center justify-between mt-3 pt-3 border-t">
-                    <div>
-                      <p className="text-base font-bold" style={{ color: GOLD }}>{formatPrice(product.retailPrice)}</p>
-                      <p className="text-[10px] text-muted-foreground">
-                        {t('products.form.cost_price').split('(')[0]}: {formatPrice(product.costPrice)}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-medium text-foreground">{product.stockQty} {product.unit}</p>
-                      {product.stockQty <= product.alertThreshold && product.stockQty > 0 && (
-                        <div className="flex items-center gap-1">
-                          <AlertTriangle size={10} style={{ color: '#f59e0b' }} />
-                          <p className="text-[10px]" style={{ color: '#f59e0b' }}>{t('products.form.low_stock_warning')}</p>
-                        </div>
-                      )}
-                    </div>
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-foreground">{product.stockQty} {product.unit}</p>
+                    {product.stockQty <= product.alertThreshold && product.stockQty > 0 && (
+                      <div className="flex items-center gap-1">
+                        <AlertTriangle size={10} style={{ color: '#f59e0b' }} />
+                        <p className="text-[10px]" style={{ color: '#f59e0b' }}>Stock bas</p>
+                      </div>
+                    )}
                   </div>
-                </CardContent>
-              </Card>
-            )
-          })}
+                </div>
+              </CardContent>
+            </Card>
+          )
+        })}
+      </div>
+    )
+  }
+
+  // ─── Rendu principal ─────────────────────────────────────────────
+  return (
+    <div className="flex flex-col gap-6 max-w-7xl mx-auto w-full">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Produits</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+            Gérez vos produits, votre inventaire et vos tarifs.
+          </p>
+        </div>
+        <Button
+          className="gap-2 rounded-xl text-white font-medium shadow-sm hover:shadow-md transition-all"
+          style={{ backgroundColor: PRIMARY }}
+          onClick={handleAddProduct}
+        >
+          <Plus size={16} />
+          Ajouter un produit
+        </Button>
+      </div>
+
+      {/* ─── KPI CARDS avec animation ────────────────────────────── */}
+      {loading ? (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => <KpiCardSkeleton key={i} />)}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <KpiCard
+            icon={<Package size={20} style={{ color: PRIMARY }} />}
+            value={stats.total}
+            label="Total produits"
+            subtitle="Tous les produits actifs"
+            color={PRIMARY}
+            bg="rgba(44,62,80,0.10)"
+            progress={100}
+            index={0}
+          />
+          <KpiCard
+            icon={<Box size={20} style={{ color: '#22C55E' }} />}
+            value={stats.inStock}
+            label="En stock"
+            subtitle={stats.total > 0 ? `${Math.round((stats.inStock / stats.total) * 100)}% du total` : '0% du total'}
+            color="#22C55E"
+            bg="rgba(34,197,94,0.10)"
+            progress={stats.total > 0 ? (stats.inStock / stats.total) * 100 : 0}
+            index={1}
+          />
+          <KpiCard
+            icon={<AlertTriangle size={20} style={{ color: '#F59E0B' }} />}
+            value={stats.lowStock}
+            label="Stock bas"
+            subtitle="Nécessite une attention"
+            color="#F59E0B"
+            bg="rgba(245,158,11,0.10)"
+            progress={stats.total > 0 ? (stats.lowStock / stats.total) * 100 : 0}
+            index={2}
+          />
+          <KpiCard
+            icon={<XCircle size={20} style={{ color: '#EF4444' }} />}
+            value={stats.outOfStock}
+            label="Rupture"
+            subtitle="Indisponible"
+            color="#EF4444"
+            bg="rgba(239,68,68,0.10)"
+            progress={stats.total > 0 ? (stats.outOfStock / stats.total) * 100 : 0}
+            index={3}
+          />
         </div>
       )}
+
+      {/* Filter Bar */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 min-w-[180px] max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Input
+            placeholder="Rechercher un produit..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="pl-9 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 h-10 text-sm"
+          />
+        </div>
+
+        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+          <SelectTrigger className="w-40 rounded-xl h-10 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+            <SelectValue placeholder="Catégorie" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Toutes les catégories</SelectItem>
+            {categories.map((cat) => (
+              <SelectItem key={cat.id} value={cat.id}>
+                {cat.nameFr}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-40 rounded-xl h-10 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+            <SelectValue placeholder="Statut" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Tous les statuts</SelectItem>
+            <SelectItem value="in_stock">En stock</SelectItem>
+            <SelectItem value="low_stock">Stock bas</SelectItem>
+            <SelectItem value="out_of_stock">Rupture</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Button
+          variant="outline"
+          onClick={() => setScannerOpen(true)}
+          className="gap-2 rounded-xl border-gray-200 dark:border-gray-700 h-10 text-white hover:bg-blue-800 transition-colors"
+          style={{ backgroundColor: PRIMARY }}
+        >
+          <Scan size={15} className="text-white" />
+          Scanner
+        </Button>
+
+        <Button
+          variant={showInactive ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setShowInactive(!showInactive)}
+          className="rounded-xl h-10 px-4 font-medium"
+          style={showInactive ? { backgroundColor: PRIMARY, color: 'white' } : {}}
+        >
+          {showInactive ? 'Masquer inactifs' : 'Afficher inactifs'}
+        </Button>
+
+        <div className="flex items-center gap-1 ml-auto border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
+          <Button
+            variant="ghost"
+            size="sm"
+            className={`rounded-none h-9 px-3 ${
+              viewMode === 'list'
+                ? 'bg-gray-100 dark:bg-gray-800'
+                : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+            }`}
+            onClick={() => setViewMode('list')}
+          >
+            <List size={16} className={viewMode === 'list' ? 'text-gray-900 dark:text-white' : 'text-gray-400'} />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className={`rounded-none h-9 px-3 ${
+              viewMode === 'grid'
+                ? 'bg-gray-100 dark:bg-gray-800'
+                : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+            }`}
+            onClick={() => setViewMode('grid')}
+          >
+            <LayoutGrid size={16} className={viewMode === 'grid' ? 'text-gray-900 dark:text-white' : 'text-gray-400'} />
+          </Button>
+        </div>
+      </div>
+
+      {/* Products */}
+      {renderProducts()}
 
       {/* Dialogues */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{t('products.delete_confirm')}</AlertDialogTitle>
-            <AlertDialogDescription>{deleteTarget?.nameAr} — {t('products.delete_warning')}</AlertDialogDescription>
+            <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget?.nameAr} — Cette action est irréversible.
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>{t('common.cancel')}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} style={{ backgroundColor: '#ef4444' }}>
-              {t('products.delete')}
+            <AlertDialogCancel>Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} style={{ backgroundColor: '#EF4444' }}>
+              Supprimer
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

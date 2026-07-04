@@ -52,27 +52,23 @@ import {
   Search,
   Plus,
   Download,
-  Upload,
   Eye,
   Pencil,
   MoreHorizontal,
   ChevronLeft,
   ChevronRight,
-  Home,
-  ChevronRight as ChevronRightIcon,
   Trash2,
   Users,
   UserCheck,
   CreditCard,
   AlertTriangle,
-  Star,
 } from 'lucide-react'
 import { getAllClients, deleteClient, type Client } from '@/lib/client-data'
 import { formatMAD } from '@/lib/stats-data'
 
 // ─── Couleurs ──────────────────────────────────────────────────────
 const GOLD = '#D4A017'
-const DARK_BLUE = '#1D4ED8'
+const PRIMARY = '#2C3E50' // Bleu marine doux
 
 // ─── Score de fidélité ────────────────────────────────────────────
 type FidelityScore = 'vip' | 'fidele' | 'nouveau' | 'inactif'
@@ -135,9 +131,9 @@ interface KpiCardProps {
   icon: React.ReactNode
   iconBg: string
   iconColor: string
-  progress: number       // 0-100
+  progress: number
   barColor: string
-  delay: number          // en ms pour l'animation cascade
+  delay: number
   isLoaded: boolean
 }
 
@@ -152,7 +148,6 @@ function KpiCard({
   delay,
   isLoaded,
 }: KpiCardProps) {
-  // Assure que progress est entre 0 et 100
   const pct = Math.min(100, Math.max(0, progress))
 
   return (
@@ -175,7 +170,6 @@ function KpiCard({
           </div>
         </div>
 
-        {/* Barre de progression animée */}
         <div className="mt-3 h-1.5 w-full rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
           <div
             className="h-full rounded-full transition-all duration-1000 ease-out"
@@ -238,12 +232,11 @@ export default function ClientsPage() {
   const [currentPage, setCurrentPage]   = useState(1)
   const [deleteTarget, setDeleteTarget] = useState<Client | null>(null)
   const [viewingClient, setViewingClient] = useState<Client | null>(null)
-  const [isLoaded, setIsLoaded] = useState(false)   // ← pour l'animation
+  const [isLoaded, setIsLoaded] = useState(false)
   const pageSize = 5
 
   useEffect(() => {
     loadClients()
-    // Déclencher l'animation après le chargement des données (ou après un petit délai)
     const timer = setTimeout(() => setIsLoaded(true), 150)
     return () => clearTimeout(timer)
   }, [])
@@ -294,7 +287,6 @@ export default function ClientsPage() {
   const totalDebt     = clients.reduce((sum, c) => sum + c.debt, 0)
   const debtors       = clients.filter((c) => c.debt > 0).length
 
-  // Progression pour chaque carte
   const kpiProgress = [
     { progress: 100, barColor: GOLD },
     { progress: totalClients > 0 ? (activeClients / totalClients) * 100 : 0, barColor: '#16A34A' },
@@ -303,10 +295,10 @@ export default function ClientsPage() {
   ]
 
   const kpiData = [
-    { label: t('clients.total', 'Total clients'),    value: String(totalClients),  icon: <Users className="h-5 w-5" />,         iconBg: 'bg-blue-50 dark:bg-blue-900/20',   iconColor: DARK_BLUE   },
-    { label: t('clients.active', 'Clients actifs'),  value: String(activeClients), icon: <UserCheck className="h-5 w-5" />,      iconBg: 'bg-green-50 dark:bg-green-900/20', iconColor: '#16A34A'   },
-    { label: t('clients.total_debt', 'Dettes'),      value: formatMAD(totalDebt),  icon: <CreditCard className="h-5 w-5" />,     iconBg: 'bg-amber-50 dark:bg-amber-900/20', iconColor: '#F59E0B'   },
-    { label: t('clients.debtors', 'Endettés'),       value: String(debtors),       icon: <AlertTriangle className="h-5 w-5" />,  iconBg: 'bg-red-50 dark:bg-red-900/20',     iconColor: '#DC2626'   },
+    { label: t('clients.total', 'Total clients'),    value: String(totalClients),  icon: <Users className="h-5 w-5" />,         iconBg: 'bg-blue-50 dark:bg-blue-900/20',   iconColor: PRIMARY },
+    { label: t('clients.active', 'Clients actifs'),  value: String(activeClients), icon: <UserCheck className="h-5 w-5" />,      iconBg: 'bg-green-50 dark:bg-green-900/20', iconColor: '#16A34A' },
+    { label: t('clients.total_debt', 'Dettes'),      value: formatMAD(totalDebt),  icon: <CreditCard className="h-5 w-5" />,     iconBg: 'bg-amber-50 dark:bg-amber-900/20', iconColor: '#F59E0B' },
+    { label: t('clients.debtors', 'Endettés'),       value: String(debtors),       icon: <AlertTriangle className="h-5 w-5" />,  iconBg: 'bg-red-50 dark:bg-red-900/20',     iconColor: '#DC2626' },
   ]
 
   // ─── Sélection ────────────────────────────────────────────────
@@ -367,14 +359,15 @@ export default function ClientsPage() {
   return (
     <div className="flex flex-col gap-6 max-w-7xl mx-auto w-full">
 
-      {/* ─── Fil d'Ariane ─── */}
-      <nav className="flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400">
-        <span className="flex items-center gap-1"><Home className="h-3.5 w-3.5" />{t('common.home', 'Accueil')}</span>
-        <ChevronRightIcon className="h-3.5 w-3.5" />
-        <span className="font-medium text-gray-900 dark:text-white">{t('clients.title', 'Clients')}</span>
-      </nav>
-
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('clients.title', 'Clients')}</h1>
+      {/* ─── Titre + sous-titre (sans fil d'Ariane) ─── */}
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+          {t('clients.title', 'Clients')}
+        </h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+          {t('clients.subtitle', 'Gérez vos clients, suivez leurs achats et leurs fidélités.')}
+        </p>
+      </div>
 
       {/* ─── KPI avec animation cascade et barres de progression ─── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -388,7 +381,7 @@ export default function ClientsPage() {
             iconColor={kpi.iconColor}
             progress={kpiProgress[index].progress}
             barColor={kpiProgress[index].barColor}
-            delay={index * 100}          // cascade : 0, 100, 200, 300 ms
+            delay={index * 100}
             isLoaded={isLoaded}
           />
         ))}
@@ -444,11 +437,7 @@ export default function ClientsPage() {
           <Button variant="outline" className="gap-2 rounded-xl h-10 border-gray-200" onClick={exportCSV}>
             <Download className="h-4 w-4" /> {t('clients.export', 'Exporter')}
           </Button>
-          <Button variant="outline" className="gap-2 rounded-xl h-10 border-gray-200"
-            onClick={() => router.push('/dashboard/import')}>
-            <Upload className="h-4 w-4" /> {t('clients.import', 'Importer')}
-          </Button>
-          <Button className="gap-2 rounded-xl h-10 text-white" style={{ backgroundColor: DARK_BLUE }}
+          <Button className="gap-2 rounded-xl h-10 text-white font-medium shadow-sm hover:shadow-md transition-all" style={{ backgroundColor: PRIMARY }}
             onClick={() => router.push('/dashboard/clients/nouveau')}>
             <Plus className="h-4 w-4" /> {t('clients.add', 'Ajouter client')}
           </Button>
@@ -474,12 +463,7 @@ export default function ClientsPage() {
                       <Checkbox checked={isAllSelected} onCheckedChange={toggleSelectAll} />
                     </TableHead>
                     <TableHead className="font-semibold text-gray-700 dark:text-gray-300">Client</TableHead>
-                    <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                      <span className="flex items-center gap-1.5">
-                        <Star className="h-3.5 w-3.5" style={{ color: GOLD }} />
-                        Score
-                      </span>
-                    </TableHead>
+                    <TableHead className="font-semibold text-gray-700 dark:text-gray-300">Score</TableHead>
                     <TableHead className="font-semibold text-gray-700 dark:text-gray-300">Téléphone</TableHead>
                     <TableHead className="font-semibold text-gray-700 dark:text-gray-300">Email</TableHead>
                     <TableHead className="font-semibold text-gray-700 dark:text-gray-300">Factures</TableHead>
@@ -510,11 +494,9 @@ export default function ClientsPage() {
                             <span className="text-sm font-medium">{client.fullName}</span>
                           </div>
                         </TableCell>
-
                         <TableCell>
                           <FidelityBadge client={client} />
                         </TableCell>
-
                         <TableCell className="text-sm text-gray-500 dark:text-gray-400">{client.phone || '-'}</TableCell>
                         <TableCell className="text-sm text-gray-500 dark:text-gray-400">{client.email || '-'}</TableCell>
                         <TableCell className="text-sm font-medium">{client.invoiceCount || 0}</TableCell>

@@ -26,9 +26,8 @@ export function WelcomeHeader({ user }: WelcomeHeaderProps) {
   return (
     <div className="flex items-center justify-between flex-wrap gap-3">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-          {t('dashboard.greeting', { name: firstName })}
-          <span role="img" aria-label="wave">👋</span>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+          {t('dashboard.greeting', { name: firstName })} !
         </h1>
         <p className="text-sm text-gray-400 dark:text-zinc-400 mt-1">
           {t('dashboard.subtitle')}
@@ -38,7 +37,7 @@ export function WelcomeHeader({ user }: WelcomeHeaderProps) {
         variant="outline"
         className="gap-2 rounded-xl border-[#EAECEF] text-gray-600 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-800"
       >
-        <CalendarIcon size={15} style={{ color: '#D4A017' }} />
+        <CalendarIcon size={15} style={{ color: '#3B82F6' }} />
         {t('dashboard.today', { date: today })}
       </Button>
     </div>

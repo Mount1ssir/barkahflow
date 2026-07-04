@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useRouter } from 'next/navigation'
 import {
   Dialog,
   DialogContent,
@@ -23,6 +24,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { toast } from 'sonner'
 import { processCheckout } from '@/lib/checkout-process'
 import { dbSelect } from '@/src/lib/db'
+import { Plus, DollarSign, CreditCard, Smartphone, Repeat } from 'lucide-react'
 
 const WALKIN_CLIENT_ID = 'client_walkin'
 
@@ -51,8 +53,9 @@ interface CheckoutModalProps {
   onSuccess: (invoiceId: string, invoiceNumber: string) => void
 }
 
-const GOLD = '#D4A017'
-const DARK_NAVY = '#0F172A'
+const BLUE_NAVY = '#1E293B'
+
+type PaymentMethod = 'cash' | 'card' | 'mobile' | 'mixed'
 
 export function CheckoutModal({
   open,
@@ -64,7 +67,9 @@ export function CheckoutModal({
   onSuccess,
 }: CheckoutModalProps) {
   const { t } = useTranslation()
+  const router = useRouter()
   const [paymentStatus, setPaymentStatus] = useState<'PAID' | 'PARTIAL' | 'UNPAID'>('PAID')
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash')
   const [paidAmount, setPaidAmount] = useState('')
   const [customerId, setCustomerId] = useState<string>(WALKIN_CLIENT_ID)
   const [clients, setClients] = useState<Client[]>([])
@@ -84,9 +89,25 @@ export function CheckoutModal({
       setCustomerId(WALKIN_CLIENT_ID)
       setPaidAmount('')
       setPaymentStatus('PAID')
+      setPaymentMethod('cash')
       setDiscount('0')
     }
   }, [open])
+
+  const handleCustomerChange = (value: string) => {
+    if (value === 'add_client') {
+      router.push('/dashboard/clients/nouveau')
+      return
+    }
+    setCustomerId(value)
+  }
+
+  const totalAmount = (total / 100) * (1 - (parseFloat(discount) || 0) / 100)
+  const received = parseFloat(paidAmount) || 0
+  const change = received > totalAmount ? received - totalAmount : 0
+
+  const showReceivedAmount = paymentStatus === 'PARTIAL' ||
+                             (paymentStatus === 'PAID' && paymentMethod === 'cash')
 
   const handleSubmit = async () => {
     if (!cart || cart.length === 0) {
@@ -108,8 +129,16 @@ export function CheckoutModal({
 
     if (paymentStatus === 'PARTIAL') {
       const amount = parseFloat(paidAmount)
-      if (!amount || amount <= 0 || amount >= total / 100) {
+      if (!amount || amount <= 0 || amount >= totalAmount) {
         toast.error('Le montant payé doit être inférieur au total et supérieur à 0')
+        return
+      }
+    }
+
+    if (paymentStatus === 'PAID' && paymentMethod === 'cash') {
+      const amount = parseFloat(paidAmount)
+      if (!amount || amount < totalAmount) {
+        toast.error('Le montant reçu doit être supérieur ou égal au total')
         return
       }
     }
@@ -117,7 +146,13 @@ export function CheckoutModal({
     const discountPercent = parseFloat(discount) || 0
     const discountFactor = 1 - discountPercent / 100
     const newTotal = (total / 100) * discountFactor
-    const newPaidAmount = paymentStatus === 'PAID' ? newTotal : parseFloat(paidAmount) || 0
+    let finalPaidAmount = newTotal
+
+    if (paymentStatus === 'PARTIAL') {
+      finalPaidAmount = parseFloat(paidAmount) || 0
+    } else if (paymentStatus === 'PAID' && paymentMethod === 'cash') {
+      finalPaidAmount = parseFloat(paidAmount) || newTotal
+    }
 
     setLoading(true)
     try {
@@ -131,7 +166,8 @@ export function CheckoutModal({
         cart: cartForCheckout,
         customerId: customerId === WALKIN_CLIENT_ID ? null : customerId,
         paymentStatus,
-        paidAmount: newPaidAmount,
+        paymentMethod, // ← transmission du mode
+        paidAmount: finalPaidAmount,
         userId: null,
         ipAddress: '0.0.0.0',
         userAgent: navigator.userAgent,
@@ -164,7 +200,6 @@ export function CheckoutModal({
         </DialogHeader>
 
         <div className="space-y-4 py-2">
-          {/* Récapitulatif */}
           <div className="space-y-1 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-500">{t('pos.subtotal', 'Sous-total')}</span>
@@ -182,17 +217,16 @@ export function CheckoutModal({
             )}
             <div className="flex justify-between text-base font-bold pt-1 border-t border-gray-200 dark:border-gray-700">
               <span>{t('pos.total', 'Total')}</span>
-              <span className="text-lg" style={{ color: GOLD }}>{displayTotal.toFixed(2)} MAD</span>
+              <span className="text-lg" style={{ color: '#D4A017' }}>{displayTotal.toFixed(2)} MAD</span>
             </div>
           </div>
 
-          {/* Client */}
           <div className="space-y-1.5">
             <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
               {t('pos.customer', 'Client')}
               {paymentStatus !== 'PAID' && <span className="text-red-500 ml-1">*</span>}
             </Label>
-            <Select value={customerId} onValueChange={setCustomerId}>
+            <Select value={customerId} onValueChange={handleCustomerChange}>
               <SelectTrigger className="rounded-xl border-gray-200 dark:border-gray-700 h-11">
                 <SelectValue />
               </SelectTrigger>
@@ -211,6 +245,15 @@ export function CheckoutModal({
                     )}
                   </SelectItem>
                 ))}
+                <SelectItem
+                  value="add_client"
+                  className="text-blue-500 font-medium hover:text-blue-600 border-t border-gray-200 pt-2 mt-1"
+                >
+                  <div className="flex items-center gap-2">
+                    <Plus className="h-4 w-4" />
+                    {t('pos.add_client', 'Ajouter un client')}
+                  </div>
+                </SelectItem>
               </SelectContent>
             </Select>
             {paymentStatus !== 'PAID' && isWalkin && (
@@ -218,7 +261,6 @@ export function CheckoutModal({
             )}
           </div>
 
-          {/* Remise */}
           <div className="space-y-1.5">
             <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
               {t('pos.discount', 'Remise (%)')}
@@ -234,10 +276,9 @@ export function CheckoutModal({
             />
           </div>
 
-          {/* Paiement */}
           <div className="space-y-2">
             <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              {t('pos.payment_status', 'Mode de paiement')}
+              {t('pos.payment_status', 'Statut de paiement')}
             </Label>
             <RadioGroup
               value={paymentStatus}
@@ -265,11 +306,44 @@ export function CheckoutModal({
             </RadioGroup>
           </div>
 
-          {/* Montant reçu (PARTIAL) */}
-          {paymentStatus === 'PARTIAL' && (
+          {(paymentStatus === 'PAID' || paymentStatus === 'PARTIAL') && (
+            <div className="space-y-2">
+              <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Moyen de paiement
+              </Label>
+              <div className="grid grid-cols-4 gap-2">
+                {[
+                  { value: 'cash', label: 'Espèces', icon: DollarSign },
+                  { value: 'card', label: 'TPE', icon: CreditCard },
+                  { value: 'mobile', label: 'Mobile', icon: Smartphone },
+                  { value: 'mixed', label: 'Mixte', icon: Repeat },
+                ].map(({ value, label, icon: Icon }) => (
+                  <Button
+                    key={value}
+                    type="button"
+                    variant={paymentMethod === value ? 'default' : 'outline'}
+                    onClick={() => setPaymentMethod(value as PaymentMethod)}
+                    className={`h-12 rounded-xl font-medium flex flex-col items-center gap-1 ${
+                      paymentMethod === value
+                        ? 'bg-blue-600 text-white hover:bg-blue-700'
+                        : 'border-gray-200 dark:border-gray-700'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    <span className="text-[10px]">{label}</span>
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {showReceivedAmount && (
             <div className="space-y-1.5">
               <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                {t('pos.paid_amount', 'Montant reçu')} <span className="text-red-500">*</span>
+                {paymentStatus === 'PARTIAL'
+                  ? t('pos.paid_amount', 'Montant payé')
+                  : 'Montant reçu'}
+                <span className="text-red-500 ml-1">*</span>
               </Label>
               <Input
                 type="number"
@@ -280,6 +354,16 @@ export function CheckoutModal({
                 onChange={(e) => setPaidAmount(e.target.value)}
                 className="rounded-xl border-gray-200 dark:border-gray-700 h-11"
               />
+              {paymentMethod === 'cash' && received > 0 && change > 0 && (
+                <p className="text-sm text-green-600 font-medium">
+                  Monnaie à rendre : {change.toFixed(2)} MAD
+                </p>
+              )}
+              {paymentMethod === 'cash' && paymentStatus === 'PAID' && received > 0 && received < displayTotal && (
+                <p className="text-sm text-red-500">
+                  Le montant reçu est inférieur au total
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -296,7 +380,7 @@ export function CheckoutModal({
             onClick={handleSubmit}
             disabled={loading}
             className="rounded-xl font-semibold text-white h-11 px-6 shadow-sm hover:shadow-md transition-all"
-            style={{ backgroundColor: GOLD }}
+            style={{ backgroundColor: BLUE_NAVY }}
           >
             {loading ? t('common.loading', 'Chargement...') : t('pos.confirm_checkout', 'Confirmer')}
           </Button>

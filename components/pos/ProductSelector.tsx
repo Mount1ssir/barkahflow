@@ -22,8 +22,7 @@ interface ProductSelectorProps {
   loading?: boolean
 }
 
-const GOLD = '#D4A017'
-const DARK_NAVY = '#0F172A'
+const BLUE_NAVY = '#1E293B' // Bleu marine
 
 export function ProductSelector({
   products,
@@ -69,7 +68,7 @@ export function ProductSelector({
           <Button
             onClick={onScannerOpen}
             className="rounded-2xl h-12 px-5 font-medium text-white flex items-center gap-2 shadow-sm hover:shadow-md transition-all"
-            style={{ backgroundColor: DARK_NAVY }}
+            style={{ backgroundColor: BLUE_NAVY }}
           >
             <Scan className="h-5 w-5" />
             {t('pos.scanner', 'Scanner')}

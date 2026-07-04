@@ -74,8 +74,10 @@ import { BarcodeScannerModal } from '@/components/products/BarcodeScannerModal'
 const UNITS = ['piece', 'kg', 'g', 'l', 'ml', 'box', 'carton'] as const
 type Unit = (typeof UNITS)[number]
 const TAX_RATES = [0, 7, 10, 14, 20]
-const GOLD = '#D4A017'
+const ORANGE = '#F59E0B'
+const ORANGE_DARK = '#EA580C'
 const PRIMARY = '#1D4ED8'
+const ORANGE_SOFT = '#FBBF24'
 
 const STEPS = [
   { id: 1, label: 'Informations', icon: Info },
@@ -85,81 +87,52 @@ const STEPS = [
   { id: 5, label: 'Options', icon: Activity },
 ]
 
-// ─── Composant Image 3D ──────────────────────────────────────────
-function Image3D({ src, alt }: { src: string; alt: string }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [style, setStyle] = useState({
-    transform: 'perspective(600px) rotateX(0deg) rotateY(0deg) scale(1)',
-  })
-  const animRef = useRef<number | null>(null)
-  const [isHovered, setIsHovered] = useState(false)
-
-  useEffect(() => {
-    let t = 0
-    const animate = () => {
-      if (!isHovered) {
-        t += 0.02
-        const rx = Math.sin(t * 0.7) * 6
-        const ry = Math.cos(t * 0.5) * 8
-        const scale = 1 + Math.sin(t * 0.9) * 0.03
-        setStyle({
-          transform: `perspective(600px) rotateX(${rx}deg) rotateY(${ry}deg) scale(${scale})`,
-        })
-      }
-      animRef.current = requestAnimationFrame(animate)
-    }
-    animRef.current = requestAnimationFrame(animate)
-    return () => {
-      if (animRef.current) cancelAnimationFrame(animRef.current)
-    }
-  }, [isHovered])
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!ref.current) return
-    const rect = ref.current.getBoundingClientRect()
-    const x = (e.clientX - rect.left) / rect.width - 0.5
-    const y = (e.clientY - rect.top) / rect.height - 0.5
-    setStyle({
-      transform: `perspective(600px) rotateX(${-y * 25}deg) rotateY(${x * 25}deg) scale(1.08)`,
-    })
-  }
+// ─── Upload d'image simplifié ──────────────────────────────────
+function SimpleImageUpload({ src, onUpload, onRemove }: {
+  src?: string | null
+  onUpload: (file: File) => void
+  onRemove: () => void
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   return (
-    <div
-      ref={ref}
-      className="w-full h-full cursor-pointer"
-      style={{ transformStyle: 'preserve-3d' }}
-      onMouseMove={handleMouseMove}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => {
-        setIsHovered(false)
-        setStyle({
-          transform: 'perspective(600px) rotateX(0deg) rotateY(0deg) scale(1)',
-        })
-      }}
-    >
-      <div
-        style={{
-          ...style,
-          transition: isHovered ? 'none' : 'transform 0.1s ease',
-          transformStyle: 'preserve-3d',
+    <div className="flex items-center gap-4">
+      {src ? (
+        <>
+          <div className="w-16 h-16 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden flex-shrink-0 bg-gray-50 dark:bg-gray-800">
+            <img src={src} alt="Aperçu" className="w-full h-full object-cover" />
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onRemove}
+            className="rounded-xl border-red-200 text-red-500 hover:bg-red-50"
+          >
+            <X className="h-4 w-4 mr-1" /> Supprimer
+          </Button>
+        </>
+      ) : (
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => fileInputRef.current?.click()}
+          className="rounded-xl border-gray-300 dark:border-gray-600 h-11 px-4 gap-2"
+        >
+          <Upload className="h-4 w-4 text-gray-500" />
+          Télécharger une image
+        </Button>
+      )}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file) onUpload(file)
         }}
-        className="w-full h-full relative"
-      >
-        <img
-          src={src}
-          alt={alt}
-          className="w-full h-full object-contain rounded-xl"
-        />
-        <div
-          className="absolute inset-0 rounded-xl"
-          style={{
-            background:
-              'linear-gradient(135deg, rgba(255,255,255,0.15) 0%, transparent 50%, rgba(0,0,0,0.05) 100%)',
-            pointerEvents: 'none',
-          }}
-        />
-      </div>
+      />
     </div>
   )
 }
@@ -169,21 +142,19 @@ export default function NewProductPage() {
   const { t } = useTranslation()
   const router = useRouter()
   const searchParams = useSearchParams()
-  const productId = searchParams.get('id') // Récupère l'ID depuis l'URL
+  const productId = searchParams.get('id')
 
   const [loading, setLoading] = useState(false)
   const [loadingProduct, setLoadingProduct] = useState(false)
   const [categories, setCategories] = useState<Category[]>([])
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false)
   const [currentStep, setCurrentStep] = useState(1)
-  const [previewOpen, setPreviewOpen] = useState(false)
   const [scannerOpen, setScannerOpen] = useState(false)
   const [isEditMode, setIsEditMode] = useState(false)
   const [existingProduct, setExistingProduct] = useState<Product | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [previewOpen, setPreviewOpen] = useState(false)
 
   const [form, setForm] = useState({
-    nameAr: '',
     nameFr: '',
     sku: '',
     barcode: '',
@@ -221,6 +192,35 @@ export default function NewProductPage() {
     setErrors((prev) => ({ ...prev, [field]: '' }))
   }, [])
 
+  // ─── Générateur de SKU à partir du code-barres ────────────────
+  const generateSkuFromBarcode = useCallback(async (barcode: string) => {
+    if (!barcode) return
+    const clean = barcode.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
+    if (!clean) return
+
+    let baseSku = `SKU-${clean}`
+    let exists = await isSkuTaken(baseSku, isEditMode ? productId || undefined : undefined)
+    let counter = 1
+    let finalSku = baseSku
+    while (exists) {
+      finalSku = `${baseSku}-${counter}`
+      exists = await isSkuTaken(finalSku, isEditMode ? productId || undefined : undefined)
+      counter++
+    }
+    handleChange('sku', finalSku)
+    setSkuCheck({ valid: true, checked: true })
+    toast.info(`SKU généré : ${finalSku}`)
+  }, [isEditMode, productId, handleChange])
+
+  // ─── Effet déclenché lors du scan (ou saisie manuelle) ────────
+  useEffect(() => {
+    if (form.barcode && form.barcode.trim().length > 0 && !isEditMode) {
+      if (!form.sku || form.sku === '' || form.sku.startsWith('PRD-')) {
+        generateSkuFromBarcode(form.barcode)
+      }
+    }
+  }, [form.barcode, form.sku, generateSkuFromBarcode, isEditMode])
+
   const costNum = parseFloat(form.costPrice) || 0
   const retailNum = parseFloat(form.retailPrice) || 0
   const taxNum = parseFloat(form.taxRate) || 0
@@ -250,7 +250,6 @@ export default function NewProductPage() {
     if (currentStep > 1) setCurrentStep((s) => s - 1)
   }
 
-  // ─── Chargement des catégories ──────────────────────────────────
   const loadCategories = useCallback(async () => {
     await seedDefaultCategories()
     const cats = await getAllCategories()
@@ -262,7 +261,6 @@ export default function NewProductPage() {
     loadCategories()
   }, [loadCategories])
 
-  // ─── Chargement du produit en mode édition ──────────────────────
   useEffect(() => {
     if (productId) {
       setIsEditMode(true)
@@ -271,9 +269,7 @@ export default function NewProductPage() {
         .then((product) => {
           if (product) {
             setExistingProduct(product)
-            // Pré-remplir tous les champs
             setForm({
-              nameAr: product.nameAr,
               nameFr: product.nameFr || '',
               sku: product.sku,
               barcode: product.barcode || '',
@@ -295,8 +291,7 @@ export default function NewProductPage() {
             })
             setSkuCheck({ valid: true, checked: true })
             setBarcodeCheck({ valid: true, checked: true })
-            // Afficher un message
-            toast.info(`Mode édition : ${product.nameAr}`)
+            toast.info(`Mode édition : ${product.nameFr || product.sku}`)
           } else {
             toast.error('Produit non trouvé')
             router.push('/dashboard/produits')
@@ -308,7 +303,6 @@ export default function NewProductPage() {
         })
         .finally(() => setLoadingProduct(false))
     } else {
-      // Mode création : générer un SKU automatiquement
       generateNextSku().then((sku) => {
         setForm((prev) => ({ ...prev, sku }))
         setSkuCheck({ valid: true, checked: true })
@@ -316,7 +310,6 @@ export default function NewProductPage() {
     }
   }, [productId, router])
 
-  // ─── SKU / Code-barres (validation en temps réel) ──────────────
   useEffect(() => {
     if (!form.sku.trim()) {
       setSkuCheck({ valid: true, checked: false })
@@ -356,7 +349,6 @@ export default function NewProductPage() {
     toast.info(t('products.sku_generated'))
   }
 
-  // ─── Recherche / Lookup ──────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState('')
   const [searching, setSearching] = useState(false)
 
@@ -370,7 +362,6 @@ export default function NewProductPage() {
       const product = await findBySkuOrBarcode(searchQuery.trim())
       if (product) {
         setForm({
-          nameAr: product.nameAr,
           nameFr: product.nameFr || '',
           sku: product.sku,
           barcode: product.barcode || '',
@@ -404,45 +395,34 @@ export default function NewProductPage() {
     }
   }
 
-  // ─── Scan ─────────────────────────────────────────────────────────
   const handleScan = (barcode: string) => {
     setForm((prev) => ({ ...prev, barcode }))
     setBarcodeCheck({ valid: true, checked: false })
   }
 
-  // ─── Image ────────────────────────────────────────────────────────
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  const handleImageUpload = (file: File) => {
     if (!file.type.startsWith('image/')) {
-      toast.error(t('validation.image'))
+      toast.error('Le fichier doit être une image')
       return
     }
     if (file.size > 5 * 1024 * 1024) {
-      toast.error(t('validation.size', { size: 5120 }))
+      toast.error('L\'image ne doit pas dépasser 5 Mo')
       return
     }
     const reader = new FileReader()
-    reader.onload = () =>
+    reader.onload = () => {
       setForm((f) => ({
         ...f,
         imageFile: file,
         imagePreview: reader.result as string,
       }))
+    }
     reader.readAsDataURL(file)
-  }
-
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault()
-    const file = e.dataTransfer.files?.[0]
-    if (file) handleImageChange({ target: { files: [file] } } as any)
   }
 
   const resetForm = () => {
     if (isEditMode && existingProduct) {
-      // Réinitialiser aux valeurs du produit (pas tout effacer)
       setForm({
-        nameAr: existingProduct.nameAr,
         nameFr: existingProduct.nameFr || '',
         sku: existingProduct.sku,
         barcode: existingProduct.barcode || '',
@@ -463,9 +443,7 @@ export default function NewProductPage() {
         imagePreview: existingProduct.imagePath || null,
       })
     } else {
-      // Mode création : tout vider
       setForm({
-        nameAr: '',
         nameFr: '',
         sku: '',
         barcode: '',
@@ -497,7 +475,6 @@ export default function NewProductPage() {
     setSearchQuery('')
   }
 
-  // ─── Soumission ───────────────────────────────────────────────────
   const handleSubmit = async () => {
     if (!skuCheck.valid) {
       toast.error('SKU invalide')
@@ -505,14 +482,14 @@ export default function NewProductPage() {
     }
 
     if (!form.categoryId || form.categoryId.trim() === '') {
-      toast.error('Veuillez selectionner une categorie')
+      toast.error('Veuillez sélectionner une catégorie')
       return
     }
 
     const input: ProductInput = {
       sku: form.sku.trim(),
       barcode: form.barcode.trim() || null,
-      nameAr: form.nameAr.trim() || '',
+      nameAr: form.nameFr.trim() || '',
       nameFr: form.nameFr.trim() || '',
       categoryId: form.categoryId.trim(),
       unit: form.unit as Unit,
@@ -539,7 +516,7 @@ export default function NewProductPage() {
       if (form.imageFile) {
         imagePath = await uploadProductImage(form.imageFile)
       } else if (isEditMode && existingProduct?.imagePath) {
-        imagePath = existingProduct.imagePath // Conserver l'image existante
+        imagePath = existingProduct.imagePath
       }
 
       if (isEditMode && productId) {
@@ -551,7 +528,7 @@ export default function NewProductPage() {
       }
       router.push('/dashboard/produits')
     } catch (err: any) {
-      console.error('Erreur complete:', err)
+      console.error('Erreur complète:', err)
       const msg = err?.message || err?.toString() || 'Erreur inconnue'
       toast.error('Erreur: ' + msg)
     } finally {
@@ -561,42 +538,45 @@ export default function NewProductPage() {
 
   const categoryName = categories.find((c) => c.id === form.categoryId)?.nameFr
 
+  const handleAddCategoryFromSelect = () => {
+    setCategoryDialogOpen(true)
+  }
+
   return (
     <TooltipProvider>
-      <div className="min-h-screen bg-slate-50 dark:bg-gray-950 flex flex-col">
-        {/* HEADER */}
+      <div className="min-h-screen bg-slate-50 dark:bg-gray-950 flex flex-col relative">
         <header className="sticky top-0 z-50 bg-white dark:bg-gray-900 border-b border-slate-200 dark:border-gray-800 px-6 py-4 flex items-center justify-between shadow-sm shrink-0">
           <div className="flex items-center gap-4">
             <Button
               variant="ghost"
               size="icon"
               onClick={() => router.push('/dashboard/produits')}
-              className="rounded-xl hover:bg-amber-50 dark:hover:bg-amber-900/20"
+              className="rounded-xl hover:bg-orange-50 dark:hover:bg-orange-900/20"
             >
               <ArrowLeft className="h-5 w-5 text-slate-500 dark:text-gray-400" />
             </Button>
-            <div className="flex items-center gap-3">
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center shadow-md border border-amber-300/40"
-                style={{ background: 'linear-gradient(135deg, #D4A017, #B8860B)' }}
-              >
-                {isEditMode ? (
-                  <Pencil className="h-5 w-5 text-white" />
-                ) : (
-                  <Package className="h-5 w-5 text-white" />
-                )}
-              </div>
-              <div>
-                <h1 className="text-xl font-extrabold text-gray-900 dark:text-gray-50">
-                  {isEditMode ? 'Modifier le produit' : 'Ajouter un produit'}
-                </h1>
-                <p className="text-xs font-semibold text-slate-500 dark:text-gray-400">
-                  {isEditMode ? 'Modifiez les informations du produit' : 'Créez une nouvelle fiche produit'}
-                </p>
-              </div>
+            <div>
+              <h1 className="text-xl font-extrabold text-gray-900 dark:text-gray-50">
+                {isEditMode ? 'Modifier le produit' : 'Ajouter un produit'}
+              </h1>
+              <p className="text-xs font-semibold text-slate-500 dark:text-gray-400">
+                {isEditMode ? 'Modifiez les informations du produit' : 'Créez une nouvelle fiche produit'}
+              </p>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setPreviewOpen(!previewOpen)}
+              className={`gap-2 rounded-xl border-slate-200 dark:border-gray-700 font-bold transition-all ${
+                previewOpen
+                  ? 'bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 border-orange-300'
+                  : 'text-slate-600 dark:text-gray-400'
+              }`}
+            >
+              <Eye className="h-4 w-4" />
+              {previewOpen ? 'Masquer' : 'Aperçu'}
+            </Button>
             <Button
               variant="ghost"
               size="sm"
@@ -617,7 +597,6 @@ export default function NewProductPage() {
           </div>
         </header>
 
-        {/* BARRE DE RECHERCHE / LOOKUP (seulement en mode création) */}
         {!isEditMode && (
           <div className="bg-white dark:bg-gray-900 border-b border-slate-200 dark:border-gray-800 px-6 py-3 shrink-0">
             <div className="max-w-3xl mx-auto flex items-center gap-3">
@@ -633,8 +612,8 @@ export default function NewProductPage() {
               <Button
                 onClick={handleSearchProduct}
                 disabled={searching}
-                className="gap-2 rounded-xl font-bold h-10 px-4 text-white"
-                style={{ background: `linear-gradient(135deg, ${GOLD}, #B8860B)` }}
+                className="gap-2 rounded-xl font-bold h-10 px-4 text-white shadow-sm hover:shadow-md transition-all"
+                style={{ backgroundColor: PRIMARY }}
               >
                 <Search className="h-4 w-4" />
                 {searching ? 'Recherche...' : 'Rechercher'}
@@ -646,7 +625,6 @@ export default function NewProductPage() {
           </div>
         )}
 
-        {/* Indicateur de chargement en mode édition */}
         {loadingProduct && (
           <div className="flex items-center justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent" />
@@ -654,7 +632,6 @@ export default function NewProductPage() {
           </div>
         )}
 
-        {/* STEPPER */}
         {!loadingProduct && (
           <>
             <div className="bg-white dark:bg-gray-900 border-b border-slate-200 dark:border-gray-800 px-6 py-5 shrink-0">
@@ -665,7 +642,7 @@ export default function NewProductPage() {
                     className="absolute top-5 left-0 h-0.5 z-0 transition-all duration-500"
                     style={{
                       width: `${((currentStep - 1) / (STEPS.length - 1)) * 100}%`,
-                      background: 'linear-gradient(90deg, #1D4ED8, #D4A017)',
+                      background: `linear-gradient(90deg, #1D4ED8, ${ORANGE})`,
                     }}
                   />
                   {STEPS.map((step) => {
@@ -688,18 +665,18 @@ export default function NewProductPage() {
                             isActive
                               ? 'border-blue-600 dark:border-blue-400 shadow-lg shadow-blue-200 dark:shadow-blue-900/40 scale-110'
                               : isPassed && isCompleted
-                              ? 'border-green-500'
+                              ? 'border-orange-400'
                               : isPassed
-                              ? 'border-amber-400'
+                              ? `border-orange-400`
                               : 'border-slate-300 dark:border-gray-600'
                           }`}
                           style={{
                             background: isActive
                               ? 'linear-gradient(135deg, #1D4ED8, #1E3A8A)'
                               : isPassed && isCompleted
-                              ? '#16A34A'
+                              ? ORANGE_SOFT
                               : isPassed
-                              ? GOLD
+                              ? ORANGE
                               : 'white',
                           }}
                         >
@@ -718,9 +695,9 @@ export default function NewProductPage() {
                             isActive
                               ? 'text-blue-700 dark:text-blue-400'
                               : isPassed && isCompleted
-                              ? 'text-green-600 dark:text-green-400'
+                              ? 'text-orange-600 dark:text-orange-400'
                               : isPassed
-                              ? 'text-amber-600 dark:text-amber-400'
+                              ? 'text-orange-600 dark:text-orange-400'
                               : 'text-slate-400 dark:text-gray-500'
                           }`}
                         >
@@ -733,7 +710,6 @@ export default function NewProductPage() {
               </div>
             </div>
 
-            {/* BODY */}
             <div className="flex-1 flex overflow-hidden">
               <ScrollArea className="flex-1">
                 <div className="max-w-3xl mx-auto p-6">
@@ -747,51 +723,20 @@ export default function NewProductPage() {
                           subtitle="Nom, catégorie, unité et photo du produit"
                         />
 
-                        <div className="flex gap-5">
-                          {/* Upload photo */}
-                          <div
-                            className="w-40 h-40 shrink-0 rounded-2xl border-2 border-dashed cursor-pointer transition-all duration-200 overflow-hidden dark:bg-gray-800 hover:border-amber-400 dark:hover:border-amber-500 flex items-center justify-center"
-                            style={{
-                              borderColor: form.imagePreview ? GOLD : '#CBD5E1',
+                        <div className="flex flex-col gap-5">
+                          <SimpleImageUpload
+                            src={form.imagePreview}
+                            onUpload={handleImageUpload}
+                            onRemove={() => {
+                              setForm((f) => ({ ...f, imageFile: null, imagePreview: null }))
                             }}
-                            onClick={() => fileInputRef.current?.click()}
-                            onDrop={handleDrop}
-                            onDragOver={(e) => e.preventDefault()}
-                          >
-                            {form.imagePreview ? (
-                              <Image3D src={form.imagePreview} alt="aperçu" />
-                            ) : (
-                              <div className="flex flex-col items-center gap-2 p-3 text-center">
-                                <div
-                                  className="w-12 h-12 rounded-xl flex items-center justify-center"
-                                  style={{
-                                    background: 'linear-gradient(135deg, #D4A017, #1D4ED8)',
-                                  }}
-                                >
-                                  <Upload className="h-6 w-6 text-white" />
-                                </div>
-                                <p className="text-xs font-bold text-slate-500 dark:text-gray-400">
-                                  Ajouter une photo
-                                </p>
-                                <p className="text-[10px] text-slate-400 dark:text-gray-500">
-                                  PNG, JPG, WEBP · Max 5MB
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                          <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            onChange={handleImageChange}
                           />
 
-                          <div className="flex-1 grid grid-cols-2 gap-4">
+                          <div className="grid grid-cols-2 gap-4">
                             <FieldWrap
                               label="Nom du produit"
                               required
-                              className="col-span-2 md:col-span-1"
+                              className="col-span-2"
                             >
                               <Input
                                 value={form.nameFr}
@@ -801,76 +746,55 @@ export default function NewProductPage() {
                               {errors.nameFr && <FErr msg={errors.nameFr} />}
                             </FieldWrap>
 
-                            <FieldWrap
-                              label="Nom en arabe"
-                              optional
-                              className="col-span-2 md:col-span-1"
-                            >
-                              <Input
-                                value={form.nameAr}
-                                onChange={(e) => handleChange('nameAr', e.target.value)}
-                                dir="rtl"
-                                className={iCls()}
-                              />
-                            </FieldWrap>
-
-                            {/* CATEGORIE avec bouton + en or */}
                             <FieldWrap label="Catégorie" required>
-                              <div className="flex gap-2">
-                                <Select
-                                  value={form.categoryId}
-                                  onValueChange={(v) =>
+                              <Select
+                                value={form.categoryId}
+                                onValueChange={(v) => {
+                                  if (v === 'add_category') {
+                                    handleAddCategoryFromSelect()
+                                  } else {
                                     setForm((p) => ({ ...p, categoryId: v }))
                                   }
-                                >
-                                  <SelectTrigger className={sCls()}>
-                                    <SelectValue placeholder="Sélectionner…" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {categories.length === 0 && (
-                                      <div className="px-3 py-2 text-xs text-slate-400">
-                                        Aucune catégorie
+                                }}
+                              >
+                                <SelectTrigger className={sCls()}>
+                                  <SelectValue placeholder="Sélectionner…" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {categories.length === 0 && (
+                                    <div className="px-3 py-2 text-xs text-slate-400">
+                                      Aucune catégorie
+                                    </div>
+                                  )}
+                                  {categories.map((cat) => (
+                                    <SelectItem key={cat.id} value={cat.id}>
+                                      <div className="flex items-center gap-2">
+                                        <div
+                                          className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                          style={{ backgroundColor: cat.color || '#6B7280' }}
+                                        />
+                                        {cat.nameFr}
                                       </div>
-                                    )}
-                                    {categories.map((cat) => (
-                                      <SelectItem key={cat.id} value={cat.id}>
-                                        <div className="flex items-center gap-2">
-                                          <div
-                                            className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                                            style={{ backgroundColor: cat.color || '#6B7280' }}
-                                          />
-                                          {cat.nameFr}
-                                        </div>
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <button
-                                      type="button"
-                                      onClick={() => setCategoryDialogOpen(true)}
-                                      className="shrink-0 h-11 w-11 rounded-xl flex items-center justify-center border-2 transition-all hover:scale-105 active:scale-95 shadow-sm font-extrabold text-white"
-                                      style={{
-                                        background: `linear-gradient(135deg, ${GOLD}, #B8860B)`,
-                                        borderColor: '#B8860B',
-                                      }}
-                                    >
-                                      <Plus className="h-5 w-5" />
-                                    </button>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="top" className="font-bold">
-                                    Ajouter une catégorie
-                                  </TooltipContent>
-                                </Tooltip>
-                              </div>
+                                    </SelectItem>
+                                  ))}
+                                  <SelectItem
+                                    value="add_category"
+                                    className="text-orange-500 font-medium hover:text-orange-600 border-t border-gray-200 pt-2 mt-1"
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      <Plus className="h-4 w-4" />
+                                      Ajouter une catégorie
+                                    </div>
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
                               {form.categoryId === '' && (
                                 <p className="text-[11px] text-slate-400 dark:text-gray-500 mt-1">
-                                  Pas de catégorie ? Cliquez sur{' '}
-                                  <span style={{ color: GOLD }} className="font-bold">
-                                    +
+                                  Aucune catégorie ? Sélectionnez{' '}
+                                  <span className="font-bold text-orange-500">
+                                    Ajouter une catégorie
                                   </span>{' '}
-                                  pour en créer une
+                                  dans la liste
                                 </p>
                               )}
                             </FieldWrap>
@@ -1023,9 +947,9 @@ export default function NewProductPage() {
                         <div className="grid grid-cols-3 gap-3">
                           {[
                             {
-                              label: 'Génération automatique SKU',
-                              color: 'text-blue-600 dark:text-blue-400',
-                              bg: 'bg-blue-50 dark:bg-blue-900/20',
+                              label: 'SKU auto-généré depuis code-barres',
+                              color: 'text-orange-600 dark:text-orange-400',
+                              bg: 'bg-orange-50 dark:bg-orange-900/20',
                               icon: RefreshCw,
                             },
                             {
@@ -1115,8 +1039,8 @@ export default function NewProductPage() {
                               label="Marge bénéficiaire"
                               value={`${marginPercent.toFixed(0)}%`}
                               valueColor={marginPercent > 0 ? '#16A34A' : '#DC2626'}
-                              iconColor={GOLD}
-                              bg="bg-amber-50 dark:bg-amber-900/20 border-amber-100 dark:border-amber-800/30"
+                              iconColor={ORANGE}
+                              bg="bg-orange-50 dark:bg-orange-900/20 border-orange-100 dark:border-orange-800/30"
                             />
                             <StatCard
                               icon={DollarSign}
@@ -1286,12 +1210,12 @@ export default function NewProductPage() {
                                 key={i}
                                 className={`flex items-center gap-2 p-3 rounded-xl text-sm font-bold ${
                                   c.ok
-                                    ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
+                                    ? 'bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400'
                                     : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'
                                 }`}
                               >
                                 {c.ok ? (
-                                  <CheckCircle2 className="h-4 w-4 shrink-0" />
+                                  <CheckCircle2 className="h-4 w-4 shrink-0 text-orange-500" />
                                 ) : (
                                   <AlertCircle className="h-4 w-4 shrink-0" />
                                 )}
@@ -1302,13 +1226,13 @@ export default function NewProductPage() {
                           <div
                             className={`mt-4 flex items-center justify-center gap-2 p-3 rounded-xl text-sm font-extrabold ${
                               isReady
-                                ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200'
+                                ? 'bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400 border border-orange-200'
                                 : 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200'
                             }`}
                           >
                             {isReady ? (
                               <>
-                                <CheckCircle2 className="h-4 w-4" /> Prêt à être enregistré
+                                <CheckCircle2 className="h-4 w-4 text-orange-500" /> Prêt à être enregistré
                               </>
                             ) : (
                               <>
@@ -1323,169 +1247,8 @@ export default function NewProductPage() {
                   )}
                 </div>
               </ScrollArea>
-
-              {/* APERÇU */}
-              <div className="relative flex shrink-0">
-                <div className="absolute -left-16 top-1/2 -translate-y-1/2 z-20">
-                  <button
-                    onClick={() => setPreviewOpen((v) => !v)}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl shadow-lg border-2 transition-all hover:scale-105 active:scale-95 font-extrabold text-white text-sm"
-                    style={{
-                      background: previewOpen
-                        ? 'linear-gradient(135deg, #1D4ED8, #1E3A8A)'
-                        : `linear-gradient(135deg, ${GOLD}, #B8860B)`,
-                      borderColor: previewOpen ? '#1E3A8A' : '#B8860B',
-                    }}
-                  >
-                    {previewOpen ? (
-                      <>
-                        <ChevronRight className="h-5 w-5" /> Fermer
-                      </>
-                    ) : (
-                      <>
-                        <Eye className="h-5 w-5" /> Aperçu
-                      </>
-                    )}
-                  </button>
-                </div>
-
-                <div
-                  className={`transition-all duration-300 overflow-hidden ${
-                    previewOpen ? 'w-80' : 'w-0'
-                  }`}
-                >
-                  {previewOpen && (
-                    <div className="w-80 h-full border-l border-slate-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-y-auto">
-                      <div className="p-5 space-y-4">
-                        <div className="flex items-center gap-2 pb-2 border-b border-slate-100 dark:border-gray-700">
-                          <Eye className="h-4 w-4" style={{ color: PRIMARY }} />
-                          <span className="font-extrabold text-sm text-slate-600 dark:text-gray-300 uppercase tracking-wider">
-                            Aperçu du produit
-                          </span>
-                        </div>
-
-                        <div className="relative">
-                          <div
-                            className="h-48 w-full rounded-xl bg-slate-50 dark:bg-gray-800 flex items-center justify-center overflow-hidden border border-slate-200 dark:border-gray-700"
-                            style={{ perspective: '600px' }}
-                          >
-                            {form.imagePreview ? (
-                              <Image3D src={form.imagePreview} alt="aperçu" />
-                            ) : (
-                              <Package className="h-14 w-14 text-slate-300 dark:text-gray-600" />
-                            )}
-                          </div>
-                          <Badge
-                            className="absolute top-2 right-2 text-xs rounded-full px-2.5 py-0.5 font-extrabold text-white"
-                            style={{ backgroundColor: GOLD }}
-                          >
-                            {isEditMode ? 'Édition' : 'Nouveau'}
-                          </Badge>
-                        </div>
-
-                        <div>
-                          <h4 className="font-extrabold text-lg text-gray-900 dark:text-gray-50">
-                            {form.nameFr || (
-                              <span className="text-slate-300 dark:text-gray-600 italic text-sm font-normal">
-                                Nom du produit
-                              </span>
-                            )}
-                          </h4>
-                          {form.nameAr && (
-                            <p className="text-sm text-slate-500 dark:text-gray-400" dir="rtl">
-                              {form.nameAr}
-                            </p>
-                          )}
-                          {form.sku && (
-                            <Badge
-                              variant="secondary"
-                              className="mt-1 font-bold text-xs rounded-full dark:bg-gray-700 dark:text-gray-300"
-                            >
-                              SKU : {form.sku}
-                            </Badge>
-                          )}
-                        </div>
-
-                        <Separator className="bg-slate-100 dark:bg-gray-700" />
-                        <div className="space-y-2 text-sm">
-                          {categoryName && (
-                            <div className="flex justify-between items-center">
-                              <span className="text-slate-500 dark:text-gray-400 font-semibold">
-                                Catégorie
-                              </span>
-                              <div className="flex items-center gap-1.5">
-                                <div
-                                  className="w-2 h-2 rounded-full"
-                                  style={{
-                                    backgroundColor:
-                                      categories.find((c) => c.id === form.categoryId)
-                                        ?.color || '#6B7280',
-                                  }}
-                                />
-                                <span className="font-extrabold text-gray-900 dark:text-gray-50">
-                                  {categoryName}
-                                </span>
-                              </div>
-                            </div>
-                          )}
-                          {form.unit && (
-                            <PRow
-                              label="Unité"
-                              value={t(`products.units.${form.unit as Unit}`)}
-                            />
-                          )}
-                          <Separator className="bg-slate-100 dark:bg-gray-700" />
-                          <PRow
-                            label="Prix vente"
-                            value={
-                              retailNum > 0 ? `${retailNum.toFixed(2)} MAD` : '—'
-                            }
-                            highlight
-                          />
-                          <PRow
-                            label="Prix achat"
-                            value={costNum > 0 ? `${costNum.toFixed(2)} MAD` : '—'}
-                          />
-                          {costNum > 0 && retailNum > 0 && (
-                            <PRow
-                              label="Marge"
-                              value={`${marginPercent.toFixed(0)}%`}
-                              valueClass={
-                                marginPercent > 0
-                                  ? 'text-green-600 dark:text-green-400'
-                                  : 'text-red-500'
-                              }
-                            />
-                          )}
-                          <PRow label="Stock" value={form.stockQty || '0'} />
-                        </div>
-
-                        <div
-                          className={`flex items-center justify-center gap-2 p-2.5 rounded-xl text-xs font-extrabold ${
-                            isReady
-                              ? 'bg-green-50 dark:bg-green-900/20 text-green-700 border border-green-200'
-                              : 'bg-slate-50 dark:bg-gray-800 text-slate-500 border border-slate-200 dark:border-gray-700'
-                          }`}
-                        >
-                          {isReady ? (
-                            <>
-                              <CheckCircle2 className="h-3.5 w-3.5" /> Prêt à enregistrer
-                            </>
-                          ) : (
-                            <>
-                              <AlertCircle className="h-3.5 w-3.5" style={{ color: GOLD }} />{' '}
-                              Champs incomplets
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
             </div>
 
-            {/* FOOTER */}
             <footer className="shrink-0 bg-white dark:bg-gray-900 border-t border-slate-200 dark:border-gray-800 px-6 py-4">
               <div className="max-w-3xl mx-auto flex items-center justify-between">
                 <Button
@@ -1509,7 +1272,7 @@ export default function NewProductPage() {
                           s.id === currentStep
                             ? PRIMARY
                             : isStepComplete(s.id)
-                            ? '#16A34A'
+                            ? ORANGE_SOFT
                             : '#CBD5E1',
                       }}
                     />
@@ -1557,6 +1320,103 @@ export default function NewProductPage() {
           </>
         )}
       </div>
+
+      {/* ─── Panneau d'aperçu coulissant (à droite) ─── */}
+      <div
+        className={`fixed top-0 right-0 h-full w-96 bg-white dark:bg-gray-900 shadow-2xl border-l border-slate-200 dark:border-gray-700 z-50 transition-transform duration-300 ease-in-out ${
+          previewOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
+        <div className="h-full flex flex-col">
+          <div className="p-4 border-b border-slate-200 dark:border-gray-700 flex items-center justify-between">
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">Aperçu du produit</h2>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setPreviewOpen(false)}
+              className="rounded-full hover:bg-slate-100 dark:hover:bg-gray-800"
+            >
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
+
+          <ScrollArea className="flex-1 p-4">
+            <div className="space-y-4">
+              <div className="flex items-center gap-4">
+                <div className="w-24 h-24 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden bg-gray-50 dark:bg-gray-800 flex-shrink-0">
+                  {form.imagePreview ? (
+                    <img src={form.imagePreview} alt="Aperçu" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-gray-300">
+                      <Package className="h-10 w-10" />
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">{form.nameFr || '(Nom non défini)'}</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">SKU : {form.sku || '—'}</p>
+                  {form.barcode && <p className="text-sm text-gray-500 dark:text-gray-400">Code‑barres : {form.barcode}</p>}
+                </div>
+              </div>
+
+              <Separator className="bg-gray-200 dark:bg-gray-700" />
+
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-gray-500 dark:text-gray-400">Catégorie</p>
+                  <p className="font-medium">{categoryName || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500 dark:text-gray-400">Unité</p>
+                  <p className="font-medium">{form.unit ? t(`products.units.${form.unit as Unit}`) : '—'}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500 dark:text-gray-400">Prix d'achat</p>
+                  <p className="font-medium">{costNum > 0 ? `${costNum.toFixed(2)} MAD` : '—'}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500 dark:text-gray-400">Prix de vente</p>
+                  <p className="font-medium text-blue-600 dark:text-blue-400">{retailNum > 0 ? `${retailNum.toFixed(2)} MAD` : '—'}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500 dark:text-gray-400">TVA</p>
+                  <p className="font-medium">{taxNum > 0 ? `${taxNum}%` : '0%'}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500 dark:text-gray-400">Prix TTC</p>
+                  <p className="font-medium text-green-600 dark:text-green-400">{totalTTC > 0 ? `${totalTTC.toFixed(2)} MAD` : '—'}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500 dark:text-gray-400">Stock initial</p>
+                  <p className="font-medium">{form.stockQty || '0'}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500 dark:text-gray-400">Seuil d'alerte</p>
+                  <p className="font-medium">{form.alertThreshold || '5'}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-gray-500 dark:text-gray-400">Description</p>
+                  <p className="font-medium text-sm">{form.description || '—'}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-gray-500 dark:text-gray-400">Statut</p>
+                  <Badge className="border-0" variant={form.isActive ? 'default' : 'secondary'}>
+                    {form.isActive ? 'Actif' : 'Inactif'}
+                  </Badge>
+                </div>
+              </div>
+            </div>
+          </ScrollArea>
+        </div>
+      </div>
+
+      {/* Overlay pour fermer le panneau en cliquant à l'extérieur */}
+      {previewOpen && (
+        <div
+          className="fixed inset-0 bg-black/20 dark:bg-black/50 z-40 transition-opacity"
+          onClick={() => setPreviewOpen(false)}
+        />
+      )}
 
       <AddCategoryDialog
         open={categoryDialogOpen}
@@ -1641,11 +1501,11 @@ function StepChecklist({ items }: { items: { label: string; ok: boolean }[] }) {
           key={i}
           className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${
             f.ok
-              ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+              ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400'
               : 'bg-slate-100 dark:bg-gray-700 text-slate-500 dark:text-gray-400'
           }`}
         >
-          {f.ok ? <CheckCircle2 className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />} {f.label}
+          {f.ok ? <CheckCircle2 className="h-3 w-3 text-orange-500" /> : <AlertCircle className="h-3 w-3" />} {f.label}
         </span>
       ))}
     </div>
@@ -1665,22 +1525,6 @@ function StatCard({ icon: Icon, label, value, valueColor, iconColor, bg }: {
       <Icon className="h-5 w-5" style={{ color: iconColor }} />
       <span className="text-xs font-bold text-slate-500 dark:text-gray-400">{label}</span>
       <span className="text-xl font-extrabold" style={{ color: valueColor }}>{value}</span>
-    </div>
-  )
-}
-
-function PRow({ label, value, highlight, valueClass }: {
-  label: string
-  value: string
-  highlight?: boolean
-  valueClass?: string
-}) {
-  return (
-    <div className="flex justify-between">
-      <span className="text-slate-500 dark:text-gray-400 font-semibold">{label}</span>
-      <span className={`font-extrabold ${valueClass || (highlight ? 'text-blue-700 dark:text-blue-400' : 'text-gray-900 dark:text-gray-50')}`}>
-        {value}
-      </span>
     </div>
   )
 }

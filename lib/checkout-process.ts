@@ -13,6 +13,7 @@ export interface CheckoutInput {
   cart: CartItem[]
   customerId?: string | null
   paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID'
+  paymentMethod?: string // ← AJOUT : mode de paiement (cash, card, mobile, mixed)
   paidAmount: number
   userId?: string | null
   cashierId?: string | null
@@ -113,15 +114,16 @@ export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId
   const invoiceNumber = await generateInvoiceNumber('INV')
   const invoiceId = `inv_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
   const now = new Date().toISOString()
+  const paymentMethod = input.paymentMethod || 'cash' // ← valeur par défaut
 
   // 5. Construction de la requête transactionnelle unique
   let sql = 'BEGIN;\n'
 
-  // Insertion de la facture
+  // Insertion de la facture (avec payment_method)
   sql += `
     INSERT INTO invoices (
       id, invoice_number, client_id, subtotal, tax, discount, total,
-      status, created_at, updated_at
+      status, payment_method, created_at, updated_at
     ) VALUES (
       '${invoiceId}',
       '${invoiceNumber}',
@@ -131,6 +133,7 @@ export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId
       ${Math.round(totalDiscount * 100)},
       ${Math.round(total * 100)},
       '${input.paymentStatus}',
+      '${paymentMethod}',
       '${now}',
       '${now}'
     );

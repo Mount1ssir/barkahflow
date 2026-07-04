@@ -81,7 +81,7 @@
     "subtitle": "Here is an overview of your business activity.",
     "today": "Today, {{date}}",
     "stats": {
-      "revenue": "Revenue",
+      "revenue": "Today's collected",
       "sales": "Sales",
       "in_stock": "Products in stock",
       "clients": "Clients",
@@ -89,15 +89,15 @@
     },
     "quick_actions": {
       "promo_title": "Manage your business easily",
-  "promo_desc": "Add your sales, manage your products, track your stock and clients with ease.",
-  "image_alt": "Analytics illustration",
+      "promo_desc": "Add your sales, manage your products, track your stock and clients with ease.",
+      "image_alt": "Analytics illustration",
       "title": "Quick actions",
       "add_sale": "Add sale",
       "add_product": "Add product",
       "create_invoice": "Create invoice",
       "add_client": "Add client",
       "stock_entry": "Stock entry",
-     "invoice": "Add an invoice"
+      "invoice": "Add an invoice"
     },
     "charts": {
       "revenue": "Sales evolution",
@@ -157,7 +157,6 @@
       "help": "Help",
       "shop": "My shop",
       "support": "Support / Help"
-
     },
     "nav": {
       "dashboard": "Dashboard",

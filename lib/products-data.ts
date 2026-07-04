@@ -8,7 +8,7 @@ export interface Product {
   nameFr: string | null
   categoryId: string | null
   categoryName: string | null
-  categoryColor: string | null   // ✅ Ajouté
+  categoryColor: string | null
   unit: string
   costPrice: number
   retailPrice: number
@@ -32,7 +32,7 @@ interface ProductRow {
   name_fr: string | null
   category_id: string | null
   category_name: string | null
-  category_color: string | null   // ✅ Ajouté
+  category_color: string | null
   unit: string
   cost_price: number
   retail_price: number
@@ -60,7 +60,7 @@ function mapRow(row: ProductRow): Product {
     nameFr: row.name_fr,
     categoryId: row.category_id,
     categoryName: row.category_name,
-    categoryColor: row.category_color,   // ✅ Ajouté
+    categoryColor: row.category_color,
     unit: row.unit,
     costPrice: row.cost_price,
     retailPrice: row.retail_price,
@@ -295,7 +295,34 @@ export async function updateProduct(id: string, input: ProductInput): Promise<vo
   }
 }
 
+// ─── Vérification des références ──────────────────────────────
+async function hasReferences(productId: string): Promise<boolean> {
+  // Vérifier dans line_items
+  const lineItems = await dbSelect<{ count: number }>(
+    `SELECT COUNT(*) as count FROM line_items WHERE product_id = ?`,
+    [productId]
+  )
+  if (lineItems[0]?.count > 0) return true
+
+  // Vérifier dans stock_movements
+  const movements = await dbSelect<{ count: number }>(
+    `SELECT COUNT(*) as count FROM stock_movements WHERE product_id = ?`,
+    [productId]
+  )
+  if (movements[0]?.count > 0) return true
+
+  return false
+}
+
 export async function deleteProduct(id: string): Promise<void> {
+  // Vérifier les références
+  const hasRefs = await hasReferences(id)
+  if (hasRefs) {
+    throw new Error(
+      'Ce produit ne peut pas être supprimé car il est lié à des ventes ou des mouvements de stock. Vous pouvez le désactiver à la place.'
+    )
+  }
+
   try {
     await dbExecute(`DELETE FROM products WHERE id = ?`, [id])
   } catch (error: any) {
@@ -335,7 +362,6 @@ export interface ValidationResult {
   errors: string[]
 }
 
-// Validation sans obliger le nom arabe
 export function validateProductInput(input: ProductInput): ValidationResult {
   const errors: string[] = []
 

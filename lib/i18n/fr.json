@@ -81,7 +81,7 @@
     "subtitle": "Voici un aperçu de votre activité commerciale.",
     "today": "Aujourd'hui, {{date}}",
     "stats": {
-      "revenue": "Chiffre d'affaires",
+      "revenue": "Encaissé aujourd'hui",
       "sales": "Ventes",
       "in_stock": "Produits en stock",
       "clients": "Clients",
@@ -89,8 +89,8 @@
     },
     "quick_actions": {
       "promo_title": "Gérez votre activité facilement",
-       "promo_desc": "Ajoutez vos ventes, gérez vos produits, suivez vos stocks et vos clients en toute simplicité.",
-        "image_alt": "Analytics illustration",
+      "promo_desc": "Ajoutez vos ventes, gérez vos produits, suivez vos stocks et vos clients en toute simplicité.",
+      "image_alt": "Analytics illustration",
       "title": "Actions rapides",
       "add_sale": "Ajouter une vente",
       "add_product": "Ajouter un produit",

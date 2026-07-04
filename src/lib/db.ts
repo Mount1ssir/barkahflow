@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS invoices (
   discount INTEGER NOT NULL DEFAULT 0,
   total INTEGER NOT NULL,
   status TEXT NOT NULL DEFAULT 'DRAFT' CHECK(status IN ('DRAFT', 'PENDING', 'CONFIRMED', 'PAID', 'CANCELLED', 'RETURNED')),
+  payment_method TEXT DEFAULT 'cash',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -128,7 +129,7 @@ CREATE TABLE IF NOT EXISTS sequence_numbers (
   year TEXT NOT NULL
 );
 
--- ✅ Table des paramètres de l'entreprise (sans contrainte NOT NULL)
+-- Table des paramètres de l'entreprise
 CREATE TABLE IF NOT EXISTS company_settings (
   id TEXT PRIMARY KEY DEFAULT 'single',
   company_name TEXT,
@@ -152,7 +153,6 @@ CREATE TABLE IF NOT EXISTS company_settings (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Insertion d'une ligne vide si la table est nouvellement créée
 INSERT OR IGNORE INTO company_settings (id, company_name) VALUES ('single', '');
 
 CREATE INDEX IF NOT EXISTS idx_products_sku ON products(sku);
@@ -165,7 +165,6 @@ CREATE INDEX IF NOT EXISTS idx_categories_name ON categories(name_fr);
 CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON stock_movements(product_id, created_at);
 `
 
-// ── Migrations ─────────────────────────────────────────────────────
 const MIGRATIONS = [
   `ALTER TABLE products ADD COLUMN reserved_stock INTEGER NOT NULL DEFAULT 0;`,
   `ALTER TABLE invoices ADD COLUMN status TEXT NOT NULL DEFAULT 'DRAFT' 
@@ -196,15 +195,8 @@ const MIGRATIONS = [
   `ALTER TABLE products ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;`,
   `ALTER TABLE products ADD COLUMN alert_threshold INTEGER NOT NULL DEFAULT 5;`,
   `ALTER TABLE products ADD COLUMN stock_qty INTEGER NOT NULL DEFAULT 0;`,
-  `ALTER TABLE categories ADD COLUMN color TEXT DEFAULT '#3B82F6';`
-
-  // ⚠️ ATTENTION : NE PAS SUPPRIMER LA TABLE company_settings !
-  // La table est déjà créée dans le SCHEMA initial avec toutes les colonnes.
-  // Supprimer et recréer effacerait les données de l'entreprise à chaque rechargement.
-  // Les migrations suivantes sont donc SUPPRIMÉES :
-  // `DROP TABLE IF EXISTS company_settings;`,
-  // `CREATE TABLE company_settings ( ... );`,
-  // `INSERT OR IGNORE INTO company_settings (id, company_name) VALUES ('single', '');`
+  `ALTER TABLE categories ADD COLUMN color TEXT DEFAULT '#3B82F6';`,
+  `ALTER TABLE invoices ADD COLUMN payment_method TEXT DEFAULT 'cash';`, // ← ajout de la migration
 ]
 
 async function runMigrations(db: any) {
@@ -227,7 +219,6 @@ async function runMigrations(db: any) {
   }
 }
 
-// ── Détection de plateforme ──────────────────────────────────────
 function isTauriEnv(): boolean {
   if (typeof window === 'undefined') return false
   return (
@@ -246,7 +237,6 @@ function isCapacitorMobile(): boolean {
   }
 }
 
-// ── Driver Desktop (Tauri) ──────────────────────────────────────
 async function createTauriDriver(): Promise<DbDriver> {
   console.log('BarkahFlow: Initialisation SQLite Tauri Desktop...')
 
@@ -284,7 +274,6 @@ async function createTauriDriver(): Promise<DbDriver> {
   }
 }
 
-// ── Driver Mobile (Capacitor) ───────────────────────────────────
 async function createCapacitorDriver(): Promise<DbDriver> {
   console.log('BarkahFlow: Initialisation SQLite Capacitor Mobile...')
 
@@ -334,7 +323,6 @@ async function createCapacitorDriver(): Promise<DbDriver> {
   }
 }
 
-// ── Mock ──────────────────────────────────────────────────────────
 function createMockDriver(): DbDriver {
   console.warn('BarkahFlow: Mode navigateur web SQLite non disponible.')
   console.warn('Lance npm run tauri dev pour la vraie base de données.')
@@ -344,7 +332,6 @@ function createMockDriver(): DbDriver {
   }
 }
 
-// ── Sélecteur automatique ──────────────────────────────────────
 export async function getDriver(): Promise<DbDriver> {
   if (driverInstance) return driverInstance
 
@@ -359,7 +346,6 @@ export async function getDriver(): Promise<DbDriver> {
   return driverInstance
 }
 
-// ─── Fonctions publiques ──────────────────────────────────────────
 export async function dbSelect<T>(
   query: string,
   params: any[] = []
@@ -376,7 +362,6 @@ export async function dbExecute(
   await driver.execute(query, params)
 }
 
-// ✅ dbSelectWithRetry – pour les lectures
 export async function dbSelectWithRetry<T>(
   query: string,
   params: any[] = [],
@@ -401,7 +386,6 @@ export async function dbSelectWithRetry<T>(
   throw lastError
 }
 
-// ✅ dbExecuteWithRetry – pour les écritures
 export async function dbExecuteWithRetry(
   query: string,
   params: any[] = [],
