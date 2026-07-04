@@ -1,5 +1,6 @@
 import { dbSelect, dbExecute } from '@/src/lib/db'
 
+// ─── Interfaces ──────────────────────────────────────────────────
 export interface Invoice {
   id: string
   invoiceNumber: string
@@ -13,7 +14,7 @@ export interface Invoice {
   discount: number
   total: number
   status: string
-  paymentMethod: string // ← AJOUT
+  paymentMethod: string
   createdAt: string
   updatedAt: string
 }
@@ -29,12 +30,17 @@ export interface InvoiceLine {
   productName?: string
 }
 
+// Interface Client (ajoutée)
 export interface Client {
   id: string
   full_name: string
   phone: string | null
+  email: string | null
+  address: string | null
+  // autres champs selon votre table
 }
 
+// ─── Map invoice ──────────────────────────────────────────────────
 function mapInvoice(row: any): Invoice {
   return {
     id: row.id,
@@ -49,12 +55,13 @@ function mapInvoice(row: any): Invoice {
     discount: row.discount,
     total: row.total,
     status: row.status,
-    paymentMethod: row.payment_method || 'cash', // ← récupération avec fallback
+    paymentMethod: row.payment_method || 'cash',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
 }
 
+// ─── Factures ─────────────────────────────────────────────────────
 export async function getAllInvoices(limit?: number): Promise<Invoice[]> {
   const rows = await dbSelect<any>(
     `SELECT i.*, c.full_name as client_name, c.phone as client_phone, c.email as client_email, c.address as client_address
@@ -110,48 +117,61 @@ export async function getInvoicesByClient(clientId: string): Promise<Invoice[]> 
   return rows.map(mapInvoice)
 }
 
-export async function getInvoiceStatusCounts(): Promise<{ status: string; count: number }[]> {
-  const rows = await dbSelect<any>(
-    `SELECT status, COUNT(*) as count FROM invoices GROUP BY status`
-  )
-  return rows.map((row: any) => ({ status: row.status, count: row.count }))
+export async function deleteInvoice(invoiceId: string): Promise<void> {
+  await dbExecute('DELETE FROM line_items WHERE invoice_id = ?', [invoiceId])
+  await dbExecute('DELETE FROM invoices WHERE id = ?', [invoiceId])
 }
 
-// ─── Clients ──────────────────────────────────────────────────────
+export async function getPendingDebtTotal(): Promise<number> {
+  const rows = await dbSelect<{ total: number }>(
+    `SELECT COALESCE(SUM(remaining_debt), 0) as total
+     FROM debt_ledger
+     WHERE status IN ('ACTIVE', 'PARTIAL')`
+  )
+  return rows[0]?.total ?? 0
+}
+
+// ─── Clients (ajoutés) ────────────────────────────────────────────
 export async function getAllClients(): Promise<Client[]> {
   const rows = await dbSelect<any>(
-    `SELECT id, full_name, phone FROM clients ORDER BY full_name ASC`
+    `SELECT id, full_name, phone, email, address
+     FROM clients
+     ORDER BY full_name`
   )
   return rows.map((row: any) => ({
     id: row.id,
     full_name: row.full_name,
-    phone: row.phone,
+    phone: row.phone || null,
+    email: row.email || null,
+    address: row.address || null,
   }))
 }
 
-// ─── Mise à jour ──────────────────────────────────────────────────
+// ─── Mise à jour facture (ajoutée) ───────────────────────────────
 export async function updateInvoice(
   id: string,
-  data: {
-    clientId: string | null
-    status: string
-    date: string
-  }
+  data: { clientId?: string | null; status?: string; date?: string }
 ): Promise<void> {
-  const now = new Date().toISOString()
-  await dbExecute(
-    `UPDATE invoices SET
-       client_id = ?,
-       status = ?,
-       created_at = ?,
-       updated_at = ?
-     WHERE id = ?`,
-    [data.clientId || null, data.status, data.date, now, id]
-  )
-}
+  const updates: string[] = []
+  const values: any[] = []
 
-// ─── Suppression ──────────────────────────────────────────────────
-export async function deleteInvoice(id: string): Promise<void> {
-  await dbExecute(`DELETE FROM line_items WHERE invoice_id = ?`, [id])
-  await dbExecute(`DELETE FROM invoices WHERE id = ?`, [id])
+  if (data.clientId !== undefined) {
+    updates.push('client_id = ?')
+    values.push(data.clientId)
+  }
+  if (data.status !== undefined) {
+    updates.push('status = ?')
+    values.push(data.status)
+  }
+  if (data.date !== undefined) {
+    updates.push('created_at = ?')
+    values.push(data.date)
+  }
+
+  if (updates.length === 0) return
+
+  updates.push('updated_at = datetime("now")')
+  const sql = `UPDATE invoices SET ${updates.join(', ')} WHERE id = ?`
+  values.push(id)
+  await dbExecute(sql, values)
 }

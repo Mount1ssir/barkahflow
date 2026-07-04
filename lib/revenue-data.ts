@@ -33,16 +33,29 @@ export interface Transaction {
 }
 
 export interface AgedReceivable {
-  range: string // "0-7 jours", "8-30 jours", "31-60 jours", "+60 jours"
+  range: string
   amount: number
   color: string
 }
 
-// ─── Helpers UTC ──────────────────────────────────────────────────
+// ─── Couleurs pour les modes de paiement ─────────────────────────
+const PAYMENT_COLORS: Record<string, string> = {
+  cash: '#22C55E',
+  card: '#3B82F6',
+  mobile: '#8B5CF6',
+  mixed: '#F59E0B',
+}
 
+const PAYMENT_LABELS: Record<string, string> = {
+  cash: 'Espèces',
+  card: 'TPE',
+  mobile: 'Mobile',
+  mixed: 'Mixte',
+}
+
+// ─── Helpers UTC ──────────────────────────────────────────────────
 function getDateRangeUTC(period: string): { start: string; end: string } {
   const now = new Date()
-  // Aujourd'hui en UTC (date sans heure)
   const todayStr = now.toISOString().split('T')[0]
   const todayStart = `${todayStr}T00:00:00.000Z`
   const tomorrowStart = new Date(now)
@@ -91,7 +104,6 @@ function getDateRangeUTC(period: string): { start: string; end: string } {
       break
     }
     default: {
-      // 'month' par défaut
       const monthAgo = new Date(now)
       monthAgo.setUTCMonth(monthAgo.getUTCMonth() - 1)
       const monthAgoStr = monthAgo.toISOString().split('T')[0]
@@ -104,11 +116,10 @@ function getDateRangeUTC(period: string): { start: string; end: string } {
 }
 
 // ─── 1. Résumé des revenus ──────────────────────────────────────
-
 export async function getRevenueSummary(period: string = 'month'): Promise<RevenueSummary> {
   const { start, end } = getDateRangeUTC(period)
 
-  // CA HT (subtotal) et TTC (total)
+  // ─── CA HT et TTC (facturé, toutes factures) ──────────────────
   const totals = await dbSelect<{ caHT: number; caTTC: number; nb: number }>(
     `SELECT
        COALESCE(SUM(subtotal), 0) as caHT,
@@ -122,27 +133,28 @@ export async function getRevenueSummary(period: string = 'month'): Promise<Reven
   const caTTC = totals[0]?.caTTC || 0
   const nbTransactions = totals[0]?.nb || 0
 
-  // Encaissé (PAID + PARTIAL)
+  // ─── Encaissé (transactions INCOME réelles) ──────────────────
   const encaisseResult = await dbSelect<{ total: number }>(
-    `SELECT COALESCE(SUM(total), 0) as total
-     FROM invoices
-     WHERE status IN ('PAID', 'PARTIAL')
-       AND created_at >= ? AND created_at < ?`,
+    `SELECT COALESCE(SUM(amount), 0) as total
+     FROM transactions
+     WHERE type = 'INCOME'
+       AND (source_type = 'invoice' OR source_type = 'debt_payment')
+       AND transaction_date >= ? AND transaction_date < ?`,
     [start, end]
   )
   const encaisse = encaisseResult[0]?.total || 0
 
-  // Créances (UNPAID)
+  // ✅ ─── Créances : solde restant des dettes (via debt_ledger) ──
   const creancesResult = await dbSelect<{ total: number }>(
-    `SELECT COALESCE(SUM(total), 0) as total
-     FROM invoices
-     WHERE status = 'UNPAID'
+    `SELECT COALESCE(SUM(remaining_debt), 0) as total
+     FROM debt_ledger
+     WHERE status IN ('ACTIVE', 'PARTIAL')
        AND created_at >= ? AND created_at < ?`,
     [start, end]
   )
   const creances = creancesResult[0]?.total || 0
 
-  // Coût d'achat
+  // ─── Coût d'achat (marge brute) ───────────────────────────────
   const costResult = await dbSelect<{ cost: number }>(
     `SELECT COALESCE(SUM(li.qty * p.cost_price), 0) as cost
      FROM line_items li
@@ -168,32 +180,18 @@ export async function getRevenueSummary(period: string = 'month'): Promise<Reven
 }
 
 // ─── 2. Répartition par mode de paiement ─────────────────────────
-
-const PAYMENT_COLORS: Record<string, string> = {
-  cash: '#22C55E',
-  card: '#3B82F6',
-  mobile: '#8B5CF6',
-  mixed: '#F59E0B',
-}
-
-const PAYMENT_LABELS: Record<string, string> = {
-  cash: 'Espèces',
-  card: 'TPE',
-  mobile: 'Mobile',
-  mixed: 'Mixte',
-}
-
 export async function getPaymentMethodDistribution(period: string = 'month'): Promise<PaymentMethodDistribution[]> {
   const { start, end } = getDateRangeUTC(period)
 
   const rows = await dbSelect<{ payment_method: string; total: number }>(
     `SELECT
-       COALESCE(payment_method, 'cash') as payment_method,
-       COALESCE(SUM(total), 0) as total
-     FROM invoices
-     WHERE created_at >= ? AND created_at < ?
-       AND status IN ('PAID', 'PARTIAL')
-     GROUP BY payment_method
+       COALESCE(i.payment_method, 'cash') as payment_method,
+       COALESCE(SUM(t.amount), 0) as total
+     FROM transactions t
+     JOIN invoices i ON t.source_id = i.id AND t.source_type = 'invoice'
+     WHERE t.type = 'INCOME'
+       AND t.transaction_date >= ? AND t.transaction_date < ?
+     GROUP BY i.payment_method
      ORDER BY total DESC`,
     [start, end]
   )
@@ -213,8 +211,7 @@ export async function getPaymentMethodDistribution(period: string = 'month'): Pr
   }))
 }
 
-// ─── 3. Top produits par chiffre d'affaires (HT) ────────────────
-
+// ─── 3. Top produits par CA ──────────────────────────────────────
 export async function getTopProductsByRevenue(period: string = 'month', limit: number = 5): Promise<TopProductRevenue[]> {
   const { start, end } = getDateRangeUTC(period)
 
@@ -241,15 +238,14 @@ export async function getTopProductsByRevenue(period: string = 'month', limit: n
   }))
 }
 
-// ─── 4. Transactions détaillées ──────────────────────────────────
-
+// ─── 4. Transactions détaillées (montants réels payés) ──────────
 export async function getTransactions(
   period: string = 'month',
   filters?: { status?: string; paymentMethod?: string }
 ): Promise<Transaction[]> {
   const { start, end } = getDateRangeUTC(period)
 
-  let whereClause = `i.created_at >= ? AND i.created_at < ?`
+  let whereClause = `t.transaction_date >= ? AND t.transaction_date < ? AND t.type = 'INCOME' AND (t.source_type = 'invoice' OR t.source_type = 'debt_payment')`
   const params: any[] = [start, end]
 
   if (filters?.status && filters.status !== 'all') {
@@ -272,16 +268,17 @@ export async function getTransactions(
   }>(
     `SELECT
        i.id,
-       i.created_at as date,
+       t.transaction_date as date,
        i.invoice_number,
        COALESCE(c.full_name, 'Client de passage') as client_name,
        COALESCE(i.payment_method, 'cash') as payment_method,
        i.status,
-       i.total as amount
-     FROM invoices i
+       t.amount as amount
+     FROM transactions t
+     JOIN invoices i ON t.source_id = i.id AND t.source_type = 'invoice'
      LEFT JOIN clients c ON i.client_id = c.id
      WHERE ${whereClause}
-     ORDER BY i.created_at DESC
+     ORDER BY t.transaction_date DESC
      LIMIT 100`,
     params
   )
@@ -298,7 +295,6 @@ export async function getTransactions(
 }
 
 // ─── 5. Balance âgée des créances ───────────────────────────────
-
 const AGED_RANGES = [
   { label: '0-7 jours', min: 0, max: 7, color: '#22C55E' },
   { label: '8-30 jours', min: 8, max: 30, color: '#F59E0B' },
@@ -309,11 +305,11 @@ const AGED_RANGES = [
 export async function getAgedReceivables(period: string = 'month'): Promise<AgedReceivable[]> {
   const { start, end } = getDateRangeUTC(period)
 
-  // Récupérer les factures impayées de la période
-  const rows = await dbSelect<{ created_at: string; total: number }>(
-    `SELECT created_at, total
-     FROM invoices
-     WHERE status = 'UNPAID'
+  // Récupérer les dettes actives/partielles
+  const rows = await dbSelect<{ created_at: string; remaining_debt: number }>(
+    `SELECT created_at, remaining_debt
+     FROM debt_ledger
+     WHERE status IN ('ACTIVE', 'PARTIAL')
        AND created_at >= ? AND created_at < ?`,
     [start, end]
   )
@@ -332,7 +328,7 @@ export async function getAgedReceivables(period: string = 'month'): Promise<Aged
     for (const range of AGED_RANGES) {
       if (diffDays >= range.min && diffDays <= range.max) {
         const index = AGED_RANGES.indexOf(range)
-        result[index].amount += row.total
+        result[index].amount += row.remaining_debt
         break
       }
     }

@@ -24,52 +24,56 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const yesterdayStr = yesterdayDate.toISOString().split('T')[0]
   const yesterdayStart = `${yesterdayStr}T00:00:00.000Z`
 
-  // ── CA encaissé d'aujourd'hui (PAID) ──────────────────────────
+  // ── Encaissé d'aujourd'hui (transactions INCOME) ──────────────
+  // On inclut les paiements de factures (source_type = 'invoice')
+  // et les remboursements de dettes (source_type = 'debt_payment')
   const todayRows = await dbSelect<{ total: number }>(
-    `SELECT COALESCE(SUM(total), 0) as total
-     FROM invoices
-     WHERE status = 'PAID'
-       AND created_at >= ?`,
+    `SELECT COALESCE(SUM(amount), 0) as total
+     FROM transactions
+     WHERE type = 'INCOME'
+       AND (source_type = 'invoice' OR source_type = 'debt_payment')
+       AND transaction_date >= ?`,
     [todayStart]
   )
 
-  // ── CA encaissé d'hier ─────────────────────────────────────────
+  // ── Encaissé d'hier ─────────────────────────────────────────────
   const yesterdayRows = await dbSelect<{ total: number }>(
-    `SELECT COALESCE(SUM(total), 0) as total
-     FROM invoices
-     WHERE status = 'PAID'
-       AND created_at >= ? AND created_at < ?`,
+    `SELECT COALESCE(SUM(amount), 0) as total
+     FROM transactions
+     WHERE type = 'INCOME'
+       AND (source_type = 'invoice' OR source_type = 'debt_payment')
+       AND transaction_date >= ? AND transaction_date < ?`,
     [yesterdayStart, todayStart]
   )
 
   const todayRevenue = todayRows[0]?.total || 0
   const yesterdayRevenue = yesterdayRows[0]?.total || 0
 
-  // ✅ Si aujourd'hui = 0, on affiche 0% (pas -100%)
+  // Calcul de l'évolution
   let todayRevenueChange = 0
   if (todayRevenue > 0 && yesterdayRevenue > 0) {
     todayRevenueChange = ((todayRevenue - yesterdayRevenue) / yesterdayRevenue) * 100
   } else if (todayRevenue > 0 && yesterdayRevenue === 0) {
-    todayRevenueChange = 100 // Premier encaissement, progression infinie
+    todayRevenueChange = 100
   }
-  // Sinon (todayRevenue === 0) → 0%
+  // sinon 0 (si todayRevenue = 0)
 
-  // ── Nombre total de ventes (toutes les factures) ──────────────
+  // ─── Nombre total de ventes (toutes les factures) ──────────────
   const totalSalesRows = await dbSelect<{ count: number }>(
     `SELECT COUNT(*) as count FROM invoices`
   )
 
-  // ── Produits en stock faible ────────────────────────────────────
+  // ─── Produits en stock faible ────────────────────────────────────
   const lowStockRows = await dbSelect<{ count: number }>(
     `SELECT COUNT(*) as count FROM products WHERE is_active = 1 AND stock_qty <= alert_threshold`
   )
 
-  // ── Total produits actifs ──────────────────────────────────────
+  // ─── Total produits actifs ──────────────────────────────────────
   const totalProductsRows = await dbSelect<{ count: number }>(
     `SELECT COUNT(*) as count FROM products WHERE is_active = 1`
   )
 
-  // ── Total clients ──────────────────────────────────────────────
+  // ─── Total clients ──────────────────────────────────────────────
   const totalClientsRows = await dbSelect<{ count: number }>(
     `SELECT COUNT(*) as count FROM clients`
   )

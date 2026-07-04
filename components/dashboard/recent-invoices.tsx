@@ -26,7 +26,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatMAD } from '@/lib/stats-data'
-import { getAllInvoices, type Invoice } from '@/lib/invoice-data'
+import { getAllInvoices, type Invoice } from '@/lib/invoice-data'   // ✅ chemin corrigé
 import { useTranslation } from 'react-i18next'
 import '@/lib/i18n/config'
 
@@ -78,8 +78,7 @@ export function RecentInvoices() {
   const loadInvoices = async () => {
     try {
       const data = await getAllInvoices()
-      // Trier par date décroissante et garder les 10 dernières
-      const sorted = data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      const sorted = data.sort((a: Invoice, b: Invoice) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       setInvoices(sorted)
     } catch (error: any) {
       if (error?.message?.includes('no such table')) {
@@ -93,12 +92,10 @@ export function RecentInvoices() {
     }
   }
 
-  // Filtrer par statut
   const filteredInvoices = statusFilter === 'all'
     ? invoices
     : invoices.filter(inv => inv.status === statusFilter)
 
-  // Limiter l'affichage aux 10 plus récentes (après filtre)
   const displayedInvoices = filteredInvoices.slice(0, 10)
 
   return (

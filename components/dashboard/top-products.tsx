@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Bar, BarChart, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { Package, Calendar } from 'lucide-react'
+import { Package, Calendar, AlertCircle } from 'lucide-react'
 import {
   Select,
   SelectContent,
@@ -31,6 +31,7 @@ export function TopProducts() {
   const { t } = useTranslation()
   const [products, setProducts] = useState<TopProduct[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [period, setPeriod] = useState<Period>('week')
 
   useEffect(() => {
@@ -39,11 +40,17 @@ export function TopProducts() {
 
   const loadProducts = async () => {
     setLoading(true)
+    setError(null)
     try {
       const data = await getTopProducts(5, period)
       setProducts(data)
-    } catch (error) {
-      console.error('Erreur chargement produits:', error)
+      if (data.length === 0) {
+        // Ce n'est pas une erreur, juste pas de données
+        setError(null)
+      }
+    } catch (err: any) {
+      console.error('Erreur chargement produits:', err)
+      setError(err.message || 'Erreur inconnue')
     } finally {
       setLoading(false)
     }
@@ -96,11 +103,20 @@ export function TopProducts() {
       <CardContent>
         {loading ? (
           <Skeleton className="h-64 w-full rounded-xl" />
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center text-center py-12">
+            <AlertCircle className="h-12 w-12 text-red-400 mb-3" />
+            <p className="text-sm text-red-500">Erreur : {error}</p>
+            <p className="text-xs text-gray-400 mt-1">Vérifiez la console pour plus de détails</p>
+          </div>
         ) : products.length === 0 ? (
           <div className="flex flex-col items-center justify-center text-center py-12">
             <Package className="h-12 w-12 text-gray-300 dark:text-gray-600 mb-3" />
             <p className="text-sm text-muted-foreground">
               {t('top_products.no_sales', 'Aucune vente enregistrée pour le moment')}
+            </p>
+            <p className="text-xs text-gray-400 mt-1">
+              {t('top_products.hint', 'Assurez-vous que des factures (hors annulées) existent dans la période sélectionnée.')}
             </p>
           </div>
         ) : (

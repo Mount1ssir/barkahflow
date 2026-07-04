@@ -257,6 +257,57 @@ export default function RevenusPage() {
 
   const totalReceivables = agedReceivables.reduce((sum, item) => sum + item.amount, 0)
 
+  // ─── EXPORT CSV ──────────────────────────────────────────────────
+  const handleExport = () => {
+    if (transactions.length === 0) {
+      toast.info('Aucune transaction à exporter pour cette période.')
+      return
+    }
+
+    const headers = [
+      'N° facture',
+      'Date',
+      'Client',
+      'Mode de paiement',
+      'Statut',
+      'Montant TTC (MAD)',
+    ]
+
+    const rows = transactions.map((tx) => {
+      const statusLabel =
+        tx.status === 'PAID' ? 'Payée' :
+        tx.status === 'PARTIAL' ? 'En attente' : 'Impayée'
+      const paymentLabel: Record<string, string> = {
+        cash: 'Espèces',
+        card: 'TPE',
+        mobile: 'Mobile',
+        mixed: 'Mixte',
+      }
+      return [
+        tx.invoiceNumber,
+        new Date(tx.date).toLocaleDateString('fr-FR'),
+        tx.client,
+        paymentLabel[tx.paymentMethod] || tx.paymentMethod,
+        statusLabel,
+        (tx.amount / 100).toFixed(2),
+      ]
+    })
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map((row) => row.join(',')),
+    ].join('\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    const periodLabel = PERIODS.find((p) => p.value === period)?.label || period
+    link.download = `revenus_${periodLabel}_${new Date().toISOString().slice(0, 10)}.csv`
+    link.click()
+    URL.revokeObjectURL(link.href)
+    toast.success(`${transactions.length} transactions exportées`)
+  }
+
   // ─── Redirection vers les factures avec filtres de dates ──────
   const goToInvoicesWithFilter = (range: string, amount: number) => {
     if (amount === 0) return
@@ -328,6 +379,7 @@ export default function RevenusPage() {
           <Button
             variant="outline"
             className="gap-2 rounded-xl h-10 border-gray-200 dark:border-gray-700"
+            onClick={handleExport}
           >
             <Download className="h-4 w-4" /> Exporter
           </Button>

@@ -13,7 +13,7 @@ export interface CheckoutInput {
   cart: CartItem[]
   customerId?: string | null
   paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID'
-  paymentMethod?: string // ← AJOUT : mode de paiement (cash, card, mobile, mixed)
+  paymentMethod?: string
   paidAmount: number
   userId?: string | null
   cashierId?: string | null
@@ -21,7 +21,6 @@ export interface CheckoutInput {
   userAgent?: string
 }
 
-// Fonction de réessai pour les cas de verrouillage
 async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, delay = 300): Promise<T> {
   let lastError: any
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -42,7 +41,6 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, delay = 300): 
 }
 
 export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId: string; invoiceNumber: string }> {
-  // 1. Validations (hors transaction)
   if ((input.paymentStatus === 'PARTIAL' || input.paymentStatus === 'UNPAID') && !input.customerId) {
     throw new Error('Un client est requis pour les factures partielles ou impayées')
   }
@@ -57,7 +55,6 @@ export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId
     }
   }
 
-  // 2. Vérification du stock (hors transaction)
   for (const item of input.cart) {
     const product = await dbSelect<{ stock_qty: number; reserved_stock: number; name_ar: string }>(
       `SELECT stock_qty, reserved_stock, name_ar FROM products WHERE id = ?`,
@@ -70,7 +67,6 @@ export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId
     }
   }
 
-  // 3. Réservation du stock (hors transaction)
   for (const item of input.cart) {
     await dbExecute(
       `UPDATE products SET reserved_stock = COALESCE(reserved_stock, 0) + ? WHERE id = ?`,
@@ -78,7 +74,6 @@ export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId
     )
   }
 
-  // 4. Calcul des totaux
   let subtotal = 0
   let totalTax = 0
   let totalDiscount = 0
@@ -114,12 +109,10 @@ export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId
   const invoiceNumber = await generateInvoiceNumber('INV')
   const invoiceId = `inv_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
   const now = new Date().toISOString()
-  const paymentMethod = input.paymentMethod || 'cash' // ← valeur par défaut
+  const paymentMethod = input.paymentMethod || 'cash'
 
-  // 5. Construction de la requête transactionnelle unique
   let sql = 'BEGIN;\n'
 
-  // Insertion de la facture (avec payment_method)
   sql += `
     INSERT INTO invoices (
       id, invoice_number, client_id, subtotal, tax, discount, total,
@@ -139,7 +132,6 @@ export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId
     );
   `
 
-  // Insertion des lignes de facture
   for (const item of lineItems) {
     const lineId = `line_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
     sql += `
@@ -157,7 +149,6 @@ export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId
     `
   }
 
-  // Déduction du stock définitif
   for (const item of input.cart) {
     sql += `
       UPDATE products SET
@@ -167,7 +158,6 @@ export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId
     `
   }
 
-  // Réconciliation comptable
   if (input.paymentStatus === 'PAID') {
     const txId = `tx_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
     sql += `
@@ -183,7 +173,6 @@ export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId
         '${now}'
       );
     `
-    // Mettre à jour le statut en PAID (même si on a déjà inséré avec PAID, c'est redondant mais on garde)
     sql += `
       UPDATE invoices SET status = 'PAID' WHERE id = '${invoiceId}';
     `
@@ -223,7 +212,6 @@ export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId
     }
   }
 
-  // Audit log
   sql += `
     INSERT INTO audit_logs (
       id, user_id, action, entity_type, entity_id, before_state, after_state, ip_address, user_agent, created_at
@@ -243,7 +231,6 @@ export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId
 
   sql += 'COMMIT;'
 
-  // 6. Exécution de la transaction unique avec réessai
   return await withRetry(async () => {
     await dbExecute(sql)
     return { invoiceId, invoiceNumber }

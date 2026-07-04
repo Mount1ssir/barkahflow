@@ -39,13 +39,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
 import {
@@ -68,24 +61,23 @@ import { formatMAD } from '@/lib/stats-data'
 
 // ─── Couleurs ──────────────────────────────────────────────────────
 const GOLD = '#D4A017'
-const PRIMARY = '#2C3E50' // Bleu marine doux
+const PRIMARY = '#2C3E50'
 
-// ─── Score de fidélité ────────────────────────────────────────────
+// ─── Score de fidélité (sans émojis) ─────────────────────────────
 type FidelityScore = 'vip' | 'fidele' | 'nouveau' | 'inactif'
 
 interface ScoreConfig {
   label: string
-  emoji: string
   bg: string
   color: string
   border: string
 }
 
 const SCORE_CONFIG: Record<FidelityScore, ScoreConfig> = {
-  vip:     { label: 'VIP',     emoji: '⭐', bg: 'rgba(212,160,23,0.1)',  color: '#92400E', border: 'rgba(212,160,23,0.35)' },
-  fidele:  { label: 'Fidèle',  emoji: '🟢', bg: 'rgba(34,197,94,0.08)', color: '#166534', border: 'rgba(34,197,94,0.25)'  },
-  nouveau: { label: 'Nouveau', emoji: '🔵', bg: 'rgba(59,130,246,0.08)',color: '#1d4ed8', border: 'rgba(59,130,246,0.25)' },
-  inactif: { label: 'Inactif', emoji: '🔴', bg: 'rgba(239,68,68,0.07)', color: '#991B1B', border: 'rgba(239,68,68,0.2)'  },
+  vip:     { label: 'VIP',     bg: 'rgba(212,160,23,0.1)',  color: '#92400E', border: 'rgba(212,160,23,0.35)' },
+  fidele:  { label: 'Fidèle',  bg: 'rgba(34,197,94,0.08)', color: '#166534', border: 'rgba(34,197,94,0.25)'  },
+  nouveau: { label: 'Nouveau', bg: 'rgba(59,130,246,0.08)',color: '#1d4ed8', border: 'rgba(59,130,246,0.25)' },
+  inactif: { label: 'Inactif', bg: 'rgba(239,68,68,0.07)', color: '#991B1B', border: 'rgba(239,68,68,0.2)'  },
 }
 
 function computeScore(client: Client): FidelityScore {
@@ -124,7 +116,7 @@ function FidelityBadge({ client }: { client: Client }) {
   )
 }
 
-// ─── KPI avec barre de progression animée ────────────────────────
+// ─── KPI ──────────────────────────────────────────────────────────
 interface KpiCardProps {
   label: string
   value: string
@@ -231,8 +223,7 @@ export default function ClientsPage() {
   const [selectedIds, setSelectedIds]   = useState<string[]>([])
   const [currentPage, setCurrentPage]   = useState(1)
   const [deleteTarget, setDeleteTarget] = useState<Client | null>(null)
-  const [viewingClient, setViewingClient] = useState<Client | null>(null)
-  const [isLoaded, setIsLoaded] = useState(false)
+  const [isLoaded, setIsLoaded]         = useState(false)
   const pageSize = 5
 
   useEffect(() => {
@@ -287,11 +278,17 @@ export default function ClientsPage() {
   const totalDebt     = clients.reduce((sum, c) => sum + c.debt, 0)
   const debtors       = clients.filter((c) => c.debt > 0).length
 
+  // ✅ Progression des barres (corrigée)
+  const progressTotal    = 100 // toujours plein
+  const progressActive   = totalClients > 0 ? (activeClients / totalClients) * 100 : 0
+  const progressDebt     = totalDebt > 0 ? 100 : 0   // 100% si dette > 0, sinon 0%
+  const progressDebtors  = totalClients > 0 ? (debtors / totalClients) * 100 : 0
+
   const kpiProgress = [
-    { progress: 100, barColor: GOLD },
-    { progress: totalClients > 0 ? (activeClients / totalClients) * 100 : 0, barColor: '#16A34A' },
-    { progress: 100, barColor: '#F59E0B' },
-    { progress: totalClients > 0 ? (debtors / totalClients) * 100 : 0, barColor: '#DC2626' },
+    { progress: progressTotal,    barColor: GOLD },
+    { progress: progressActive,   barColor: '#16A34A' },
+    { progress: progressDebt,     barColor: '#F59E0B' },
+    { progress: progressDebtors,  barColor: '#DC2626' },
   ]
 
   const kpiData = [
@@ -307,8 +304,11 @@ export default function ClientsPage() {
   const isAllSelected   = paginatedData.length > 0 && paginatedData.every((c) => selectedIds.includes(c.id))
 
   // ─── Actions ──────────────────────────────────────────────────
-  const handleView = (client: Client) => setViewingClient(client)
-  const handleEdit = (id: string)     => router.push(`/dashboard/clients/${id}/edit`)
+  const handleView = (client: Client) => {
+    router.push(`/dashboard/clients/${client.id}`)
+  }
+
+  const handleEdit = (id: string) => router.push(`/dashboard/clients/${id}/edit`)
 
   const handleDeleteSelected = async () => {
     if (selectedIds.length === 0) return
@@ -359,7 +359,7 @@ export default function ClientsPage() {
   return (
     <div className="flex flex-col gap-6 max-w-7xl mx-auto w-full">
 
-      {/* ─── Titre + sous-titre (sans fil d'Ariane) ─── */}
+      {/* ─── Titre + sous-titre ─── */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
           {t('clients.title', 'Clients')}
@@ -369,7 +369,7 @@ export default function ClientsPage() {
         </p>
       </div>
 
-      {/* ─── KPI avec animation cascade et barres de progression ─── */}
+      {/* ─── KPI ─── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {kpiData.map((kpi, index) => (
           <KpiCard
@@ -417,10 +417,10 @@ export default function ClientsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Tous les scores</SelectItem>
-              <SelectItem value="vip">⭐ VIP</SelectItem>
-              <SelectItem value="fidele">🟢 Fidèle</SelectItem>
-              <SelectItem value="nouveau">🔵 Nouveau</SelectItem>
-              <SelectItem value="inactif">🔴 Inactif</SelectItem>
+              <SelectItem value="vip">VIP</SelectItem>
+              <SelectItem value="fidele">Fidèle</SelectItem>
+              <SelectItem value="nouveau">Nouveau</SelectItem>
+              <SelectItem value="inactif">Inactif</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -508,12 +508,18 @@ export default function ClientsPage() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
-                            <button onClick={() => handleView(client)}
-                              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+                            <button
+                              onClick={() => handleView(client)}
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                              title="Voir le client"
+                            >
                               <Eye className="h-4 w-4" />
                             </button>
-                            <button onClick={() => handleEdit(client.id)}
-                              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+                            <button
+                              onClick={() => handleEdit(client.id)}
+                              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                              title="Modifier le client"
+                            >
                               <Pencil className="h-4 w-4" />
                             </button>
                             <DropdownMenu>
@@ -544,56 +550,6 @@ export default function ClientsPage() {
           )}
         </CardContent>
       </Card>
-
-      {/* ─── Modale détail client ─── */}
-      <Dialog open={!!viewingClient} onOpenChange={(open) => !open && setViewingClient(null)}>
-        <DialogContent className="max-w-lg rounded-2xl">
-          <DialogHeader>
-            <DialogTitle className="text-2xl font-bold">Détails du client</DialogTitle>
-            <DialogDescription>Informations complètes du client sélectionné.</DialogDescription>
-          </DialogHeader>
-          {viewingClient && (
-            <div className="space-y-5 py-4">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center text-2xl font-bold text-gray-500 dark:text-gray-300">
-                  {viewingClient.fullName.charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="text-xl font-bold">{viewingClient.fullName}</p>
-                    <FidelityBadge client={viewingClient} />
-                  </div>
-                  <p className="text-sm text-gray-500">{viewingClient.phone || 'Pas de téléphone'}</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div><p className="text-gray-500">Email</p><p className="font-medium">{viewingClient.email || '—'}</p></div>
-                <div><p className="text-gray-500">Adresse</p><p className="font-medium">{viewingClient.address || '—'}</p></div>
-                <div><p className="text-gray-500">Date d'ajout</p><p className="font-medium">{new Date(viewingClient.createdAt).toLocaleDateString('fr-FR')}</p></div>
-                <div><p className="text-gray-500">Factures</p><p className="font-medium">{viewingClient.invoiceCount || 0}</p></div>
-                <div className="col-span-2">
-                  <p className="text-gray-500">Montant total dépensé</p>
-                  <p className="font-medium">{formatMAD(viewingClient.totalSpent || 0)}</p>
-                </div>
-                <div className="col-span-2">
-                  <p className="text-gray-500">Dette</p>
-                  <p className={`text-lg font-bold ${viewingClient.debt > 0 ? 'text-red-500' : ''}`}>{formatMAD(viewingClient.debt)}</p>
-                </div>
-                {viewingClient.notes && (
-                  <div className="col-span-2">
-                    <p className="text-gray-500">Notes</p>
-                    <p className="font-medium text-sm bg-gray-50 dark:bg-gray-800 p-3 rounded-xl">{viewingClient.notes}</p>
-                  </div>
-                )}
-              </div>
-              <div className="flex justify-end gap-2 pt-3 border-t border-gray-100 dark:border-gray-800">
-                <Button variant="outline" onClick={() => router.push(`/dashboard/clients/${viewingClient.id}/edit`)}>Modifier</Button>
-                <Button variant="ghost" onClick={() => setViewingClient(null)}>Fermer</Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
 
       {/* ─── Dialog suppression ─── */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>

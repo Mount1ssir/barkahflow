@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS invoices (
   tax INTEGER NOT NULL DEFAULT 0,
   discount INTEGER NOT NULL DEFAULT 0,
   total INTEGER NOT NULL,
-  status TEXT NOT NULL DEFAULT 'DRAFT' CHECK(status IN ('DRAFT', 'PENDING', 'CONFIRMED', 'PAID', 'CANCELLED', 'RETURNED')),
+  status TEXT NOT NULL DEFAULT 'DRAFT' CHECK(status IN ('DRAFT', 'PENDING', 'CONFIRMED', 'PAID', 'CANCELLED', 'RETURNED', 'PARTIAL', 'UNPAID')),
   payment_method TEXT DEFAULT 'cash',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   id TEXT PRIMARY KEY,
   type TEXT NOT NULL CHECK(type IN ('INCOME', 'EXPENSE')),
   amount INTEGER NOT NULL,
-  source_type TEXT CHECK(source_type IN ('invoice', 'manual')),
+  source_type TEXT CHECK(source_type IN ('invoice', 'manual', 'debt_payment')),
   source_id TEXT,
   category TEXT,
   transaction_date TEXT NOT NULL,
@@ -129,7 +129,6 @@ CREATE TABLE IF NOT EXISTS sequence_numbers (
   year TEXT NOT NULL
 );
 
--- Table des paramètres de l'entreprise
 CREATE TABLE IF NOT EXISTS company_settings (
   id TEXT PRIMARY KEY DEFAULT 'single',
   company_name TEXT,
@@ -165,6 +164,9 @@ CREATE INDEX IF NOT EXISTS idx_categories_name ON categories(name_fr);
 CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON stock_movements(product_id, created_at);
 `
 
+// ─── Migrations ─────────────────────────────────────────────────────
+// Ces migrations sont uniquement pour ajouter des colonnes ou créer des tables.
+// Elles NE touchent PAS à la table invoices (car le schéma initial est déjà à jour)
 const MIGRATIONS = [
   `ALTER TABLE products ADD COLUMN reserved_stock INTEGER NOT NULL DEFAULT 0;`,
   `ALTER TABLE invoices ADD COLUMN status TEXT NOT NULL DEFAULT 'DRAFT' 
@@ -196,7 +198,10 @@ const MIGRATIONS = [
   `ALTER TABLE products ADD COLUMN alert_threshold INTEGER NOT NULL DEFAULT 5;`,
   `ALTER TABLE products ADD COLUMN stock_qty INTEGER NOT NULL DEFAULT 0;`,
   `ALTER TABLE categories ADD COLUMN color TEXT DEFAULT '#3B82F6';`,
-  `ALTER TABLE invoices ADD COLUMN payment_method TEXT DEFAULT 'cash';`, // ← ajout de la migration
+  `ALTER TABLE invoices ADD COLUMN payment_method TEXT DEFAULT 'cash';`,
+  // ✅ Ajout du client "Client de passage" (walkin)
+  `INSERT OR IGNORE INTO clients (id, full_name, phone, email, address, notes, created_at, updated_at)
+   VALUES ('client_walkin', 'Client de passage', NULL, NULL, NULL, NULL, datetime('now'), datetime('now'));`,
 ]
 
 async function runMigrations(db: any) {

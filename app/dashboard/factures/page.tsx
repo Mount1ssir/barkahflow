@@ -56,7 +56,7 @@ import {
   Calendar,
   X,
 } from 'lucide-react'
-import { getAllInvoices, deleteInvoice, type Invoice } from '@/lib/invoice-data'
+import { getAllInvoices, deleteInvoice, getPendingDebtTotal, type Invoice } from '@/lib/invoice-data'
 import { formatMAD } from '@/lib/stats-data'
 
 // ─── Couleurs ──────────────────────────────────────────────────────
@@ -87,7 +87,7 @@ interface KpiCardProps {
   icon: React.ReactNode
   iconBg: string
   iconColor: string
-  progress: number
+  progress: number       // 0–100, représentant le pourcentage du total facturé
   barColor: string
   delay: number
   isLoaded: boolean
@@ -194,6 +194,7 @@ export default function InvoicesPage() {
 
   // ── États ──
   const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [pendingDebt, setPendingDebt] = useState(0)   // montant restant dû (debt_ledger)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [selectedIds, setSelectedIds] = useState<string[]>([])
@@ -207,7 +208,7 @@ export default function InvoicesPage() {
   const urlDateFrom = searchParams.get('dateFrom') || ''
   const urlDateTo = searchParams.get('dateTo') || ''
 
-  // ── Filtres locaux (date exacte) ──
+  // ── Filtres locaux ──
   const [dateFilter, setDateFilter] = useState('')
 
   // ── Effet de chargement ──
@@ -217,11 +218,15 @@ export default function InvoicesPage() {
     return () => clearTimeout(timer)
   }, [])
 
-  // ── Chargement des factures ──
+  // ── Chargement des factures + montant en attente ──
   const loadInvoices = async () => {
     try {
-      const data = await getAllInvoices()
+      const [data, pending] = await Promise.all([
+        getAllInvoices(),
+        getPendingDebtTotal()
+      ])
       setInvoices(data)
+      setPendingDebt(pending)
     } catch (error) {
       console.error(error)
       toast.error('Erreur chargement factures')
@@ -285,21 +290,61 @@ export default function InvoicesPage() {
   }, [search, urlStatus, urlDateFrom, urlDateTo, dateFilter])
 
   // ─── KPI ──────────────────────────────────────────────────────
+  // Calcul des montants (en centimes)
   const totalAmount = invoices.reduce((sum, inv) => sum + inv.total, 0)
-  const paidTotal = invoices.filter((inv) => inv.status === 'PAID').reduce((sum, inv) => sum + inv.total, 0)
-  const partialTotal = invoices.filter((inv) => inv.status === 'PARTIAL').reduce((sum, inv) => sum + inv.total, 0)
-  const unpaidTotal = invoices.filter((inv) => inv.status === 'UNPAID').reduce((sum, inv) => sum + inv.total, 0)
+  const paidTotal = invoices
+    .filter((inv) => inv.status === 'PAID')
+    .reduce((sum, inv) => sum + inv.total, 0)
+  const unpaidTotal = invoices
+    .filter((inv) => inv.status === 'UNPAID')
+    .reduce((sum, inv) => sum + inv.total, 0)
+  const pendingTotal = pendingDebt   // issu de debt_ledger
 
-  const maxTotal = Math.max(paidTotal, partialTotal, unpaidTotal, 1)
-  const paidPercent = (paidTotal / maxTotal) * 100
-  const partialPercent = (partialTotal / maxTotal) * 100
-  const unpaidPercent = (unpaidTotal / maxTotal) * 100
+  // Éviter division par zéro
+  const denominator = totalAmount || 1
+
+  // Pourcentages par rapport au total facturé
+  const paidPercent = (paidTotal / denominator) * 100
+  const pendingPercent = (pendingTotal / denominator) * 100
+  const unpaidPercent = (unpaidTotal / denominator) * 100
 
   const kpiData = [
-    { label: t('invoices.total_invoiced', 'Total facturé'), value: formatMAD(totalAmount), icon: <FileText className="h-5 w-5" />, iconBg: 'bg-blue-50 dark:bg-blue-900/20', iconColor: PRIMARY, progress: 100, barColor: GOLD },
-    { label: t('invoices.paid_total', 'Payées'), value: formatMAD(paidTotal), icon: <FileText className="h-5 w-5" />, iconBg: 'bg-green-50 dark:bg-green-900/20', iconColor: '#16A34A', progress: paidPercent, barColor: '#16A34A' },
-    { label: t('invoices.partial_total', 'En attente'), value: formatMAD(partialTotal), icon: <FileText className="h-5 w-5" />, iconBg: 'bg-amber-50 dark:bg-amber-900/20', iconColor: '#F59E0B', progress: partialPercent, barColor: '#F59E0B' },
-    { label: t('invoices.unpaid_total', 'Impayées'), value: formatMAD(unpaidTotal), icon: <FileText className="h-5 w-5" />, iconBg: 'bg-red-50 dark:bg-red-900/20', iconColor: '#DC2626', progress: unpaidPercent, barColor: '#DC2626' },
+    {
+      label: t('invoices.total_invoiced', 'Total facturé'),
+      value: formatMAD(totalAmount),
+      icon: <FileText className="h-5 w-5" />,
+      iconBg: 'bg-blue-50 dark:bg-blue-900/20',
+      iconColor: PRIMARY,
+      progress: 100,   // toujours plein
+      barColor: GOLD,
+    },
+    {
+      label: t('invoices.paid_total', 'Payées'),
+      value: formatMAD(paidTotal),
+      icon: <FileText className="h-5 w-5" />,
+      iconBg: 'bg-green-50 dark:bg-green-900/20',
+      iconColor: '#16A34A',
+      progress: paidPercent,
+      barColor: '#16A34A',
+    },
+    {
+      label: t('invoices.pending_total', 'En attente'),
+      value: formatMAD(pendingTotal),
+      icon: <FileText className="h-5 w-5" />,
+      iconBg: 'bg-amber-50 dark:bg-amber-900/20',
+      iconColor: '#F59E0B',
+      progress: pendingPercent,
+      barColor: '#F59E0B',
+    },
+    {
+      label: t('invoices.unpaid_total', 'Impayées'),
+      value: formatMAD(unpaidTotal),
+      icon: <FileText className="h-5 w-5" />,
+      iconBg: 'bg-red-50 dark:bg-red-900/20',
+      iconColor: '#DC2626',
+      progress: unpaidPercent,
+      barColor: '#DC2626',
+    },
   ]
 
   // ─── Sélection ────────────────────────────────────────────────
@@ -391,17 +436,15 @@ export default function InvoicesPage() {
     return false
   }
 
-  // ─── Réinitialiser les filtres URL ──────────────────────────
   const resetUrlFilters = () => {
     router.push('/dashboard/factures')
   }
 
-  // ─── Y a‑t‑il des filtres actifs ? ─────────────────────────
   const hasActiveFilters = !!(urlStatus || urlDateFrom || urlDateTo)
 
   return (
     <div className="flex flex-col gap-6 max-w-7xl mx-auto w-full">
-      {/* ─── Titre + sous-titre ─── */}
+      {/* ─── Titre ─── */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
           {t('invoices.title', 'Factures')}
@@ -411,7 +454,7 @@ export default function InvoicesPage() {
         </p>
       </div>
 
-      {/* ─── Badge des filtres actifs ─── */}
+      {/* ─── Badge filtres actifs ─── */}
       {hasActiveFilters && (
         <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800">
           <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
