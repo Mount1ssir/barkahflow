@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/src/lib/supabase'
 import { Sidebar } from '@/components/dashboard/sidebar'
 import { TopBar } from '@/components/dashboard/topbar'
+import { VoiceAssistantButton } from '@/components/voice/VoiceAssistantButton' // 👈 Import
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<any>(null)
@@ -39,6 +40,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <main className="flex-1 overflow-auto p-6">
           {children}
         </main>
+        {/* 👇 Bouton de l'assistant vocal - en bas à droite */}
+        <VoiceAssistantButton />
       </div>
     </div>
   )
