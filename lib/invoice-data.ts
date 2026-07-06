@@ -15,6 +15,8 @@ export interface Invoice {
   total: number
   status: string
   paymentMethod: string
+  dueDate: string | null      // ajout : date limite de paiement
+  poNumber: string | null     // ajout : référence commande client
   createdAt: string
   updatedAt: string
 }
@@ -30,14 +32,18 @@ export interface InvoiceLine {
   productName?: string
 }
 
-// Interface Client (ajoutée)
 export interface Client {
   id: string
   full_name: string
   phone: string | null
   email: string | null
   address: string | null
-  // autres champs selon votre table
+}
+
+// Nouvelle interface pour le statut de paiement d'une facture
+export interface InvoicePaymentInfo {
+  paidAmount: number
+  remainingAmount: number
 }
 
 // ─── Map invoice ──────────────────────────────────────────────────
@@ -56,6 +62,8 @@ function mapInvoice(row: any): Invoice {
     total: row.total,
     status: row.status,
     paymentMethod: row.payment_method || 'cash',
+    dueDate: row.due_date || null,
+    poNumber: row.po_number || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -131,7 +139,31 @@ export async function getPendingDebtTotal(): Promise<number> {
   return rows[0]?.total ?? 0
 }
 
-// ─── Clients (ajoutés) ────────────────────────────────────────────
+// ─── Info de paiement d'une facture (partiel/impayée) ────────────
+export async function getInvoicePaymentInfo(
+  invoiceId: string,
+  invoiceTotal: number
+): Promise<InvoicePaymentInfo> {
+  const rows = await dbSelect<{ total_debt: number; remaining_debt: number }>(
+    `SELECT total_debt, remaining_debt
+     FROM debt_ledger
+     WHERE invoice_id = ?
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [invoiceId]
+  )
+
+  if (rows.length === 0) {
+    return { paidAmount: invoiceTotal, remainingAmount: 0 }
+  }
+
+  const remainingAmount = rows[0].remaining_debt
+  const paidAmount = invoiceTotal - remainingAmount
+
+  return { paidAmount, remainingAmount }
+}
+
+// ─── Clients ────────────────────────────────────────────────────
 export async function getAllClients(): Promise<Client[]> {
   const rows = await dbSelect<any>(
     `SELECT id, full_name, phone, email, address
@@ -147,10 +179,10 @@ export async function getAllClients(): Promise<Client[]> {
   }))
 }
 
-// ─── Mise à jour facture (ajoutée) ───────────────────────────────
+// ─── Mise à jour facture ──────────────────────────────────────────
 export async function updateInvoice(
   id: string,
-  data: { clientId?: string | null; status?: string; date?: string }
+  data: { clientId?: string | null; status?: string; date?: string; dueDate?: string | null; poNumber?: string | null }
 ): Promise<void> {
   const updates: string[] = []
   const values: any[] = []
@@ -167,6 +199,14 @@ export async function updateInvoice(
     updates.push('created_at = ?')
     values.push(data.date)
   }
+  if (data.dueDate !== undefined) {
+    updates.push('due_date = ?')
+    values.push(data.dueDate)
+  }
+  if (data.poNumber !== undefined) {
+    updates.push('po_number = ?')
+    values.push(data.poNumber)
+  }
 
   if (updates.length === 0) return
 
@@ -174,4 +214,92 @@ export async function updateInvoice(
   const sql = `UPDATE invoices SET ${updates.join(', ')} WHERE id = ?`
   values.push(id)
   await dbExecute(sql, values)
+}
+
+// ─── Calcul automatique de l'échéance ────────────────────────────
+// À utiliser à la création d'une facture : renvoie la date ISO
+// obtenue en ajoutant `days` jours à la date de création.
+export function calculateDueDate(createdAtIso: string, days: number): string {
+  const date = new Date(createdAtIso)
+  date.setDate(date.getDate() + days)
+  return date.toISOString()
+}
+
+// ─── Montant en toutes lettres (français, dirhams) ───────────────
+const UNITES = ['', 'un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf']
+const DIX_A_DIX_NEUF = ['dix', 'onze', 'douze', 'treize', 'quatorze', 'quinze', 'seize', 'dix-sept', 'dix-huit', 'dix-neuf']
+const DIZAINES = ['', '', 'vingt', 'trente', 'quarante', 'cinquante', 'soixante', 'soixante', 'quatre-vingt', 'quatre-vingt']
+
+function convertGroupUnder1000(n: number): string {
+  if (n === 0) return ''
+  let result = ''
+
+  const centaines = Math.floor(n / 100)
+  const reste = n % 100
+
+  if (centaines > 0) {
+    result += (centaines > 1 ? UNITES[centaines] + ' cent' : 'cent') + (centaines > 1 && reste === 0 ? 's' : '')
+    if (reste > 0) result += ' '
+  }
+
+  if (reste > 0) {
+    if (reste < 10) {
+      result += UNITES[reste]
+    } else if (reste < 20) {
+      result += DIX_A_DIX_NEUF[reste - 10]
+    } else {
+      const dizaine = Math.floor(reste / 10)
+      const unite = reste % 10
+      if (dizaine === 7 || dizaine === 9) {
+        // soixante-dix, quatre-vingt-dix
+        result += DIZAINES[dizaine] + '-' + DIX_A_DIX_NEUF[unite]
+      } else {
+        result += DIZAINES[dizaine] + (unite > 0 ? '-' + UNITES[unite] : (dizaine === 8 ? 's' : ''))
+      }
+    }
+  }
+
+  return result
+}
+
+/**
+ * Convertit un montant en centimes vers son écriture en toutes lettres,
+ * en dirhams marocains. Ex: 3600 (= 36.00 MAD) -> "trente-six dirhams"
+ */
+export function amountToFrenchWords(amountInCentimes: number): string {
+  const dirhams = Math.floor(amountInCentimes / 100)
+  const centimes = amountInCentimes % 100
+
+  if (dirhams === 0 && centimes === 0) return 'zéro dirham'
+
+  let result = ''
+
+  if (dirhams === 0) {
+    result = ''
+  } else if (dirhams === 1) {
+    result = 'un dirham'
+  } else {
+    const millions = Math.floor(dirhams / 1000000)
+    const milliers = Math.floor((dirhams % 1000000) / 1000)
+    const unites = dirhams % 1000
+
+    const parts: string[] = []
+    if (millions > 0) {
+      parts.push((millions > 1 ? convertGroupUnder1000(millions) + ' millions' : 'un million'))
+    }
+    if (milliers > 0) {
+      parts.push((milliers > 1 ? convertGroupUnder1000(milliers) + ' mille' : 'mille'))
+    }
+    if (unites > 0) {
+      parts.push(convertGroupUnder1000(unites))
+    }
+    result = parts.join(' ') + ' dirhams'
+  }
+
+  if (centimes > 0) {
+    const centimesWords = convertGroupUnder1000(centimes)
+    result += (result ? ' et ' : '') + centimesWords + ' centime' + (centimes > 1 ? 's' : '')
+  }
+
+  return result.trim()
 }

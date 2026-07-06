@@ -55,6 +55,7 @@ import {
   Trash2,
   Calendar,
   X,
+  AlertTriangle,
 } from 'lucide-react'
 import { getAllInvoices, deleteInvoice, getPendingDebtTotal, type Invoice } from '@/lib/invoice-data'
 import { formatMAD } from '@/lib/stats-data'
@@ -388,11 +389,12 @@ export default function InvoicesPage() {
   }
 
   const exportAllCSV = () => {
-    const headers = ['N° facture', 'Client', 'Date', 'Statut', 'Total HT', 'Total TTC']
+    const headers = ['N° facture', 'Client', 'Date', 'Échéance', 'Statut', 'Total HT', 'Total TTC']
     const rows = filteredData.map((inv) => [
       inv.invoiceNumber,
       inv.clientName || 'Client de passage',
       new Date(inv.createdAt).toLocaleDateString('fr-FR'),
+      inv.dueDate ? new Date(inv.dueDate).toLocaleDateString('fr-FR') : '—',
       STATUS_LABELS[inv.status] || inv.status,
       (inv.subtotal / 100).toFixed(2),
       (inv.total / 100).toFixed(2),
@@ -409,11 +411,12 @@ export default function InvoicesPage() {
   const exportSelected = () => {
     const selectedInvoices = invoices.filter((inv) => selectedIds.includes(inv.id))
     if (selectedInvoices.length === 0) return
-    const headers = ['N° facture', 'Client', 'Date', 'Statut', 'Total HT', 'Total TTC']
+    const headers = ['N° facture', 'Client', 'Date', 'Échéance', 'Statut', 'Total HT', 'Total TTC']
     const rows = selectedInvoices.map((inv) => [
       inv.invoiceNumber,
       inv.clientName || 'Client de passage',
       new Date(inv.createdAt).toLocaleDateString('fr-FR'),
+      inv.dueDate ? new Date(inv.dueDate).toLocaleDateString('fr-FR') : '—',
       STATUS_LABELS[inv.status] || inv.status,
       (inv.subtotal / 100).toFixed(2),
       (inv.total / 100).toFixed(2),
@@ -441,6 +444,14 @@ export default function InvoicesPage() {
   }
 
   const hasActiveFilters = !!(urlStatus || urlDateFrom || urlDateTo)
+
+  // ── Échéance : aide pour l'affichage ──────────────────────────
+  const getDueDateInfo = (inv: Invoice) => {
+    if (!inv.dueDate) return { label: '—', isOverdue: false }
+    const due = new Date(inv.dueDate)
+    const isOverdue = (inv.status === 'UNPAID' || inv.status === 'PARTIAL') && due.getTime() < Date.now()
+    return { label: due.toLocaleDateString('fr-FR'), isOverdue }
+  }
 
   return (
     <div className="flex flex-col gap-6 max-w-7xl mx-auto w-full">
@@ -599,6 +610,9 @@ export default function InvoicesPage() {
                       {t('invoices.date', 'Date')}
                     </TableHead>
                     <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
+                      Échéance
+                    </TableHead>
+                    <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
                       {t('invoices.status', 'Statut')}
                     </TableHead>
                     <TableHead className="text-right font-semibold text-gray-700 dark:text-gray-300">
@@ -621,6 +635,7 @@ export default function InvoicesPage() {
                     const clientDisplay = isWalkin
                       ? t('pos.walkin_client', 'Client de passage')
                       : inv.clientName || t('invoices.anonymous', 'Anonyme')
+                    const dueDateInfo = getDueDateInfo(inv)
                     return (
                       <TableRow
                         key={inv.id}
@@ -647,6 +662,16 @@ export default function InvoicesPage() {
                         </TableCell>
                         <TableCell className="text-sm text-gray-500">
                           {new Date(inv.createdAt).toLocaleDateString('fr-FR')}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {dueDateInfo.isOverdue ? (
+                            <span className="inline-flex items-center gap-1 text-red-600 font-medium">
+                              <AlertTriangle className="h-3.5 w-3.5" />
+                              {dueDateInfo.label}
+                            </span>
+                          ) : (
+                            <span className="text-gray-500">{dueDateInfo.label}</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Badge

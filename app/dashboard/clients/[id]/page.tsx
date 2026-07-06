@@ -20,7 +20,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
-import { ArrowLeft, CreditCard, Wallet, Phone, Mail, MapPin, DollarSign } from 'lucide-react'
+import { ArrowLeft, CreditCard, Wallet, Phone, Mail, MapPin, DollarSign, AlertTriangle } from 'lucide-react'
 import { getClientById, type Client } from '@/lib/client-data'
 import { getActiveDebtsByClient, type DebtWithInvoice } from '@/lib/debt-ledger'
 import { formatMAD } from '@/lib/stats-data'
@@ -81,6 +81,14 @@ export default function ClientDetailPage() {
   if (!client) return null
 
   const totalDebt = debts.reduce((sum, d) => sum + d.remainingDebt, 0)
+
+  // ── Échéance : aide pour l'affichage ──────────────────────────
+  const getDueDateInfo = (debt: DebtWithInvoice) => {
+    if (!debt.dueDate) return { label: '—', isOverdue: false }
+    const due = new Date(debt.dueDate)
+    const isOverdue = due.getTime() < Date.now()
+    return { label: due.toLocaleDateString('fr-FR'), isOverdue }
+  }
 
   return (
     <div className="max-w-5xl mx-auto p-6">
@@ -150,43 +158,57 @@ export default function ClientDetailPage() {
                   <TableHead>Facture</TableHead>
                   <TableHead>Montant total</TableHead>
                   <TableHead>Solde restant</TableHead>
+                  <TableHead>Échéance</TableHead>
                   <TableHead>Statut</TableHead>
                   <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {debts.map((debt) => (
-                  <TableRow key={debt.debtId}>
-                    <TableCell className="font-mono">{debt.invoiceNumber}</TableCell>
-                    <TableCell>{formatMAD(debt.totalDebt)}</TableCell>
-                    <TableCell className="font-bold text-red-500">{formatMAD(debt.remainingDebt)}</TableCell>
-                    <TableCell>
-                      <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          debt.status === 'ACTIVE'
-                            ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
-                            : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
-                        }`}
-                      >
-                        {debt.status === 'ACTIVE' ? 'Impayée' : 'Partielle'}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          setSelectedDebt(debt)
-                          setDialogOpen(true)
-                        }}
-                        className="gap-2 rounded-xl"
-                        style={{ backgroundColor: PRIMARY }}
-                      >
-                        <DollarSign className="h-4 w-4" />
-                        Encaisser
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {debts.map((debt) => {
+                  const dueDateInfo = getDueDateInfo(debt)
+                  return (
+                    <TableRow key={debt.debtId}>
+                      <TableCell className="font-mono">{debt.invoiceNumber}</TableCell>
+                      <TableCell>{formatMAD(debt.totalDebt)}</TableCell>
+                      <TableCell className="font-bold text-red-500">{formatMAD(debt.remainingDebt)}</TableCell>
+                      <TableCell>
+                        {dueDateInfo.isOverdue ? (
+                          <span className="inline-flex items-center gap-1 text-red-600 font-medium text-sm">
+                            <AlertTriangle className="h-3.5 w-3.5" />
+                            {dueDateInfo.label}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-gray-500">{dueDateInfo.label}</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            debt.status === 'ACTIVE'
+                              ? 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+                              : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
+                          }`}
+                        >
+                          {debt.status === 'ACTIVE' ? 'Impayée' : 'Partielle'}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            setSelectedDebt(debt)
+                            setDialogOpen(true)
+                          }}
+                          className="gap-2 rounded-xl"
+                          style={{ backgroundColor: PRIMARY }}
+                        >
+                          <DollarSign className="h-4 w-4" />
+                          Encaisser
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
               </TableBody>
             </Table>
           )}

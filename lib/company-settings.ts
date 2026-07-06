@@ -19,6 +19,8 @@ export interface CompanySettings {
   invoicePrefix: string
   invoiceFooter: string
   currency: string
+  defaultPaymentTermsDays: number      // ajout : délai de paiement par défaut (en jours)
+  latePaymentPenaltyText: string        // ajout : mention légale pénalités de retard
   createdAt: string
   updatedAt: string
 }
@@ -43,6 +45,9 @@ const DEFAULT_SETTINGS: CompanySettings = {
   invoicePrefix: '',
   invoiceFooter: '',
   currency: '',
+  defaultPaymentTermsDays: 30,
+  latePaymentPenaltyText:
+    'Tout retard de paiement entraîne l\'application de pénalités au taux légal en vigueur, sans mise en demeure préalable.',
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
 }
@@ -68,6 +73,8 @@ function mapRow(row: any): CompanySettings {
     invoicePrefix: row.invoice_prefix ?? '',
     invoiceFooter: row.invoice_footer ?? '',
     currency: row.currency ?? '',
+    defaultPaymentTermsDays: row.default_payment_terms_days ?? 30,
+    latePaymentPenaltyText: row.late_payment_penalty_text ?? DEFAULT_SETTINGS.latePaymentPenaltyText,
     createdAt: row.created_at ?? new Date().toISOString(),
     updatedAt: row.updated_at ?? new Date().toISOString(),
   }
@@ -129,6 +136,8 @@ export async function updateCompanySettings(settings: Partial<CompanySettings>):
       invoicePrefix: 'invoice_prefix',
       invoiceFooter: 'invoice_footer',
       currency: 'currency',
+      defaultPaymentTermsDays: 'default_payment_terms_days',
+      latePaymentPenaltyText: 'late_payment_penalty_text',
     }
 
     for (const [key, dbField] of Object.entries(validFields)) {
@@ -195,11 +204,17 @@ async function ensureTableExists(): Promise<void> {
           invoice_prefix TEXT,
           invoice_footer TEXT,
           currency TEXT,
+          default_payment_terms_days INTEGER DEFAULT 30,
+          late_payment_penalty_text TEXT,
           created_at TEXT NOT NULL DEFAULT (datetime('now')),
           updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         )
       `)
       await createEmptySettings()
+    } else {
+      // ── Migration douce pour les bases déjà existantes ──────────
+      await ensureColumnExists('default_payment_terms_days', 'INTEGER DEFAULT 30')
+      await ensureColumnExists('late_payment_penalty_text', 'TEXT')
     }
   } catch (error) {
     console.error('❌ Erreur ensureTableExists:', error)
@@ -207,10 +222,23 @@ async function ensureTableExists(): Promise<void> {
   }
 }
 
+async function ensureColumnExists(columnName: string, columnDef: string): Promise<void> {
+  try {
+    await dbExecute(`ALTER TABLE company_settings ADD COLUMN ${columnName} ${columnDef}`)
+  } catch (e: any) {
+    // Colonne déjà existante : on ignore silencieusement
+    if (!e?.message?.includes('duplicate column name')) {
+      console.warn(`⚠️ Migration company_settings.${columnName}:`, e?.message)
+    }
+  }
+}
+
 async function createEmptySettings(): Promise<void> {
   await dbExecute(`
-    INSERT INTO company_settings (id, company_name, created_at, updated_at)
-    VALUES ('single', '', datetime('now'), datetime('now'))
-  `)
+    INSERT INTO company_settings (id, company_name, default_payment_terms_days, late_payment_penalty_text, created_at, updated_at)
+    VALUES ('single', '', 30, ?, datetime('now'), datetime('now'))
+  `, [
+    'Tout retard de paiement entraîne l\'application de pénalités au taux légal en vigueur, sans mise en demeure préalable.'
+  ])
   console.log('✅ Ligne vide créée dans company_settings')
 }

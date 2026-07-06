@@ -13,6 +13,7 @@ export interface Client {
   lastInvoiceDate: string | null
   createdAt: string
   updatedAt: string
+  creditLimit?: number | null
 }
 
 const WALKIN_CLIENT_ID = 'client_walkin'
@@ -31,22 +32,23 @@ function mapClient(row: any): Client {
     lastInvoiceDate: row.last_invoice_date || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    creditLimit: row.credit_limit || null,
   }
 }
 
-/**
- * Récupère tous les clients (sauf le client "de passage" par défaut)
- * ✅ La dette est calculée comme la somme des remaining_debt des dettes ACTIVE ou PARTIAL
- */
 export async function getAllClients(): Promise<Client[]> {
   const rows = await dbSelect<any>(
     `SELECT c.*,
-            COALESCE(SUM(CASE WHEN dl.status IN ('ACTIVE', 'PARTIAL') THEN dl.remaining_debt ELSE 0 END), 0) AS debt,
+            COALESCE((
+              SELECT SUM(remaining_debt)
+              FROM debt_ledger dl
+              WHERE dl.contact_id = c.id
+                AND dl.status IN ('ACTIVE', 'PARTIAL')
+            ), 0) AS debt,
             COUNT(DISTINCT i.id) AS invoice_count,
             COALESCE(SUM(CASE WHEN i.status = 'PAID' THEN i.total ELSE 0 END), 0) AS total_spent,
             MAX(CASE WHEN i.status = 'PAID' THEN i.created_at ELSE NULL END) AS last_invoice_date
      FROM clients c
-     LEFT JOIN debt_ledger dl ON dl.contact_id = c.id AND dl.status IN ('ACTIVE', 'PARTIAL')
      LEFT JOIN invoices i ON i.client_id = c.id
      WHERE c.id != ?
      GROUP BY c.id
@@ -56,18 +58,19 @@ export async function getAllClients(): Promise<Client[]> {
   return rows.map(mapClient)
 }
 
-/**
- * Récupère un client par son ID avec sa dette correcte
- */
 export async function getClientById(id: string): Promise<Client | null> {
   const rows = await dbSelect<any>(
     `SELECT c.*,
-            COALESCE(SUM(CASE WHEN dl.status IN ('ACTIVE', 'PARTIAL') THEN dl.remaining_debt ELSE 0 END), 0) AS debt,
+            COALESCE((
+              SELECT SUM(remaining_debt)
+              FROM debt_ledger dl
+              WHERE dl.contact_id = c.id
+                AND dl.status IN ('ACTIVE', 'PARTIAL')
+            ), 0) AS debt,
             COUNT(DISTINCT i.id) AS invoice_count,
             COALESCE(SUM(CASE WHEN i.status = 'PAID' THEN i.total ELSE 0 END), 0) AS total_spent,
             MAX(CASE WHEN i.status = 'PAID' THEN i.created_at ELSE NULL END) AS last_invoice_date
      FROM clients c
-     LEFT JOIN debt_ledger dl ON dl.contact_id = c.id AND dl.status IN ('ACTIVE', 'PARTIAL')
      LEFT JOIN invoices i ON i.client_id = c.id
      WHERE c.id = ? AND c.id != ?
      GROUP BY c.id`,
@@ -76,19 +79,20 @@ export async function getClientById(id: string): Promise<Client | null> {
   return rows.length > 0 ? mapClient(rows[0]) : null
 }
 
-/**
- * Recherche des clients par nom, téléphone ou email
- */
 export async function searchClients(query: string): Promise<Client[]> {
   const q = `%${query.trim()}%`
   const rows = await dbSelect<any>(
     `SELECT c.*,
-            COALESCE(SUM(CASE WHEN dl.status IN ('ACTIVE', 'PARTIAL') THEN dl.remaining_debt ELSE 0 END), 0) AS debt,
+            COALESCE((
+              SELECT SUM(remaining_debt)
+              FROM debt_ledger dl
+              WHERE dl.contact_id = c.id
+                AND dl.status IN ('ACTIVE', 'PARTIAL')
+            ), 0) AS debt,
             COUNT(DISTINCT i.id) AS invoice_count,
             COALESCE(SUM(CASE WHEN i.status = 'PAID' THEN i.total ELSE 0 END), 0) AS total_spent,
             MAX(CASE WHEN i.status = 'PAID' THEN i.created_at ELSE NULL END) AS last_invoice_date
      FROM clients c
-     LEFT JOIN debt_ledger dl ON dl.contact_id = c.id AND dl.status IN ('ACTIVE', 'PARTIAL')
      LEFT JOIN invoices i ON i.client_id = c.id
      WHERE c.id != ?
        AND (c.full_name LIKE ? OR c.phone LIKE ? OR c.email LIKE ?)
@@ -99,15 +103,26 @@ export async function searchClients(query: string): Promise<Client[]> {
   return rows.map(mapClient)
 }
 
+// ── Ajout : creditLimit optionnel à la création ────────────────────
 export async function createClient(
   data: Omit<Client, 'id' | 'debt' | 'invoiceCount' | 'totalSpent' | 'lastInvoiceDate' | 'createdAt' | 'updatedAt'>
 ): Promise<string> {
   const id = `cli_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
   const now = new Date().toISOString()
   await dbExecute(
-    `INSERT INTO clients (id, full_name, phone, email, address, notes, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, data.fullName, data.phone || null, data.email || null, data.address || null, data.notes || null, now, now]
+    `INSERT INTO clients (id, full_name, phone, email, address, notes, credit_limit, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      data.fullName,
+      data.phone || null,
+      data.email || null,
+      data.address || null,
+      data.notes || null,
+      data.creditLimit ?? null,
+      now,
+      now,
+    ]
   )
   return id
 }
@@ -119,10 +134,10 @@ export async function updateClient(
   const now = new Date().toISOString()
   const updates: string[] = []
   const values: any[] = []
-  const fields = ['fullName', 'phone', 'email', 'address', 'notes']
+  const fields = ['fullName', 'phone', 'email', 'address', 'notes', 'creditLimit']
   for (const field of fields) {
     if (data[field as keyof typeof data] !== undefined) {
-      const dbField = field === 'fullName' ? 'full_name' : field
+      const dbField = field === 'fullName' ? 'full_name' : field === 'creditLimit' ? 'credit_limit' : field
       updates.push(`${dbField} = ?`)
       values.push(data[field as keyof typeof data])
     }
@@ -139,8 +154,7 @@ export async function deleteClient(id: string): Promise<void> {
   await dbExecute(`DELETE FROM clients WHERE id = ?`, [id])
 }
 
-// ─── ✅ Enregistrement d'un paiement sur dette client ───
-
+// ✅ recordPaymentForClient – on garde source_type = 'manual' et category = 'debt_payment'
 export async function recordPaymentForClient(
   clientId: string,
   debtId: string,
@@ -153,7 +167,7 @@ export async function recordPaymentForClient(
   const { recordDebtPayment } = await import('./debt-ledger')
   const { recordTransaction } = await import('./transactions')
 
-  const { newRemaining, status } = await recordDebtPayment(
+  await recordDebtPayment(
     debtId,
     amount,
     paymentMethod,
@@ -162,12 +176,14 @@ export async function recordPaymentForClient(
     userAgent
   )
 
+  // On garde 'manual' car c'est le seul type accepté pour les paiements de dette
   await recordTransaction(
     'INCOME',
     amount,
-    'debt_payment',
+    'manual',
     debtId,
-    `Remboursement dette client ${clientId}`,
-    `Paiement de ${(amount / 100).toFixed(2)} MAD par ${paymentMethod}`
+    'debt_payment',   // <- ce tag permet d'identifier les paiements de dette
+    `Paiement dette client ${clientId}`,
+    paymentMethod
   )
 }

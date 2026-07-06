@@ -53,71 +53,49 @@ const PAYMENT_LABELS: Record<string, string> = {
   mixed: 'Mixte',
 }
 
-// ─── Helpers UTC ──────────────────────────────────────────────────
-function getDateRangeUTC(period: string): { start: string; end: string } {
+// ─── Bornes de période en dates locales (YYYY-MM-DD) ─────────────
+function getLocalDateRange(period: string): { start: string; end: string } {
   const now = new Date()
-  const todayStr = now.toISOString().split('T')[0]
-  const todayStart = `${todayStr}T00:00:00.000Z`
-  const tomorrowStart = new Date(now)
-  tomorrowStart.setUTCDate(tomorrowStart.getUTCDate() + 1)
-  const tomorrowStr = tomorrowStart.toISOString().split('T')[0]
-  const tomorrowStartStr = `${tomorrowStr}T00:00:00.000Z`
+  const todayStr = formatLocalDate(now)
 
-  let start: string
-  let end: string
+  let startDate: Date
 
   switch (period) {
     case 'today':
-      start = todayStart
-      end = tomorrowStartStr
+      startDate = new Date(now)
       break
-    case 'week': {
-      const weekAgo = new Date(now)
-      weekAgo.setUTCDate(weekAgo.getUTCDate() - 6)
-      const weekAgoStr = weekAgo.toISOString().split('T')[0]
-      start = `${weekAgoStr}T00:00:00.000Z`
-      end = tomorrowStartStr
+    case 'week':
+      startDate = new Date(now)
+      startDate.setDate(startDate.getDate() - 6)
       break
-    }
-    case 'month': {
-      const monthAgo = new Date(now)
-      monthAgo.setUTCMonth(monthAgo.getUTCMonth() - 1)
-      const monthAgoStr = monthAgo.toISOString().split('T')[0]
-      start = `${monthAgoStr}T00:00:00.000Z`
-      end = tomorrowStartStr
+    case 'month':
+      startDate = new Date(now)
+      startDate.setMonth(startDate.getMonth() - 1)
       break
-    }
-    case 'quarter': {
-      const quarterAgo = new Date(now)
-      quarterAgo.setUTCMonth(quarterAgo.getUTCMonth() - 3)
-      const quarterAgoStr = quarterAgo.toISOString().split('T')[0]
-      start = `${quarterAgoStr}T00:00:00.000Z`
-      end = tomorrowStartStr
+    case 'quarter':
+      startDate = new Date(now)
+      startDate.setMonth(startDate.getMonth() - 3)
       break
-    }
-    case 'year': {
-      const yearAgo = new Date(now)
-      yearAgo.setUTCFullYear(yearAgo.getUTCFullYear() - 1)
-      const yearAgoStr = yearAgo.toISOString().split('T')[0]
-      start = `${yearAgoStr}T00:00:00.000Z`
-      end = tomorrowStartStr
+    case 'year':
+      startDate = new Date(now)
+      startDate.setFullYear(startDate.getFullYear() - 1)
       break
-    }
-    default: {
-      const monthAgo = new Date(now)
-      monthAgo.setUTCMonth(monthAgo.getUTCMonth() - 1)
-      const monthAgoStr = monthAgo.toISOString().split('T')[0]
-      start = `${monthAgoStr}T00:00:00.000Z`
-      end = tomorrowStartStr
-    }
+    default:
+      startDate = new Date(now)
+      startDate.setMonth(startDate.getMonth() - 1)
   }
 
-  return { start, end }
+  return { start: formatLocalDate(startDate), end: todayStr }
+}
+
+function formatLocalDate(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
 // ─── 1. Résumé des revenus ──────────────────────────────────────
 export async function getRevenueSummary(period: string = 'month'): Promise<RevenueSummary> {
-  const { start, end } = getDateRangeUTC(period)
+  const { start, end } = getLocalDateRange(period)
 
   // ─── CA HT et TTC (facturé, toutes factures) ──────────────────
   const totals = await dbSelect<{ caHT: number; caTTC: number; nb: number }>(
@@ -126,30 +104,30 @@ export async function getRevenueSummary(period: string = 'month'): Promise<Reven
        COALESCE(SUM(total), 0) as caTTC,
        COUNT(*) as nb
      FROM invoices
-     WHERE created_at >= ? AND created_at < ?`,
+     WHERE date(created_at, 'localtime') BETWEEN date(?) AND date(?)`,
     [start, end]
   )
   const caHT = totals[0]?.caHT || 0
   const caTTC = totals[0]?.caTTC || 0
   const nbTransactions = totals[0]?.nb || 0
 
-  // ─── Encaissé (transactions INCOME réelles) ──────────────────
+  // ─── Encaissé (transactions INCOME réelles, factures + paiements de dette) ──
   const encaisseResult = await dbSelect<{ total: number }>(
     `SELECT COALESCE(SUM(amount), 0) as total
      FROM transactions
      WHERE type = 'INCOME'
-       AND (source_type = 'invoice' OR source_type = 'debt_payment')
-       AND transaction_date >= ? AND transaction_date < ?`,
+       AND (source_type = 'invoice' OR (source_type = 'manual' AND category = 'debt_payment'))
+       AND date(transaction_date, 'localtime') BETWEEN date(?) AND date(?)`,
     [start, end]
   )
   const encaisse = encaisseResult[0]?.total || 0
 
-  // ✅ ─── Créances : solde restant des dettes (via debt_ledger) ──
+  // ─── Créances : solde restant des dettes (via debt_ledger) ──
   const creancesResult = await dbSelect<{ total: number }>(
     `SELECT COALESCE(SUM(remaining_debt), 0) as total
      FROM debt_ledger
      WHERE status IN ('ACTIVE', 'PARTIAL')
-       AND created_at >= ? AND created_at < ?`,
+       AND date(created_at, 'localtime') BETWEEN date(?) AND date(?)`,
     [start, end]
   )
   const creances = creancesResult[0]?.total || 0
@@ -160,7 +138,7 @@ export async function getRevenueSummary(period: string = 'month'): Promise<Reven
      FROM line_items li
      JOIN products p ON li.product_id = p.id
      JOIN invoices i ON li.invoice_id = i.id
-     WHERE i.created_at >= ? AND i.created_at < ?`,
+     WHERE date(i.created_at, 'localtime') BETWEEN date(?) AND date(?)`,
     [start, end]
   )
   const cost = costResult[0]?.cost || 0
@@ -181,7 +159,7 @@ export async function getRevenueSummary(period: string = 'month'): Promise<Reven
 
 // ─── 2. Répartition par mode de paiement ─────────────────────────
 export async function getPaymentMethodDistribution(period: string = 'month'): Promise<PaymentMethodDistribution[]> {
-  const { start, end } = getDateRangeUTC(period)
+  const { start, end } = getLocalDateRange(period)
 
   const rows = await dbSelect<{ payment_method: string; total: number }>(
     `SELECT
@@ -190,7 +168,7 @@ export async function getPaymentMethodDistribution(period: string = 'month'): Pr
      FROM transactions t
      JOIN invoices i ON t.source_id = i.id AND t.source_type = 'invoice'
      WHERE t.type = 'INCOME'
-       AND t.transaction_date >= ? AND t.transaction_date < ?
+       AND date(t.transaction_date, 'localtime') BETWEEN date(?) AND date(?)
      GROUP BY i.payment_method
      ORDER BY total DESC`,
     [start, end]
@@ -213,7 +191,7 @@ export async function getPaymentMethodDistribution(period: string = 'month'): Pr
 
 // ─── 3. Top produits par CA ──────────────────────────────────────
 export async function getTopProductsByRevenue(period: string = 'month', limit: number = 5): Promise<TopProductRevenue[]> {
-  const { start, end } = getDateRangeUTC(period)
+  const { start, end } = getLocalDateRange(period)
 
   const rows = await dbSelect<{ product_name: string; revenue: number; units: number }>(
     `SELECT
@@ -223,7 +201,7 @@ export async function getTopProductsByRevenue(period: string = 'month', limit: n
      FROM line_items li
      JOIN products p ON li.product_id = p.id
      JOIN invoices i ON li.invoice_id = i.id
-     WHERE i.created_at >= ? AND i.created_at < ?
+     WHERE date(i.created_at, 'localtime') BETWEEN date(?) AND date(?)
        AND i.status IN ('PAID', 'PARTIAL', 'CONFIRMED')
      GROUP BY li.product_id
      ORDER BY revenue DESC
@@ -243,9 +221,9 @@ export async function getTransactions(
   period: string = 'month',
   filters?: { status?: string; paymentMethod?: string }
 ): Promise<Transaction[]> {
-  const { start, end } = getDateRangeUTC(period)
+  const { start, end } = getLocalDateRange(period)
 
-  let whereClause = `t.transaction_date >= ? AND t.transaction_date < ? AND t.type = 'INCOME' AND (t.source_type = 'invoice' OR t.source_type = 'debt_payment')`
+  let whereClause = `date(t.transaction_date, 'localtime') BETWEEN date(?) AND date(?) AND t.type = 'INCOME' AND t.source_type = 'invoice'`
   const params: any[] = [start, end]
 
   if (filters?.status && filters.status !== 'all') {
@@ -294,8 +272,13 @@ export async function getTransactions(
   }))
 }
 
-// ─── 5. Balance âgée des créances ───────────────────────────────
+// ─── 5. Balance âgée des créances : basée sur l'échéance ────────
+// Avant : le calcul partait de created_at (date de facturation), ce
+// qui classait une facture à 30 jours créée hier comme "urgente".
+// Maintenant on utilise due_date (date d'échéance), avec repli sur
+// created_at pour les dettes créées avant l'ajout de ce champ.
 const AGED_RANGES = [
+  { label: 'Non échue', min: -Infinity, max: -1, color: '#3B82F6' },
   { label: '0-7 jours', min: 0, max: 7, color: '#22C55E' },
   { label: '8-30 jours', min: 8, max: 30, color: '#F59E0B' },
   { label: '31-60 jours', min: 31, max: 60, color: '#F97316' },
@@ -303,14 +286,15 @@ const AGED_RANGES = [
 ]
 
 export async function getAgedReceivables(period: string = 'month'): Promise<AgedReceivable[]> {
-  const { start, end } = getDateRangeUTC(period)
+  const { start, end } = getLocalDateRange(period)
 
-  // Récupérer les dettes actives/partielles
-  const rows = await dbSelect<{ created_at: string; remaining_debt: number }>(
-    `SELECT created_at, remaining_debt
-     FROM debt_ledger
-     WHERE status IN ('ACTIVE', 'PARTIAL')
-       AND created_at >= ? AND created_at < ?`,
+  // Récupérer les dettes actives/partielles avec l'échéance de leur facture
+  const rows = await dbSelect<{ due_date: string | null; created_at: string; remaining_debt: number }>(
+    `SELECT dl.created_at, i.due_date, dl.remaining_debt
+     FROM debt_ledger dl
+     LEFT JOIN invoices i ON i.id = dl.invoice_id
+     WHERE dl.status IN ('ACTIVE', 'PARTIAL')
+       AND date(dl.created_at, 'localtime') BETWEEN date(?) AND date(?)`,
     [start, end]
   )
 
@@ -322,8 +306,9 @@ export async function getAgedReceivables(period: string = 'month'): Promise<Aged
   }))
 
   for (const row of rows) {
-    const invoiceDate = new Date(row.created_at)
-    const diffDays = Math.floor((now.getTime() - invoiceDate.getTime()) / (1000 * 60 * 60 * 24))
+    const referenceDateStr = row.due_date || row.created_at
+    const referenceDate = new Date(referenceDateStr)
+    const diffDays = Math.floor((now.getTime() - referenceDate.getTime()) / (1000 * 60 * 60 * 24))
 
     for (const range of AGED_RANGES) {
       if (diffDays >= range.min && diffDays <= range.max) {

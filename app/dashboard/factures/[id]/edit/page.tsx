@@ -48,6 +48,8 @@ export default function InvoiceEditPage() {
   const [clientId, setClientId] = useState<string>(WALKIN_CLIENT_ID)
   const [status, setStatus] = useState<string>('')
   const [date, setDate] = useState<string>('')
+  const [dueDate, setDueDate] = useState<string>('')
+  const [poNumber, setPoNumber] = useState<string>('')
 
   useEffect(() => {
     if (id) loadData()
@@ -71,6 +73,8 @@ export default function InvoiceEditPage() {
       setClientId(invoiceData.clientId || WALKIN_CLIENT_ID)
       setStatus(invoiceData.status)
       setDate(invoiceData.createdAt.split('T')[0])
+      setDueDate(invoiceData.dueDate ? invoiceData.dueDate.split('T')[0] : '')
+      setPoNumber(invoiceData.poNumber || '')
     } catch (error) {
       console.error(error)
       toast.error('Erreur chargement facture')
@@ -88,6 +92,8 @@ export default function InvoiceEditPage() {
         clientId: finalClientId,
         status,
         date: date + 'T00:00:00.000Z',
+        dueDate: dueDate ? dueDate + 'T00:00:00.000Z' : null,
+        poNumber: poNumber.trim() || null,
       })
       toast.success('Facture mise à jour avec succès')
       router.push('/dashboard/factures')
@@ -194,12 +200,35 @@ export default function InvoiceEditPage() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">Date</Label>
+                <Input
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="rounded-xl h-11 border-gray-200 dark:border-gray-700"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">Échéance</Label>
+                <Input
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  className="rounded-xl h-11 border-gray-200 dark:border-gray-700"
+                />
+              </div>
+            </div>
             <div className="space-y-1.5">
-              <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">Date</Label>
+              <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Référence commande <span className="text-gray-400 font-normal">(optionnel)</span>
+              </Label>
               <Input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
+                type="text"
+                value={poNumber}
+                onChange={(e) => setPoNumber(e.target.value)}
+                placeholder="Ex: BC-2026-045"
                 className="rounded-xl h-11 border-gray-200 dark:border-gray-700"
               />
             </div>

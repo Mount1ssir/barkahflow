@@ -4,30 +4,6 @@ import { supabase } from '@/src/lib/supabase'
 import { useState, useEffect, useCallback } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { ShimmerButton } from "@/components/ui/shimmer-button"
-import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
-import { PinPad } from '@/components/auth/pin-pad'
-import { Fingerprint, ScanFace, ShieldAlert, RefreshCw } from 'lucide-react'
-import {
-  isPinEnabled,
-  verifyPinCode,
-  getRemainingAttempts,
-  isLockedOut,
-  isBiometricEnabled,
-  setRememberedUser,
-  clearRememberedUser,
-  type RememberedUser,
-} from '@/lib/pin-storage'
-import { isBiometricAvailable, authenticateWithBiometric } from '@/lib/biometric-auth'
 import { useTranslation } from 'react-i18next'
 import { initI18n } from '@/lib/i18n/config'
 import '@/lib/i18n/config'
@@ -50,12 +26,7 @@ const BLUE = '#38BDF8'       // Bleu ciel principal
 const BLUE_LIGHT = '#E0F2FE' // Fond très clair
 const BLUE_DARK = '#0284C7'  // Pour les hover / accents
 
-type AuthState =
-  | 'checking'
-  | 'needs-login'
-  | 'needs-pin'
-  | 'needs-biometric'
-  | 'locked-out'
+type AuthState = 'checking' | 'needs-login'
 
 function getRedirectUrl(): string {
   const platform = Capacitor.getPlatform()
@@ -81,11 +52,6 @@ export default function LoginPage() {
   const [current, setCurrent] = useState(0)
   const [authState, setAuthState] = useState<AuthState>('checking')
   const [isVisible, setIsVisible] = useState(false)
-  const [remembered, setRemembered] = useState<RememberedUser | null>(null)
-  const [pinError, setPinError] = useState(false)
-  const [remainingAttempts, setRemainingAttempts] = useState(5)
-  const [showChangeAccountDialog, setShowChangeAccountDialog] = useState(false)
-  const [biometricAvailable, setBiometricAvailable] = useState(false)
 
   const [langIndex, setLangIndex] = useState(() => {
     const lang = getStoredLang()
@@ -150,35 +116,8 @@ export default function LoginPage() {
       return
     }
 
-    const user = data.session.user
-    const userInfo: RememberedUser = {
-      name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Commerçant',
-      email: user.email || '',
-      avatarUrl: user.user_metadata?.avatar_url,
-    }
-    setRememberedUser(userInfo)
-    setRemembered(userInfo)
-
-    if (isLockedOut() && isPinEnabled()) {
-      setAuthState('locked-out')
-      setChecked()
-      return
-    }
-
-    if (isPinEnabled()) {
-      const bioAvailable = await isBiometricAvailable()
-      setBiometricAvailable(bioAvailable)
-
-      if (bioAvailable && isBiometricEnabled()) {
-        setAuthState('needs-biometric')
-      } else {
-        setAuthState('needs-pin')
-      }
-      setRemainingAttempts(getRemainingAttempts())
-      setChecked()
-    } else {
-      window.location.href = '/dashboard'
-    }
+    // Session valide : on va directement au dashboard, plus d'étape PIN/biométrie
+    window.location.href = '/dashboard'
   }
 
   const handleGoogleLogin = async () => {
@@ -187,58 +126,6 @@ export default function LoginPage() {
       options: { redirectTo: getRedirectUrl() },
     })
   }
-
-  const handleEnterDashboard = () => {
-    window.location.href = '/dashboard'
-  }
-
-  const handlePinComplete = (pin: string) => {
-    const isCorrect = verifyPinCode(pin)
-
-    if (isCorrect) {
-      handleEnterDashboard()
-    } else {
-      setPinError(true)
-      const remaining = getRemainingAttempts()
-      setRemainingAttempts(remaining)
-
-      if (remaining <= 0) {
-        setAuthState('locked-out')
-      }
-
-      setTimeout(() => setPinError(false), 600)
-    }
-  }
-
-  const handleBiometricAttempt = async () => {
-    const result = await authenticateWithBiometric()
-    if (result.success) {
-      handleEnterDashboard()
-    } else {
-      setAuthState('needs-pin')
-    }
-  }
-
-  useEffect(() => {
-    if (authState === 'needs-biometric') {
-      handleBiometricAttempt()
-    }
-  }, [authState])
-
-  const handleChangeAccount = async () => {
-    await supabase.auth.signOut()
-    clearRememberedUser()
-    setRemembered(null)
-    setShowChangeAccountDialog(false)
-    setAuthState('needs-login')
-  }
-
-  const initials = remembered?.name
-    ?.split(' ')
-    .map((n) => n[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase() || 'U'
 
   const lang = langs[langIndex]
 
@@ -330,7 +217,7 @@ export default function LoginPage() {
             </h1>
           </div>
 
-          {/* ÉTAT 1 — Login Google */}
+          {/* Login Google */}
           {authState === 'needs-login' && (
             <>
               <div className="text-center">
@@ -359,97 +246,6 @@ export default function LoginPage() {
             </>
           )}
 
-          {/* ÉTAT 2 — PIN */}
-          {authState === 'needs-pin' && remembered && (
-            <>
-              <Avatar className="h-14 w-14" style={{ boxShadow: `0 0 0 3px ${BLUE}55` }}>
-                <AvatarImage src={remembered.avatarUrl} />
-                <AvatarFallback>{initials}</AvatarFallback>
-              </Avatar>
-              <div className="text-center">
-                <h2 className="text-lg font-bold text-foreground">
-                  {t('login.pin_welcome', { name: remembered.name.split(' ')[0] })}
-                </h2>
-                <p className="text-sm text-muted-foreground mt-1">{t('login.pin_title')}</p>
-              </div>
-              <PinPad onComplete={handlePinComplete} error={pinError} />
-              {pinError && (
-                <p className="text-xs font-medium" style={{ color: '#ef4444' }}>
-                  {t('login.pin_error', { attempts: remainingAttempts })}
-                </p>
-              )}
-              {biometricAvailable && isBiometricEnabled() && (
-                <button
-                  onClick={handleBiometricAttempt}
-                  className="flex items-center gap-2 text-xs font-medium px-4 py-2 rounded-lg transition-colors hover:bg-muted"
-                  style={{ color: BLUE }}
-                >
-                  <Fingerprint size={16} />
-                  {t('login.use_biometric')}
-                </button>
-              )}
-              <button
-                onClick={() => setShowChangeAccountDialog(true)}
-                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {t('login.change_account')}
-              </button>
-            </>
-          )}
-
-          {/* ÉTAT 3 — Biométrie */}
-          {authState === 'needs-biometric' && remembered && (
-            <>
-              <Avatar className="h-16 w-16" style={{ boxShadow: `0 0 0 3px ${BLUE}55` }}>
-                <AvatarImage src={remembered.avatarUrl} />
-                <AvatarFallback className="text-lg">{initials}</AvatarFallback>
-              </Avatar>
-              <div className="text-center">
-                <h2 className="text-xl font-bold text-foreground">
-                  {t('login.pin_welcome', { name: remembered.name.split(' ')[0] })}
-                </h2>
-                <div className="flex items-center justify-center gap-2 mt-3 text-sm text-muted-foreground">
-                  <ScanFace size={18} className="animate-pulse" style={{ color: BLUE }} />
-                  {t('login.biometric_verifying')}
-                </div>
-              </div>
-              <button
-                onClick={() => setAuthState('needs-pin')}
-                className="text-xs font-medium"
-                style={{ color: BLUE }}
-              >
-                {t('login.use_pin_instead')}
-              </button>
-            </>
-          )}
-
-          {/* ÉTAT 4 — Verrouillé */}
-          {authState === 'locked-out' && (
-            <>
-              <div className="w-16 h-16 rounded-full flex items-center justify-center"
-                   style={{ backgroundColor: 'rgba(239,68,68,0.1)' }}>
-                <ShieldAlert size={28} style={{ color: '#ef4444' }} />
-              </div>
-              <div className="text-center max-w-xs">
-                <h2 className="text-lg font-bold text-foreground">{t('login.locked_title')}</h2>
-                <p className="text-sm text-muted-foreground mt-1">{t('login.locked_description')}</p>
-              </div>
-              <ShimmerButton
-                onClick={handleChangeAccount}
-                shimmerColor={BLUE}
-                shimmerSize="0.08em"
-                borderRadius="12px"
-                background="linear-gradient(135deg, #0b252b 0%, #0a1628 100%)"
-                className="w-full py-3.5 text-sm font-semibold"
-              >
-                <span className="flex items-center justify-center gap-2" style={{ color: '#ffffff' }}>
-                  <RefreshCw size={16} />
-                  {t('login.reconnect')}
-                </span>
-              </ShimmerButton>
-            </>
-          )}
-
         </div>
 
         {/* Footer */}
@@ -461,25 +257,6 @@ export default function LoginPage() {
           </p>
         </div>
       </div>
-
-      {/* Dialog changement de compte */}
-      <AlertDialog open={showChangeAccountDialog} onOpenChange={setShowChangeAccountDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t('login.change_account_dialog_title')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('login.change_account_dialog_description')}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t('login.cancel')}</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleChangeAccount}
-              style={{ backgroundColor: '#ef4444' }}
-            >
-              {t('login.confirm')}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
     </div>
   )

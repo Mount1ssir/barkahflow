@@ -11,6 +11,9 @@ const SCHEMA = `
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
+-- ---------------------------------------------------------------------
+-- TABLE: clients
+-- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS clients (
   id TEXT PRIMARY KEY,
   full_name TEXT NOT NULL,
@@ -18,49 +21,30 @@ CREATE TABLE IF NOT EXISTS clients (
   email TEXT,
   address TEXT,
   notes TEXT,
+  credit_limit INTEGER DEFAULT NULL,   -- ajout
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS categories (
-  id TEXT PRIMARY KEY,
-  name_fr TEXT NOT NULL,
-  name_ar TEXT,
-  color TEXT DEFAULT '#3B82F6',
-  created_at TEXT NOT NULL
-);
-
+-- ---------------------------------------------------------------------
+-- TABLE: products
+-- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS products (
   id TEXT PRIMARY KEY,
   sku TEXT UNIQUE NOT NULL,
-  barcode TEXT UNIQUE,
   name_ar TEXT NOT NULL,
-  name_fr TEXT,
-  category_id TEXT REFERENCES categories(id) ON DELETE SET NULL,
-  unit TEXT NOT NULL DEFAULT 'piece',
+  name_en TEXT,
   cost_price INTEGER NOT NULL,
   retail_price INTEGER NOT NULL,
   stock_qty INTEGER NOT NULL DEFAULT 0,
-  reserved_stock INTEGER NOT NULL DEFAULT 0,
   alert_threshold INTEGER NOT NULL DEFAULT 5,
   tax_rate REAL DEFAULT 0,
-  image_path TEXT,
-  supplier_name TEXT,
-  description TEXT,
-  is_active INTEGER NOT NULL DEFAULT 1,
   updated_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS stock_movements (
-  id TEXT PRIMARY KEY,
-  product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-  type TEXT NOT NULL CHECK(type IN ('in', 'out')),
-  quantity INTEGER NOT NULL,
-  unit_price INTEGER,
-  reason TEXT,
-  created_at TEXT NOT NULL
-);
-
+-- ---------------------------------------------------------------------
+-- TABLE: invoices
+-- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS invoices (
   id TEXT PRIMARY KEY,
   invoice_number TEXT UNIQUE NOT NULL,
@@ -69,12 +53,16 @@ CREATE TABLE IF NOT EXISTS invoices (
   tax INTEGER NOT NULL DEFAULT 0,
   discount INTEGER NOT NULL DEFAULT 0,
   total INTEGER NOT NULL,
-  status TEXT NOT NULL DEFAULT 'DRAFT' CHECK(status IN ('DRAFT', 'PENDING', 'CONFIRMED', 'PAID', 'CANCELLED', 'RETURNED', 'PARTIAL', 'UNPAID')),
-  payment_method TEXT DEFAULT 'cash',
+  status TEXT NOT NULL CHECK(status IN ('PAID', 'PARTIAL', 'UNPAID')),
+  due_date TEXT,                        -- ajout : date limite de paiement
+  po_number TEXT,                       -- ajout : référence commande client
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
 
+-- ---------------------------------------------------------------------
+-- TABLE: line_items
+-- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS line_items (
   id TEXT PRIMARY KEY,
   invoice_id TEXT NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
@@ -85,18 +73,25 @@ CREATE TABLE IF NOT EXISTS line_items (
   subtotal INTEGER NOT NULL
 );
 
+-- ---------------------------------------------------------------------
+-- TABLE: transactions
+-- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS transactions (
   id TEXT PRIMARY KEY,
   type TEXT NOT NULL CHECK(type IN ('INCOME', 'EXPENSE')),
   amount INTEGER NOT NULL,
-  source_type TEXT CHECK(source_type IN ('invoice', 'manual', 'debt_payment')),
+  source_type TEXT CHECK(source_type IN ('invoice', 'manual')),
   source_id TEXT,
   category TEXT,
+  payment_method TEXT DEFAULT 'cash',   -- ajout
   transaction_date TEXT NOT NULL,
   notes TEXT,
   created_at TEXT NOT NULL
 );
 
+-- ---------------------------------------------------------------------
+-- TABLE: debt_ledger
+-- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS debt_ledger (
   id TEXT PRIMARY KEY,
   type TEXT NOT NULL CHECK(type IN ('RECEIVABLE', 'PAYABLE')),
@@ -109,99 +104,53 @@ CREATE TABLE IF NOT EXISTS debt_ledger (
   updated_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS audit_logs (
+-- ---------------------------------------------------------------------
+-- TABLE: reminders_queue
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS reminders_queue (
   id TEXT PRIMARY KEY,
-  user_id TEXT,
-  action TEXT NOT NULL,
-  entity_type TEXT NOT NULL,
-  entity_id TEXT,
-  before_state TEXT,
-  after_state TEXT,
-  ip_address TEXT,
-  user_agent TEXT,
-  created_at TEXT NOT NULL
+  client_id TEXT NOT NULL REFERENCES clients(id),
+  debt_amount INTEGER NOT NULL,
+  message TEXT NOT NULL,
+  channel TEXT NOT NULL CHECK(channel IN ('whatsapp', 'sms')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'opened', 'sent', 'failed')),
+  scheduled_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS sequence_numbers (
-  id TEXT PRIMARY KEY,
-  prefix TEXT NOT NULL,
-  last_number INTEGER NOT NULL DEFAULT 0,
-  year TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS company_settings (
-  id TEXT PRIMARY KEY DEFAULT 'single',
-  company_name TEXT,
-  address TEXT,
-  city TEXT,
-  phone TEXT,
-  email TEXT,
-  website TEXT,
-  logo_url TEXT,
-  ice TEXT,
-  rc TEXT,
-  if_number TEXT,
-  cnss TEXT,
-  rib TEXT,
-  bank_name TEXT,
-  tva_rate REAL,
-  invoice_prefix TEXT,
-  invoice_footer TEXT,
-  currency TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-INSERT OR IGNORE INTO company_settings (id, company_name) VALUES ('single', '');
-
+-- ---------------------------------------------------------------------
+-- INDEXES
+-- ---------------------------------------------------------------------
 CREATE INDEX IF NOT EXISTS idx_products_sku ON products(sku);
-CREATE INDEX IF NOT EXISTS idx_products_name ON products(name_ar, name_fr);
+CREATE INDEX IF NOT EXISTS idx_products_name ON products(name_ar, name_en);
 CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_invoices_due_date ON invoices(due_date);
 CREATE INDEX IF NOT EXISTS idx_clients_phone ON clients(phone);
-CREATE INDEX IF NOT EXISTS idx_products_barcode ON products(barcode);
-CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_id);
-CREATE INDEX IF NOT EXISTS idx_categories_name ON categories(name_fr);
-CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON stock_movements(product_id, created_at);
 `
 
 // ─── Migrations ─────────────────────────────────────────────────────
-// Ces migrations sont uniquement pour ajouter des colonnes ou créer des tables.
-// Elles NE touchent PAS à la table invoices (car le schéma initial est déjà à jour)
 const MIGRATIONS = [
-  `ALTER TABLE products ADD COLUMN reserved_stock INTEGER NOT NULL DEFAULT 0;`,
-  `ALTER TABLE invoices ADD COLUMN status TEXT NOT NULL DEFAULT 'DRAFT' 
-   CHECK(status IN ('DRAFT', 'PENDING', 'CONFIRMED', 'PAID', 'CANCELLED', 'RETURNED'));`,
-  `CREATE TABLE IF NOT EXISTS audit_logs (
+  // Ajout de credit_limit sur clients (si pas déjà)
+  `ALTER TABLE clients ADD COLUMN credit_limit INTEGER DEFAULT NULL;`,
+  // Ajout de payment_method sur transactions
+  `ALTER TABLE transactions ADD COLUMN payment_method TEXT DEFAULT 'cash';`,
+  // Création de reminders_queue
+  `CREATE TABLE IF NOT EXISTS reminders_queue (
     id TEXT PRIMARY KEY,
-    user_id TEXT,
-    action TEXT NOT NULL,
-    entity_type TEXT NOT NULL,
-    entity_id TEXT,
-    before_state TEXT,
-    after_state TEXT,
-    ip_address TEXT,
-    user_agent TEXT,
-    created_at TEXT NOT NULL
+    client_id TEXT NOT NULL REFERENCES clients(id),
+    debt_amount INTEGER NOT NULL,
+    message TEXT NOT NULL,
+    channel TEXT NOT NULL CHECK(channel IN ('whatsapp', 'sms')),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'opened', 'sent', 'failed')),
+    scheduled_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
   );`,
-  `CREATE TABLE IF NOT EXISTS sequence_numbers (
-    id TEXT PRIMARY KEY,
-    prefix TEXT NOT NULL,
-    last_number INTEGER NOT NULL DEFAULT 0,
-    year TEXT NOT NULL
-  );`,
-  `ALTER TABLE products ADD COLUMN category_id TEXT REFERENCES categories(id) ON DELETE SET NULL;`,
-  `ALTER TABLE products ADD COLUMN image_path TEXT;`,
-  `ALTER TABLE products ADD COLUMN supplier_name TEXT;`,
-  `ALTER TABLE products ADD COLUMN description TEXT;`,
-  `ALTER TABLE products ADD COLUMN tax_rate REAL DEFAULT 0;`,
-  `ALTER TABLE products ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;`,
-  `ALTER TABLE products ADD COLUMN alert_threshold INTEGER NOT NULL DEFAULT 5;`,
-  `ALTER TABLE products ADD COLUMN stock_qty INTEGER NOT NULL DEFAULT 0;`,
-  `ALTER TABLE categories ADD COLUMN color TEXT DEFAULT '#3B82F6';`,
-  `ALTER TABLE invoices ADD COLUMN payment_method TEXT DEFAULT 'cash';`,
-  // ✅ Ajout du client "Client de passage" (walkin)
-  `INSERT OR IGNORE INTO clients (id, full_name, phone, email, address, notes, created_at, updated_at)
-   VALUES ('client_walkin', 'Client de passage', NULL, NULL, NULL, NULL, datetime('now'), datetime('now'));`,
+  // ── Ajout : date d'échéance + référence commande sur invoices ──────
+  `ALTER TABLE invoices ADD COLUMN due_date TEXT;`,
+  `ALTER TABLE invoices ADD COLUMN po_number TEXT;`,
+  `CREATE INDEX IF NOT EXISTS idx_invoices_due_date ON invoices(due_date);`,
 ]
 
 async function runMigrations(db: any) {

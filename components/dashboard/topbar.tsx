@@ -7,7 +7,8 @@ import { useRouter } from 'next/navigation'
 import i18n, { initI18n } from '@/lib/i18n/config'
 import {
   Menu, Search, Moon, Sun, Bell, Settings, LogOut, ChevronDown,
-  User, Store, HelpCircle,
+  User, Store, HelpCircle, LayoutDashboard, ShoppingCart, Package,
+  FileText, Users, Wallet, BarChart3,
 } from 'lucide-react'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import {
@@ -28,6 +29,45 @@ const langs = [
   { code: 'en', label: 'English (UK)',       flag: 'https://flagcdn.com/w40/gb.png' },
   { code: 'ar', label: 'عربي (Arabic)',      flag: 'https://flagcdn.com/w40/ma.png' },
 ]
+
+// ─── Sections de l'app pour la recherche globale ───────────────────
+interface AppSection {
+  label: string
+  path: string
+  keywords: string[]
+  icon: React.ReactNode
+}
+
+const APP_SECTIONS: AppSection[] = [
+  { label: 'Tableau de bord', path: '/dashboard', keywords: ['dashboard', 'accueil', 'tableau de bord'], icon: <LayoutDashboard className="h-4 w-4" /> },
+  { label: 'Caisse (ventes)', path: '/dashboard/caisse', keywords: ['caisse', 'pos', 'ventes', 'checkout'], icon: <ShoppingCart className="h-4 w-4" /> },
+  { label: 'Produits', path: '/dashboard/produits', keywords: ['produits', 'stock', 'articles', 'inventaire'], icon: <Package className="h-4 w-4" /> },
+  { label: 'Factures', path: '/dashboard/factures', keywords: ['factures', 'invoice', 'facturation'], icon: <FileText className="h-4 w-4" /> },
+  { label: 'Clients', path: '/dashboard/clients', keywords: ['clients', 'client', 'contacts'], icon: <Users className="h-4 w-4" /> },
+  { label: 'Gestion des dettes', path: '/dashboard/dettes', keywords: ['dettes', 'créances', 'impayés', 'debt'], icon: <Wallet className="h-4 w-4" /> },
+  { label: 'Rapports & Revenus', path: '/dashboard/rapports', keywords: ['rapports', 'revenus', 'ca', 'chiffre affaires', 'statistiques'], icon: <BarChart3 className="h-4 w-4" /> },
+  { label: 'Paramètres', path: '/dashboard/parametres', keywords: ['paramètres', 'settings', 'sécurité', 'pin', 'biométrie'], icon: <Settings className="h-4 w-4" /> },
+  { label: 'Mon profil', path: '/dashboard/profil', keywords: ['profil', 'compte', 'profile'], icon: <User className="h-4 w-4" /> },
+  { label: 'Ma boutique', path: '/dashboard/boutique', keywords: ['boutique', 'shop', 'entreprise'], icon: <Store className="h-4 w-4" /> },
+  { label: 'Support / Aide', path: '/dashboard/support', keywords: ['support', 'aide', 'help'], icon: <HelpCircle className="h-4 w-4" /> },
+]
+
+function normalize(str: string): string {
+  return str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+function searchSections(query: string): AppSection[] {
+  const q = normalize(query.trim())
+  if (!q) return []
+  return APP_SECTIONS.filter((section) => {
+    const labelMatch = normalize(section.label).includes(q)
+    const keywordMatch = section.keywords.some((k) => normalize(k).includes(q))
+    return labelMatch || keywordMatch
+  })
+}
 
 function LanguageDropdown() {
   const [open, setOpen] = useState(false)
@@ -77,6 +117,114 @@ function LanguageDropdown() {
                    className="w-7 h-7 rounded-full object-cover shadow-sm" />
             </button>
           ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Barre de recherche globale ────────────────────────────────────
+function GlobalSearch() {
+  const router = useRouter()
+  const { t } = useTranslation()
+  const ref = useRef<HTMLDivElement>(null)
+  const [query, setQuery] = useState('')
+  const [open, setOpen] = useState(false)
+  const [activeIndex, setActiveIndex] = useState(0)
+
+  const results = searchSections(query)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  useEffect(() => {
+    setActiveIndex(0)
+  }, [query])
+
+  useEffect(() => {
+    const inputEl = ref.current?.querySelector('input')
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        inputEl?.focus()
+        setOpen(true)
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [])
+
+  const goToSection = (section: AppSection) => {
+    router.push(section.path)
+    setQuery('')
+    setOpen(false)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!open || results.length === 0) return
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setActiveIndex((prev) => (prev + 1) % results.length)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActiveIndex((prev) => (prev - 1 + results.length) % results.length)
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      goToSection(results[activeIndex])
+    } else if (e.key === 'Escape') {
+      setOpen(false)
+    }
+  }
+
+  return (
+    <div ref={ref} className="relative flex-1 max-w-xl mx-auto">
+      <div className="flex items-center gap-2.5 bg-[#F8F9FB] dark:bg-zinc-800 border border-[#EAECEF] dark:border-zinc-700 rounded-xl px-4 py-2.5">
+        <Search size={15} className="text-gray-400 shrink-0" />
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value)
+            setOpen(true)
+          }}
+          onFocus={() => query && setOpen(true)}
+          onKeyDown={handleKeyDown}
+          placeholder={t('dashboard.header.search', 'Rechercher dans le tableau de bord...')}
+          className="bg-transparent text-[13px] text-gray-600 dark:text-zinc-300 placeholder:text-gray-400 outline-none w-full"
+        />
+        <kbd className="text-[10px] text-gray-300 dark:text-zinc-500 font-mono shrink-0 border border-gray-200 dark:border-zinc-600 rounded px-1.5 py-0.5">
+          Ctrl K
+        </kbd>
+      </div>
+
+      {open && query && (
+        <div className="absolute left-0 right-0 mt-2 rounded-2xl bg-white dark:bg-zinc-900 border border-[#EAECEF] dark:border-zinc-700 shadow-xl overflow-hidden z-[999] max-h-80 overflow-y-auto">
+          {results.length === 0 ? (
+            <div className="px-4 py-6 text-center text-sm text-gray-400">
+              Aucune section trouvée pour "{query}"
+            </div>
+          ) : (
+            results.map((section, index) => (
+              <button
+                key={section.path}
+                onClick={() => goToSection(section)}
+                onMouseEnter={() => setActiveIndex(index)}
+                className={`w-full flex items-center gap-3 px-4 py-3 text-left text-sm transition-colors ${
+                  index === activeIndex
+                    ? 'bg-gray-50 dark:bg-zinc-800'
+                    : 'hover:bg-gray-50 dark:hover:bg-zinc-800'
+                }`}
+              >
+                <span className="text-gray-400">{section.icon}</span>
+                <span className="text-gray-700 dark:text-gray-200 font-medium">{section.label}</span>
+              </button>
+            ))
+          )}
         </div>
       )}
     </div>
@@ -156,19 +304,7 @@ export function TopBar({ user }: TopBarProps) {
         <Menu size={18} />
       </button>
 
-      <div className="flex-1 max-w-xl mx-auto">
-        <div className="flex items-center gap-2.5 bg-[#F8F9FB] dark:bg-zinc-800 border border-[#EAECEF] dark:border-zinc-700 rounded-xl px-4 py-2.5">
-          <Search size={15} className="text-gray-400 shrink-0" />
-          <input
-            type="text"
-            placeholder={t('dashboard.header.search', 'Rechercher dans le tableau de bord...')}
-            className="bg-transparent text-[13px] text-gray-600 dark:text-zinc-300 placeholder:text-gray-400 outline-none w-full"
-          />
-          <kbd className="text-[10px] text-gray-300 dark:text-zinc-500 font-mono shrink-0 border border-gray-200 dark:border-zinc-600 rounded px-1.5 py-0.5">
-            Ctrl K
-          </kbd>
-        </div>
-      </div>
+      <GlobalSearch />
 
       <div className="flex items-center gap-1 shrink-0">
 
@@ -319,18 +455,10 @@ export function TopBar({ user }: TopBarProps) {
               {t('dashboard.menu.profile', 'Mon profil')}
             </DropdownMenuItem>
 
-            <DropdownMenuItem
-              onClick={() => router.push('/dashboard/boutique')}
-              className="gap-2.5 py-2.5 px-3 rounded-xl cursor-pointer text-[13px] text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-800 focus:bg-gray-50"
-            >
-              <Store size={15} className="text-gray-400" />
-              {t('dashboard.menu.shop', 'Ma boutique')}
-            </DropdownMenuItem>
-
             <DropdownMenuSeparator className="bg-[#EAECEF] dark:bg-zinc-700" />
 
             <DropdownMenuItem
-              onClick={() => router.push('/dashboard/settings')}
+              onClick={() => router.push('/dashboard/parametres')}
               className="gap-2.5 py-2.5 px-3 rounded-xl cursor-pointer text-[13px] text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-800 focus:bg-gray-50"
             >
               <Settings size={15} className="text-gray-400" />

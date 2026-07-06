@@ -1,6 +1,8 @@
 import { dbExecute, dbSelect } from '@/src/lib/db'
 import { generateInvoiceNumber } from './invoice-number'
 import { logAudit } from './audit-log'
+import { getCompanySettings } from './company-settings'
+import { calculateDueDate } from './invoice-data'
 
 export interface CartItem {
   productId: string
@@ -15,6 +17,7 @@ export interface CheckoutInput {
   paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID'
   paymentMethod?: string
   paidAmount: number
+  poNumber?: string | null       // ajout : référence commande client
   userId?: string | null
   cashierId?: string | null
   ipAddress?: string
@@ -38,6 +41,13 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, delay = 300): 
     }
   }
   throw lastError
+}
+
+// Échappe les apostrophes pour l'injection directe dans le SQL brut
+// (nécessaire car ce fichier construit une transaction SQL sous forme
+// de chaîne concaténée plutôt que des requêtes paramétrées)
+function sqlEscape(value: string): string {
+  return value.replace(/'/g, "''")
 }
 
 export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId: string; invoiceNumber: string }> {
@@ -111,12 +121,19 @@ export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId
   const now = new Date().toISOString()
   const paymentMethod = input.paymentMethod || 'cash'
 
+  // ── Calcul de l'échéance ────────────────────────────────────────
+  // Basée sur le délai de paiement par défaut configuré dans les
+  // paramètres de l'entreprise (30 jours si non configuré).
+  const companySettings = await getCompanySettings()
+  const dueDate = calculateDueDate(now, companySettings.defaultPaymentTermsDays || 30)
+  const poNumber = input.poNumber ? sqlEscape(input.poNumber) : null
+
   let sql = 'BEGIN;\n'
 
   sql += `
     INSERT INTO invoices (
       id, invoice_number, client_id, subtotal, tax, discount, total,
-      status, payment_method, created_at, updated_at
+      status, payment_method, due_date, po_number, created_at, updated_at
     ) VALUES (
       '${invoiceId}',
       '${invoiceNumber}',
@@ -127,6 +144,8 @@ export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId
       ${Math.round(total * 100)},
       '${input.paymentStatus}',
       '${paymentMethod}',
+      '${dueDate}',
+      ${poNumber ? `'${poNumber}'` : 'NULL'},
       '${now}',
       '${now}'
     );

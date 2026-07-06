@@ -10,33 +10,38 @@ export interface TopProduct {
 
 type Period = 'today' | 'week' | 'month'
 
-function getDateRange(period: Period): { start: string; end: string } {
+// Bornes en dates locales simples (YYYY-MM-DD), calculées avec les getters
+// locaux — pas toISOString() qui convertit en UTC et peut décaler le jour.
+function getLocalDateRange(period: Period): { start: string; end: string } {
   const now = new Date()
-  const end = now.toISOString().split('T')[0]
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const formatLocal = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 
-  let start: Date
+  const end = formatLocal(now)
+
+  let startDate: Date
   switch (period) {
     case 'today':
-      start = new Date(now)
+      startDate = new Date(now)
       break
     case 'week':
-      start = new Date(now)
-      start.setDate(start.getDate() - 6)
+      startDate = new Date(now)
+      startDate.setDate(startDate.getDate() - 6)
       break
     case 'month':
-      start = new Date(now)
-      start.setMonth(start.getMonth() - 1)
+      startDate = new Date(now)
+      startDate.setMonth(startDate.getMonth() - 1)
       break
   }
 
-  return { start: start.toISOString().split('T')[0], end }
+  return { start: formatLocal(startDate), end }
 }
 
 export async function getTopProducts(
   limit: number = 4,
   period: Period = 'week'
 ): Promise<TopProduct[]> {
-  const { start, end } = getDateRange(period)
+  const { start, end } = getLocalDateRange(period)
   console.log('🔍 Période sélectionnée:', { start, end })
 
   // 1. Compter les factures (hors annulées) dans la période
@@ -44,7 +49,7 @@ export async function getTopProducts(
     SELECT COUNT(*) as total
     FROM invoices
     WHERE status != 'CANCELLED'
-      AND created_at >= ? AND created_at <= ?
+      AND date(created_at, 'localtime') BETWEEN date(?) AND date(?)
   `
   const countInvoices = await dbSelect<{ total: number }>(countInvoicesSql, [start, end])
   console.log(`📊 Nombre de factures (hors annulées) dans la période :`, countInvoices[0]?.total || 0)
@@ -55,7 +60,7 @@ export async function getTopProducts(
     FROM line_items li
     JOIN invoices i ON i.id = li.invoice_id
     WHERE i.status != 'CANCELLED'
-      AND i.created_at >= ? AND i.created_at <= ?
+      AND date(i.created_at, 'localtime') BETWEEN date(?) AND date(?)
   `
   const countLines = await dbSelect<{ total: number }>(countLinesSql, [start, end])
   console.log(`📊 Nombre de lignes de factures dans la période :`, countLines[0]?.total || 0)
@@ -73,7 +78,7 @@ export async function getTopProducts(
     LEFT JOIN categories c ON c.id = p.category_id
     JOIN invoices i ON i.id = li.invoice_id
     WHERE i.status != 'CANCELLED'
-      AND i.created_at >= ? AND i.created_at <= ?
+      AND date(i.created_at, 'localtime') BETWEEN date(?) AND date(?)
     GROUP BY li.product_id
     ORDER BY units_sold DESC
     LIMIT ?
@@ -96,47 +101,10 @@ export async function getTopProducts(
       }))
     }
 
-    // 🔥 Si aucun résultat, on essaie sans filtre de date pour voir si des produits existent
-    console.warn('⚠️ Aucun résultat avec la période. Tentative sans filtre de date...')
-    const fallbackSql = `
-      SELECT
-        li.product_id,
-        COALESCE(p.name_fr, p.name_ar, p.sku, 'Produit sans nom') as display_name,
-        COALESCE(c.color, '#6B7280') as color,
-        SUM(li.qty) as units_sold,
-        SUM(li.subtotal) as total_amount
-      FROM line_items li
-      JOIN products p ON p.id = li.product_id
-      LEFT JOIN categories c ON c.id = p.category_id
-      JOIN invoices i ON i.id = li.invoice_id
-      WHERE i.status != 'CANCELLED'
-      GROUP BY li.product_id
-      ORDER BY units_sold DESC
-      LIMIT ?
-    `
-    const fallbackRows = await dbSelect<any>(fallbackSql, [limit])
-    console.log('📦 Résultats sans filtre de date:', fallbackRows)
-
-    if (fallbackRows && fallbackRows.length > 0) {
-      console.warn('✅ Des produits existent mais en dehors de la période sélectionnée.')
-      return fallbackRows.map((row: any) => ({
-        id: row.product_id,
-        nameAr: row.display_name,
-        unitsSold: Number(row.units_sold),
-        totalAmount: Number(row.total_amount),
-        color: row.color,
-      }))
-    }
-
-    // 🔥 Dernier test : vérifier s'il y a des lignes tout court (même avec statut CANCELLED)
-    const totalLinesSql = `SELECT COUNT(*) as total FROM line_items`
-    const totalLines = await dbSelect<{ total: number }>(totalLinesSql)
-    console.log(`📊 Nombre total de lignes dans line_items (tous statuts) :`, totalLines[0]?.total || 0)
-
-    if (totalLines[0]?.total === 0) {
-      console.warn('❌ La table line_items est complètement vide.')
-    }
-
+    // Aucun résultat dans la période demandée : on retourne un tableau vide.
+    // (Plus de fallback silencieux vers "toutes les dates" qui faussait
+    // l'affichage en faisant passer l'historique complet pour la période choisie.)
+    console.warn('⚠️ Aucune vente de produit dans cette période.')
     return []
   } catch (error) {
     console.error('❌ Erreur dans getTopProducts:', error)

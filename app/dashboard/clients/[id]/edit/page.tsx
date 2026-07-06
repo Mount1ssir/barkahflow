@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
-import { ArrowLeft, Save } from 'lucide-react'
+import { ArrowLeft, Save, CreditCard as CreditCardIcon } from 'lucide-react'
 import { getClientById, updateClient, type Client } from '@/lib/client-data'
 
 const DARK_NAVY = '#0F172A'
@@ -24,6 +24,7 @@ export default function EditClientPage() {
   const [client, setClient] = useState<Client | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [creditLimit, setCreditLimit] = useState('')
   const [form, setForm] = useState({
     fullName: '',
     phone: '',
@@ -52,6 +53,7 @@ export default function EditClientPage() {
         address: data.address || '',
         notes: data.notes || '',
       })
+      setCreditLimit(data.creditLimit ? (data.creditLimit / 100).toFixed(2) : '')
     } catch (error) {
       console.error(error)
       toast.error('Erreur chargement client')
@@ -69,9 +71,19 @@ export default function EditClientPage() {
       toast.error('Le nom est obligatoire')
       return
     }
+
+    const parsedLimit = parseFloat(creditLimit)
+    if (creditLimit.trim() && (isNaN(parsedLimit) || parsedLimit < 0)) {
+      toast.error('La limite de crédit doit être un nombre positif')
+      return
+    }
+
     setSaving(true)
     try {
-      await updateClient(id, form)
+      await updateClient(id, {
+        ...form,
+        creditLimit: creditLimit.trim() ? Math.round(parsedLimit * 100) : null,
+      })
       toast.success('Client modifié avec succès')
       router.push('/dashboard/clients')
     } catch (error) {
@@ -147,6 +159,27 @@ export default function EditClientPage() {
               className="rounded-xl h-11 border-gray-200 dark:border-gray-700"
             />
           </div>
+
+          {/* ── Ajout : Limite de crédit ── */}
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <CreditCardIcon className="h-4 w-4 text-gray-400" />
+              Limite de crédit (MAD) <span className="text-gray-400 font-normal">(optionnel)</span>
+            </Label>
+            <Input
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="Ex: 500.00"
+              value={creditLimit}
+              onChange={(e) => setCreditLimit(e.target.value)}
+              className="rounded-xl h-11 border-gray-200 dark:border-gray-700"
+            />
+            <p className="text-xs text-gray-400">
+              Montant maximum de dette autorisé pour ce client. Laissez vide pour ne fixer aucune limite.
+            </p>
+          </div>
+
           <div className="space-y-1.5">
             <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
               Notes

@@ -22,8 +22,11 @@ function formatDayLabel(date: Date): string {
   return `${dayName} ${dayNumber}`
 }
 
-function toISODate(date: Date): string {
-  return date.toISOString().split('T')[0]
+// Formate une date en "YYYY-MM-DD" en utilisant les getters LOCAUX
+// (jamais toISOString(), qui convertit en UTC et peut décaler le jour)
+function toLocalISODate(date: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
 /**
@@ -61,14 +64,18 @@ export async function getRevenueChartData(
     const startDate = new Date(endDate)
     startDate.setDate(startDate.getDate() - (days - 1))
 
-    const startISO = startDate.toISOString().split('T')[0]
+    // Bornes de la requête SQL : on englobe toute la plage en UTC pour être sûr
+    // de ne rien manquer, le filtrage précis par jour se fait ensuite en JS
+    // via date(transaction_date, 'localtime').
+    const startISO = toLocalISODate(startDate)
     const endNextDay = new Date(endDate)
     endNextDay.setDate(endNextDay.getDate() + 1)
-    const endNextISO = endNextDay.toISOString().split('T')[0]
+    const endNextISO = toLocalISODate(endNextDay)
 
     const transactions = await dbSelectWithRetry<TransactionRow>(
       `SELECT transaction_date, type, amount FROM transactions
-       WHERE transaction_date >= ? AND transaction_date < ?
+       WHERE date(transaction_date, 'localtime') >= date(?)
+         AND date(transaction_date, 'localtime') < date(?)
        ORDER BY transaction_date ASC`,
       [startISO, endNextISO],
       3,
@@ -79,12 +86,15 @@ export async function getRevenueChartData(
     for (let i = 0; i < days; i++) {
       const day = new Date(startDate)
       day.setDate(day.getDate() + i)
-      const isoDate = toISODate(day)
+      const isoDate = toLocalISODate(day)
       dayMap.set(isoDate, { ventes: 0, depenses: 0 })
     }
 
     for (const tx of transactions) {
-      const isoDate = tx.transaction_date.split('T')[0]
+      // On reconvertit le timestamp UTC stocké en base vers une date locale,
+      // pour que la clé corresponde à celles du dayMap (construites en local).
+      const txDate = new Date(tx.transaction_date)
+      const isoDate = toLocalISODate(txDate)
       const entry = dayMap.get(isoDate)
       if (entry) {
         if (tx.type === 'INCOME') {
@@ -99,7 +109,7 @@ export async function getRevenueChartData(
     for (let i = 0; i < days; i++) {
       const day = new Date(startDate)
       day.setDate(day.getDate() + i)
-      const isoDate = toISODate(day)
+      const isoDate = toLocalISODate(day)
       const entry = dayMap.get(isoDate)!
 
       result.push({
@@ -131,7 +141,7 @@ function generateEmptyData(offset: number, days: number): ChartDataPoint[] {
     day.setDate(day.getDate() + i)
     result.push({
       date: formatDayLabel(day),
-      fullDate: toISODate(day),
+      fullDate: toLocalISODate(day),
       ventes: 0,
       depenses: 0,
       solde: 0,

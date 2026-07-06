@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useRouter } from 'next/navigation'
 import {
@@ -24,7 +24,8 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { toast } from 'sonner'
 import { processCheckout } from '@/lib/checkout-process'
 import { dbSelect } from '@/src/lib/db'
-import { Plus, DollarSign, CreditCard, Smartphone, Repeat } from 'lucide-react'
+import { formatMAD } from '@/lib/stats-data'
+import { Plus, DollarSign, CreditCard, Smartphone, Repeat, AlertTriangle } from 'lucide-react'
 
 const WALKIN_CLIENT_ID = 'client_walkin'
 
@@ -57,6 +58,12 @@ const BLUE_NAVY = '#1E293B'
 
 type PaymentMethod = 'cash' | 'card' | 'mobile' | 'mixed'
 
+interface CreditLimitWarning {
+  currentDebt: number   // centimes
+  newDebt: number       // centimes
+  limit: number         // centimes
+}
+
 export function CheckoutModal({
   open,
   onOpenChange,
@@ -75,6 +82,11 @@ export function CheckoutModal({
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(false)
   const [discount, setDiscount] = useState('0')
+  const [poNumber, setPoNumber] = useState('')
+
+  // ── Avertissement limite de crédit (non bloquant) ─────────────────
+  const [limitWarning, setLimitWarning] = useState<CreditLimitWarning | null>(null)
+  const limitConfirmedRef = useRef(false)
 
   useEffect(() => {
     if (open) {
@@ -91,8 +103,18 @@ export function CheckoutModal({
       setPaymentStatus('PAID')
       setPaymentMethod('cash')
       setDiscount('0')
+      setPoNumber('')
+      setLimitWarning(null)
+      limitConfirmedRef.current = false
     }
   }, [open])
+
+  // Toute modification des paramètres de la vente invalide une éventuelle
+  // confirmation précédente du dépassement de limite (on revérifie).
+  useEffect(() => {
+    setLimitWarning(null)
+    limitConfirmedRef.current = false
+  }, [customerId, paymentStatus, paidAmount, discount])
 
   const handleCustomerChange = (value: string) => {
     if (value === 'add_client') {
@@ -108,6 +130,46 @@ export function CheckoutModal({
 
   const showReceivedAmount = paymentStatus === 'PARTIAL' ||
                              (paymentStatus === 'PAID' && paymentMethod === 'cash')
+
+  // ── Vérification de la limite de crédit ───────────────────────────
+  // Renvoie true si on peut continuer (pas de limite dépassée, ou déjà
+  // confirmé par l'utilisateur). Renvoie false et affiche un avertissement
+  // sinon — sans jamais bloquer définitivement la vente.
+  const checkCreditLimit = async (finalPaidAmount: number, newTotalMAD: number): Promise<boolean> => {
+    if (paymentStatus === 'PAID' || customerId === WALKIN_CLIENT_ID) return true
+    if (limitConfirmedRef.current) return true
+
+    try {
+      const clientRows = await dbSelect<{ credit_limit: number | null }>(
+        `SELECT credit_limit FROM clients WHERE id = ?`,
+        [customerId]
+      )
+      const creditLimit = clientRows[0]?.credit_limit ?? null
+      if (creditLimit === null) return true // pas de limite définie pour ce client
+
+      const debtRows = await dbSelect<{ total: number }>(
+        `SELECT COALESCE(SUM(remaining_debt), 0) as total
+         FROM debt_ledger
+         WHERE contact_id = ? AND status IN ('ACTIVE', 'PARTIAL')`,
+        [customerId]
+      )
+      const currentDebt = debtRows[0]?.total || 0
+
+      // Montant qui ira à crédit sur CETTE vente (en centimes)
+      const newCreditMAD = paymentStatus === 'UNPAID' ? newTotalMAD : (newTotalMAD - finalPaidAmount)
+      const newCreditCentimes = Math.round(newCreditMAD * 100)
+      const projectedDebt = currentDebt + newCreditCentimes
+
+      if (projectedDebt > creditLimit) {
+        setLimitWarning({ currentDebt, newDebt: projectedDebt, limit: creditLimit })
+        return false
+      }
+      return true
+    } catch (error) {
+      console.error('Erreur vérification limite de crédit:', error)
+      return true // en cas d'erreur, on ne bloque pas la vente
+    }
+  }
 
   const handleSubmit = async () => {
     if (!cart || cart.length === 0) {
@@ -154,6 +216,10 @@ export function CheckoutModal({
       finalPaidAmount = parseFloat(paidAmount) || newTotal
     }
 
+    // ── Vérification limite de crédit avant de continuer ──────────
+    const canProceed = await checkCreditLimit(finalPaidAmount, newTotal)
+    if (!canProceed) return
+
     setLoading(true)
     try {
       const cartForCheckout = cart.map((item) => ({
@@ -166,8 +232,9 @@ export function CheckoutModal({
         cart: cartForCheckout,
         customerId: customerId === WALKIN_CLIENT_ID ? null : customerId,
         paymentStatus,
-        paymentMethod, // ← transmission du mode
+        paymentMethod,
         paidAmount: finalPaidAmount,
+        poNumber: poNumber.trim() || null,
         userId: null,
         ipAddress: '0.0.0.0',
         userAgent: navigator.userAgent,
@@ -183,12 +250,19 @@ export function CheckoutModal({
     }
   }
 
+  const handleConfirmDespiteLimit = () => {
+    limitConfirmedRef.current = true
+    setLimitWarning(null)
+    handleSubmit()
+  }
+
   const isWalkin = customerId === WALKIN_CLIENT_ID
   const discountPercent = parseFloat(discount) || 0
   const discountFactor = 1 - discountPercent / 100
   const displaySubtotal = (subtotal / 100) * discountFactor
   const displayTax = (tax / 100) * discountFactor
   const displayTotal = (total / 100) * discountFactor
+  const hasPartialAmountError = paymentStatus === 'PARTIAL' && paidAmount !== '' && (received <= 0 || received >= displayTotal)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -263,6 +337,19 @@ export function CheckoutModal({
 
           <div className="space-y-1.5">
             <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              Référence commande <span className="text-gray-400 font-normal">(optionnel)</span>
+            </Label>
+            <Input
+              type="text"
+              placeholder="Ex: BC-2026-045"
+              value={poNumber}
+              onChange={(e) => setPoNumber(e.target.value)}
+              className="rounded-xl border-gray-200 dark:border-gray-700 h-11"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
               {t('pos.discount', 'Remise (%)')}
             </Label>
             <Input
@@ -276,7 +363,15 @@ export function CheckoutModal({
             />
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-2 pos-checkout-radio">
+            <style jsx global>{`
+              .pos-checkout-radio [data-slot="radio-group-indicator"] span {
+                background-color: #60a5fa !important;
+                border-radius: 9999px !important;
+                width: 8px !important;
+                height: 8px !important;
+              }
+            `}</style>
             <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
               {t('pos.payment_status', 'Statut de paiement')}
             </Label>
@@ -364,6 +459,49 @@ export function CheckoutModal({
                   Le montant reçu est inférieur au total
                 </p>
               )}
+              {paymentStatus === 'PARTIAL' && paidAmount !== '' && received <= 0 && (
+                <p className="text-sm text-red-500">
+                  Le montant payé doit être supérieur à 0
+                </p>
+              )}
+              {paymentStatus === 'PARTIAL' && paidAmount !== '' && received > 0 && received >= displayTotal && (
+                <p className="text-sm text-red-500">
+                  Le montant payé doit être inférieur au total ({displayTotal.toFixed(2)} MAD)
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* ── Avertissement limite de crédit dépassée (non bloquant) ── */}
+          {limitWarning && (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700 p-3 space-y-2">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+                <div className="text-xs text-amber-800 dark:text-amber-300">
+                  <p className="font-semibold mb-1">Ce client dépassera sa limite de crédit</p>
+                  <p>Limite fixée : {formatMAD(limitWarning.limit)}</p>
+                  <p>Dette actuelle : {formatMAD(limitWarning.currentDebt)}</p>
+                  <p className="font-semibold">Nouvelle dette totale : {formatMAD(limitWarning.newDebt)}</p>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs rounded-lg"
+                  onClick={() => setLimitWarning(null)}
+                >
+                  Annuler
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-8 text-xs rounded-lg bg-amber-600 hover:bg-amber-700 text-white"
+                  onClick={handleConfirmDespiteLimit}
+                  disabled={loading}
+                >
+                  Confirmer quand même
+                </Button>
+              </div>
             </div>
           )}
         </div>
@@ -378,7 +516,7 @@ export function CheckoutModal({
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={loading}
+            disabled={loading || !!limitWarning || hasPartialAmountError}
             className="rounded-xl font-semibold text-white h-11 px-6 shadow-sm hover:shadow-md transition-all"
             style={{ backgroundColor: BLUE_NAVY }}
           >

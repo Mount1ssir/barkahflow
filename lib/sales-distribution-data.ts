@@ -24,44 +24,42 @@ const categoryColors: Record<string, string> = {
 
 // Couleurs de secours pour les catégories non répertoriées
 const fallbackColors = [
-  '#8B5CF6', // violet
-  '#EC4899', // rose
-  '#14B8A6', // turquoise
-  '#F97316', // orange
-  '#84CC16', // vert clair
-  '#06B6D4', // cyan
-  '#D946EF', // magenta
-  '#6366F1', // indigo
-  '#8B5CF6',
-  '#14B8A6',
+  '#8B5CF6', '#EC4899', '#14B8A6', '#F97316', '#84CC16',
+  '#06B6D4', '#D946EF', '#6366F1', '#8B5CF6', '#14B8A6',
 ]
 
-function getDateRange(period: Period): { start: string; end: string } {
+// Bornes en dates locales simples (YYYY-MM-DD) — cohérent avec les autres
+// fichiers déjà corrigés. Le filtrage SQL utilise 'localtime' pour convertir
+// les timestamps UTC stockés en base vers l'heure locale avant comparaison.
+function getLocalDateRange(period: Period): { start: string; end: string } {
   const now = new Date()
-  const end = now.toISOString().split('T')[0]
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const formatLocal = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 
-  let start: Date
+  const end = formatLocal(now)
+
+  let startDate: Date
   switch (period) {
     case 'today':
-      start = new Date(now)
+      startDate = new Date(now)
       break
     case 'week':
-      start = new Date(now)
-      start.setDate(start.getDate() - 6)
+      startDate = new Date(now)
+      startDate.setDate(startDate.getDate() - 6)
       break
     case 'month':
-      start = new Date(now)
-      start.setMonth(start.getMonth() - 1)
+      startDate = new Date(now)
+      startDate.setMonth(startDate.getMonth() - 1)
       break
   }
 
-  return { start: start.toISOString().split('T')[0], end }
+  return { start: formatLocal(startDate), end }
 }
 
 export async function getSalesDistribution(
   period: Period = 'month'
 ): Promise<SalesSlice[]> {
-  const { start, end } = getDateRange(period)
+  const { start, end } = getLocalDateRange(period)
 
   console.log('📊 getSalesDistribution - Période:', { start, end })
 
@@ -71,13 +69,12 @@ export async function getSalesDistribution(
      FROM line_items li
      JOIN invoices i ON i.id = li.invoice_id
      WHERE i.status != 'CANCELLED'
-       AND i.created_at >= ? AND i.created_at <= ?`,
+       AND date(i.created_at, 'localtime') BETWEEN date(?) AND date(?)`,
     [start, end]
   )
   const nbLines = countLines[0]?.total || 0
   console.log(`📊 Lignes de factures dans la période : ${nbLines}`)
 
-  // Requête sans LIMIT (toutes les catégories)
   const sql = `
     SELECT
       COALESCE(c.name_fr, 'Sans catégorie') as category_name,
@@ -88,35 +85,20 @@ export async function getSalesDistribution(
     JOIN products p ON p.id = li.product_id
     LEFT JOIN categories c ON c.id = p.category_id
     WHERE i.status != 'CANCELLED'
-      AND i.created_at >= ? AND i.created_at <= ?
-    GROUP BY COALESCE(c.name_fr, 'Sans catégorie')
-    ORDER BY total_amount DESC
-  `
-
-  const fallbackSql = `
-    SELECT
-      COALESCE(c.name_fr, 'Sans catégorie') as category_name,
-      COALESCE(c.color, '#6B7280') as color,
-      SUM(li.subtotal) as total_amount
-    FROM line_items li
-    JOIN invoices i ON i.id = li.invoice_id
-    JOIN products p ON p.id = li.product_id
-    LEFT JOIN categories c ON c.id = p.category_id
-    WHERE i.status != 'CANCELLED'
+      AND date(i.created_at, 'localtime') BETWEEN date(?) AND date(?)
     GROUP BY COALESCE(c.name_fr, 'Sans catégorie')
     ORDER BY total_amount DESC
   `
 
   try {
-    let rows: any[]
     if (nbLines === 0) {
-      console.warn('⚠️ Aucune ligne dans la période. Utilisation du fallback (toutes dates).')
-      rows = await dbSelect<any>(fallbackSql)
-    } else {
-      rows = await dbSelect<any>(sql, [start, end])
+      console.warn('⚠️ Aucune vente dans cette période.')
+      return []
     }
 
-    console.log('📦 Résultats distribution (sans limite) :', rows)
+    const rows = await dbSelect<any>(sql, [start, end])
+
+    console.log('📦 Résultats distribution :', rows)
 
     if (!rows || rows.length === 0) {
       return []
@@ -125,7 +107,6 @@ export async function getSalesDistribution(
     const total = rows.reduce((sum, r) => sum + Number(r.total_amount), 0)
     if (total === 0) return []
 
-    // Assigner une couleur pour chaque catégorie
     let colorIndex = 0
     return rows.map((row: any) => {
       let name = row.category_name || 'Sans catégorie'

@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
 import { getCompanySettings, updateCompanySettings, type CompanySettings } from '@/lib/company-settings'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Building2, MapPin, Phone, Mail, Globe, CreditCard, FileText, Upload } from 'lucide-react'
+import { Building2, MapPin, Phone, Mail, Globe, CreditCard, FileText, Upload, Calendar, AlertTriangle } from 'lucide-react'
 
 const BLUE = '#3B82F6'
 
@@ -264,6 +264,48 @@ export default function SettingsPage() {
                 placeholder=""
               />
             </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Ajout : Conditions de paiement ── */}
+      <Card className="rounded-2xl border shadow-sm mt-6">
+        <CardHeader>
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <Calendar className="h-5 w-5 text-gray-500" />
+            Conditions de paiement
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium">Délai de paiement par défaut (jours)</Label>
+            <Input
+              type="number"
+              min="0"
+              value={settings.defaultPaymentTermsDays}
+              onChange={(e) => handleChange('defaultPaymentTermsDays', parseInt(e.target.value) || 0)}
+              className="rounded-xl h-11 max-w-[200px]"
+            />
+            <p className="text-xs text-gray-400">
+              Utilisé pour calculer automatiquement la date d'échéance de chaque nouvelle facture.
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-gray-400" />
+              Mention légale — pénalités de retard
+            </Label>
+            <Textarea
+              value={settings.latePaymentPenaltyText}
+              onChange={(e) => handleChange('latePaymentPenaltyText', e.target.value)}
+              rows={2}
+              className="rounded-xl resize-none"
+              placeholder="Tout retard de paiement entraîne l'application de pénalités au taux légal en vigueur..."
+            />
+            <p className="text-xs text-gray-400">
+              Ce texte apparaît en bas de chaque facture non entièrement payée.
+            </p>
           </div>
         </CardContent>
       </Card>

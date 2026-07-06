@@ -2,25 +2,26 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
-import { ArrowLeft, Save } from 'lucide-react'
+import { ArrowLeft, Save, CreditCard } from 'lucide-react'
 import { createClient } from '@/lib/client-data'
+import PhoneInput from 'react-phone-number-input'
+import 'react-phone-number-input/style.css'
 
 const DARK_NAVY = '#0F172A'
 
 export default function NewClientPage() {
-  const { t } = useTranslation()
   const router = useRouter()
   const [loading, setLoading] = useState(false)
+  const [phone, setPhone] = useState<string | undefined>('')
+  const [creditLimit, setCreditLimit] = useState('')
   const [form, setForm] = useState({
     fullName: '',
-    phone: '',
     email: '',
     address: '',
     notes: '',
@@ -35,9 +36,20 @@ export default function NewClientPage() {
       toast.error('Le nom est obligatoire')
       return
     }
+
+    const parsedLimit = parseFloat(creditLimit)
+    if (creditLimit.trim() && (isNaN(parsedLimit) || parsedLimit < 0)) {
+      toast.error('La limite de crédit doit être un nombre positif')
+      return
+    }
+
     setLoading(true)
     try {
-      await createClient(form)
+      await createClient({
+        ...form,
+        phone: phone || '',
+        creditLimit: creditLimit.trim() ? Math.round(parsedLimit * 100) : null,
+      })
       toast.success('Client créé avec succès')
       router.push('/dashboard/clients')
     } catch (error) {
@@ -50,6 +62,43 @@ export default function NewClientPage() {
 
   return (
     <div className="max-w-2xl mx-auto p-6">
+      {/* ── Style pour aligner le champ téléphone sur les autres inputs ── */}
+      <style jsx global>{`
+        .phone-input-custom {
+          display: flex;
+          align-items: center;
+          height: 44px;
+          border-radius: 0.75rem;
+          border: 1px solid rgb(229 231 235);
+          background: transparent;
+          padding: 0 0.75rem;
+          transition: border-color 0.15s ease;
+        }
+        .dark .phone-input-custom {
+          border-color: rgb(55 65 81);
+        }
+        .phone-input-custom:focus-within {
+          border-color: rgb(15 23 42);
+          outline: 2px solid transparent;
+          outline-offset: 2px;
+          box-shadow: 0 0 0 1px rgb(15 23 42);
+        }
+        .phone-input-custom .PhoneInputInput {
+          border: none;
+          background: transparent;
+          outline: none;
+          font-size: 0.875rem;
+          height: 100%;
+          color: inherit;
+        }
+        .phone-input-custom .PhoneInputCountry {
+          margin-right: 0.5rem;
+        }
+        .phone-input-custom .PhoneInputCountrySelect {
+          background: transparent;
+        }
+      `}</style>
+
       <div className="flex items-center gap-4 mb-6">
         <Button variant="ghost" onClick={() => router.push('/dashboard/clients')} className="gap-2 rounded-xl">
           <ArrowLeft className="h-4 w-4" /> Retour
@@ -72,16 +121,20 @@ export default function NewClientPage() {
               className="rounded-xl h-11 border-gray-200 dark:border-gray-700"
             />
           </div>
+
           <div className="space-y-1.5">
             <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
               Téléphone
             </Label>
-            <Input
-              value={form.phone}
-              onChange={(e) => handleChange('phone', e.target.value)}
-              className="rounded-xl h-11 border-gray-200 dark:border-gray-700"
+            <PhoneInput
+              international
+              defaultCountry="MA"
+              value={phone}
+              onChange={setPhone}
+              className="phone-input-custom"
             />
           </div>
+
           <div className="space-y-1.5">
             <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
               Email
@@ -92,6 +145,7 @@ export default function NewClientPage() {
               className="rounded-xl h-11 border-gray-200 dark:border-gray-700"
             />
           </div>
+
           <div className="space-y-1.5">
             <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
               Adresse
@@ -102,6 +156,27 @@ export default function NewClientPage() {
               className="rounded-xl h-11 border-gray-200 dark:border-gray-700"
             />
           </div>
+
+          {/* ── Ajout : Limite de crédit ── */}
+          <div className="space-y-1.5">
+            <Label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <CreditCard className="h-4 w-4 text-gray-400" />
+              Limite de crédit (MAD) <span className="text-gray-400 font-normal">(optionnel)</span>
+            </Label>
+            <Input
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="Ex: 500.00"
+              value={creditLimit}
+              onChange={(e) => setCreditLimit(e.target.value)}
+              className="rounded-xl h-11 border-gray-200 dark:border-gray-700"
+            />
+            <p className="text-xs text-gray-400">
+              Montant maximum de dette autorisé pour ce client. Laissez vide pour ne fixer aucune limite.
+            </p>
+          </div>
+
           <div className="space-y-1.5">
             <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
               Notes
@@ -113,6 +188,7 @@ export default function NewClientPage() {
               className="rounded-xl border-gray-200 dark:border-gray-700 resize-none"
             />
           </div>
+
           <Button
             onClick={handleSubmit}
             disabled={loading}
