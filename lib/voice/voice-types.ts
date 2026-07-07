@@ -1,36 +1,42 @@
-// ─── Types des intentions ──────────────────────────────────────────
 export type Intent =
-  // Navigation (sans confirmation)
   | 'NAVIGATE'
-  // Recherche (sans confirmation)
   | 'SEARCH'
-  // POS / Panier (AVEC confirmation)
+  | 'CLEAR_SEARCH'
+  | 'EXPORT'
+  | 'REFRESH'
   | 'POS_ADD'
   | 'POS_REMOVE'
   | 'POS_CLEAR'
   | 'POS_CHECKOUT'
   | 'POS_CANCEL'
-  // Produits (AVEC confirmation pour modification)
   | 'PRODUCT_ADD'
   | 'PRODUCT_DELETE'
-  | 'PRODUCT_MODIFY'
+  | 'PRODUCT_EDIT'
+  | 'PRODUCT_VIEW'
+  | 'PRODUCT_TOGGLE'
   | 'PRODUCT_COUNT'
-  // Clients (AVEC confirmation pour création/suppression)
+  | 'PRODUCT_REPLENISH'
+  | 'PRODUCT_HISTORY'
   | 'CLIENT_ADD'
+  | 'CLIENT_DELETE'
+  | 'CLIENT_EDIT'
+  | 'CLIENT_VIEW'
   | 'CLIENT_COUNT'
   | 'CLIENT_DEBTORS'
-  // Statistiques (sans confirmation)
+  | 'INVOICE_ADD'
+  | 'INVOICE_DELETE'
+  | 'INVOICE_EDIT'
+  | 'INVOICE_VIEW'
   | 'STATS_REVENUE'
   | 'STATS_LOW_STOCK'
   | 'STATS_SALES_TODAY'
   | 'STATS_TOTAL_DEBT'
-  // Contrôle assistant
   | 'CONFIRM_YES'
   | 'CONFIRM_NO'
   | 'REPEAT';
 
 export interface Entity {
-  type: 'number' | 'product' | 'client' | 'page' | 'term';
+  type: 'number' | 'product' | 'client' | 'page' | 'term' | 'invoice';
   value: string | number;
 }
 
@@ -38,7 +44,7 @@ export interface ParsedCommand {
   intent: Intent;
   entities: Entity[];
   originalText: string;
-  confidence: number; // 0-1
+  confidence: number;
   requiresConfirmation: boolean;
 }
 
@@ -48,6 +54,9 @@ export interface CommandResult {
   data?: any;
   requiresConfirmation: boolean;
   confirmationMessage?: string;
+  navigateTo?: string;
+  shouldRefresh?: boolean;
+  fallbackIntent?: Intent;
 }
 
 export type VoiceState =
@@ -57,10 +66,3 @@ export type VoiceState =
   | 'AWAITING_CONFIRMATION'
   | 'EXECUTING'
   | 'CANCELLED';
-
-export interface VoiceContext {
-  lastCommand: ParsedCommand | null;
-  lastResult: CommandResult | null;
-  transcript: string;
-  confirmationCommand: ParsedCommand | null;
-}

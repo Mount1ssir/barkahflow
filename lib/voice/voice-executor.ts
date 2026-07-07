@@ -1,60 +1,130 @@
+import Fuse from 'fuse.js'
 import { ParsedCommand, CommandResult } from './voice-types'
-import { getAllClients } from '@/lib/client-data'
+import { getAllClients, deleteClient, getClientById, type Client } from '@/lib/client-data'
 import { getDashboardStats } from '@/lib/stats-data'
-import { getAllProducts, type Product } from '@/lib/products-data'
-import { cartStore } from '@/lib/store/cart-store'
+import { getAllProducts, deleteProduct, toggleProductStatus, getProductById, type Product } from '@/lib/products-data'
+import { getAllInvoices, deleteInvoice, getInvoiceById, type Invoice } from '@/lib/invoice-data'
+import { cartStore, type CartItem } from '@/lib/store/cart-store'
 
-// ─── Matching flou de nom de produit ──────────────────────────────
+// ✅ CORRECTION : conserve les tirets et les points
 function normalizeName(s: string): string {
-  return s
+  return (s || '')
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9 \-.]/g, '')
     .trim()
 }
 
+// ─── Recherche de produit (améliorée) ──────────────────────────────
 function findProductByName(products: Product[], rawName: string): Product | null {
+  if (!rawName?.trim()) return null
   const target = normalizeName(rawName)
   if (!target) return null
 
-  // 1. Correspondance exacte (nom FR ou AR)
-  let match = products.find(
-    (p) => normalizeName(p.nameFr || '') === target || normalizeName(p.nameAr || '') === target
-  )
-  if (match) return match
-
-  // 2. Correspondance partielle dans les deux sens (ex: "coca" trouve "Coca-Cola 33cl")
-  match = products.find((p) => {
+  const exactMatch = products.find((p) => {
     const nameFr = normalizeName(p.nameFr || '')
     const nameAr = normalizeName(p.nameAr || '')
-    return (
-      (nameFr && (nameFr.includes(target) || target.includes(nameFr))) ||
-      (nameAr && (nameAr.includes(target) || target.includes(nameAr)))
-    )
+    const sku = normalizeName(p.sku || '')
+    return nameFr === target || nameAr === target || sku === target
   })
-  return match || null
+  if (exactMatch) return exactMatch
+
+  const partialMatch = products.find((p) => {
+    const nameFr = normalizeName(p.nameFr || '')
+    const nameAr = normalizeName(p.nameAr || '')
+    const sku = normalizeName(p.sku || '')
+    return nameFr.includes(target) || target.includes(nameFr) ||
+           nameAr.includes(target) || target.includes(nameAr) ||
+           sku.includes(target) || target.includes(sku)
+  })
+  if (partialMatch) return partialMatch
+
+  const searchable = products.map((p) => ({
+    product: p,
+    searchName: `${normalizeName(p.nameFr || '')} ${normalizeName(p.nameAr || '')} ${normalizeName(p.sku || '')}`.trim(),
+  }))
+  const fuse = new Fuse(searchable, {
+    keys: ['searchName'],
+    threshold: 0.35,
+    ignoreLocation: true,
+    includeScore: true,
+  })
+  const results = fuse.search(target)
+  if (results.length > 0) {
+    return results[0].item.product
+  }
+  return null
 }
 
-/**
- * Exécute une commande vocale.
- *
- * @param command      La commande parsée.
- * @param isConfirmed  false = phase de prévisualisation (ne modifie RIEN, sert juste à
- *                     construire le message de confirmation) ; true = exécution réelle,
- *                     appelée uniquement après que l'utilisateur a dit/cliqué "oui".
- *                     C'est ce qui empêche l'action de se déclencher avant confirmation,
- *                     même si executeCommand est techniquement appelé deux fois de suite.
- */
+// ─── Recherche de client (tolérante) ──────────────────────────────
+function findClientByName(clients: Client[], rawName: string): Client | null {
+  if (!rawName?.trim()) return null
+  const target = normalizeName(rawName)
+  const client = clients.find((c) => {
+    const full = normalizeName(c.fullName)
+    return full === target || full.includes(target) || target.includes(full)
+  })
+  if (client) return client
+  return clients.find((c) => {
+    const phone = normalizeName(c.phone || '')
+    const email = normalizeName(c.email || '')
+    return phone.includes(target) || email.includes(target)
+  }) || null
+}
+
+// ✅ CORRECTION : recherche de facture qui préserve les tirets
+function findInvoiceByNumber(invoices: Invoice[], rawNumber: string): Invoice | null {
+  if (!rawNumber?.trim()) return null
+  const target = normalizeName(rawNumber)
+  return invoices.find(
+    (inv) =>
+      normalizeName(inv.invoiceNumber).includes(target) ||
+      target.includes(normalizeName(inv.invoiceNumber))
+  ) || null
+}
+
+// ─── Recherche dans le panier ────────────────────────────────────
+function findCartItemByName(items: CartItem[], rawName: string): CartItem | null {
+  if (!rawName?.trim()) return null
+  const searchable = items.map((item) => ({
+    item,
+    searchName: `${normalizeName((item.product as any).nameFr || '')} ${normalizeName(item.product.nameAr || '')}`.trim(),
+  }))
+  const fuse = new Fuse(searchable, {
+    keys: ['searchName'],
+    threshold: 0.4,
+    ignoreLocation: true,
+  })
+  const results = fuse.search(normalizeName(rawName))
+  return results.length > 0 ? results[0].item.item : null
+}
+
 export async function executeCommand(
   command: ParsedCommand,
   isConfirmed: boolean = false
 ): Promise<CommandResult> {
   try {
-    const { intent, entities } = command;
+    const { intent, entities } = command
 
-    // ─── Navigation ──────────────────────────────────────────────
+    // ─── NAVIGATE ──────────────────────────────────────────────────
     if (intent === 'NAVIGATE') {
-      const page = entities.find(e => e.type === 'page')?.value as string;
+      const page = entities.find(e => e.type === 'page')?.value as string
+      if (page === 'scan') {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('barkahflow:open-scanner'))
+        }
+        return { success: true, message: 'Ouverture du scanner...', data: {}, requiresConfirmation: false }
+      }
+      if (page === 'ajout_produit') {
+        return {
+          success: true,
+          message: 'Redirection vers le formulaire d\'ajout de produit',
+          data: { path: '/dashboard/produits/nouveau' },
+          requiresConfirmation: false,
+          navigateTo: '/dashboard/produits/nouveau',
+        }
+      }
       const pathMap: Record<string, string> = {
         'accueil': '/dashboard', 'tableau de bord': '/dashboard', 'dashboard': '/dashboard',
         'clients': '/dashboard/clients', 'client': '/dashboard/clients',
@@ -67,74 +137,86 @@ export async function executeCommand(
         'profil': '/dashboard/profil', 'profile': '/dashboard/profil',
         'support': '/dashboard/support', 'aide': '/dashboard/support',
         'boutique': '/dashboard/boutique', 'shop': '/dashboard/boutique',
-      };
-      const path = pathMap[page] || '/dashboard';
-      return { success: true, message: `Navigation vers ${page}`, data: { path }, requiresConfirmation: false };
+      }
+      const path = pathMap[page] || '/dashboard'
+      return {
+        success: true,
+        message: `Navigation vers ${page}`,
+        data: { path },
+        requiresConfirmation: false,
+        navigateTo: path,
+      }
     }
 
-    // ─── Recherche ──────────────────────────────────────────────
+    // ─── SEARCH ────────────────────────────────────────────────────
     if (intent === 'SEARCH') {
-      const term = entities.find(e => e.type === 'term')?.value as string;
-      return { success: true, message: `Recherche de "${term}"`, data: { term }, requiresConfirmation: false };
+      const term = entities.find(e => e.type === 'term')?.value as string
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('barkahflow:search', { detail: term }))
+      }
+      return { success: true, message: `Recherche de "${term}"`, data: { term }, requiresConfirmation: false }
     }
 
-    // ─── POS / Panier (réellement branchées sur cartStore) ───────
+    // ─── CLEAR_SEARCH ──────────────────────────────────────────────
+    if (intent === 'CLEAR_SEARCH') {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('barkahflow:clear-search'))
+      }
+      return { success: true, message: 'Recherche effacée.', data: {}, requiresConfirmation: false }
+    }
+
+    // ─── EXPORT ──────────────────────────────────────────────────
+    if (intent === 'EXPORT') {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('barkahflow:export'))
+      }
+      return { success: true, message: 'Export en cours...', data: {}, requiresConfirmation: false }
+    }
+
+    // ─── POS / Panier ────────────────────────────────────────────
     if (intent === 'POS_ADD') {
-      const qty = (entities.find(e => e.type === 'number')?.value as number) || 1;
-      const rawName = entities.find(e => e.type === 'product')?.value as string;
-
-      const products = await getAllProducts(true);
-      const product = findProductByName(products, rawName);
-
+      const qty = (entities.find(e => e.type === 'number')?.value as number) || 1
+      const rawName = entities.find(e => e.type === 'product')?.value as string
+      const products = await getAllProducts(true)
+      const product = findProductByName(products, rawName)
       if (!product) {
         return {
           success: false,
           message: `Produit "${rawName}" introuvable. Vérifiez le nom et réessayez.`,
           data: null,
           requiresConfirmation: false,
-        };
+        }
       }
-
       if (!isConfirmed) {
-        // Phase de prévisualisation : on ne touche pas au panier
         return {
           success: true,
           message: `Ajout de ${qty} ${product.nameAr} au panier`,
           data: { productId: product.id, qty },
           requiresConfirmation: true,
           confirmationMessage: `Voulez-vous ajouter ${qty} ${product.nameAr} au panier ?`,
-        };
+        }
       }
-
-      // Exécution réelle, après "oui"
-      cartStore.addToCart(product, qty);
+      cartStore.addToCart(product, qty)
       return {
         success: true,
         message: `${qty} ${product.nameAr} ajouté${qty > 1 ? 's' : ''} au panier.`,
         data: { productId: product.id, qty },
         requiresConfirmation: false,
-      };
+      }
     }
 
     if (intent === 'POS_REMOVE') {
-      const rawName = entities.find(e => e.type === 'product')?.value as string;
-      const cartItems = cartStore.getSnapshot();
-      const target = normalizeName(rawName);
-      const matchInCart = cartItems.find((item) => {
-        const nameFr = normalizeName((item.product as any).nameFr || '');
-        const nameAr = normalizeName(item.product.nameAr || '');
-        return nameFr.includes(target) || target.includes(nameFr) || nameAr.includes(target) || target.includes(nameAr);
-      });
-
+      const rawName = entities.find(e => e.type === 'product')?.value as string
+      const cartItems = cartStore.getSnapshot()
+      const matchInCart = findCartItemByName(cartItems, rawName)
       if (!matchInCart) {
         return {
           success: false,
           message: `"${rawName}" n'est pas dans le panier.`,
           data: null,
           requiresConfirmation: false,
-        };
+        }
       }
-
       if (!isConfirmed) {
         return {
           success: true,
@@ -142,16 +224,15 @@ export async function executeCommand(
           data: { productId: matchInCart.product.id },
           requiresConfirmation: true,
           confirmationMessage: `Voulez-vous retirer "${matchInCart.product.nameAr}" du panier ?`,
-        };
+        }
       }
-
-      cartStore.removeFromCart(matchInCart.product.id);
+      cartStore.removeFromCart(matchInCart.product.id)
       return {
         success: true,
         message: `"${matchInCart.product.nameAr}" retiré du panier.`,
         data: { productId: matchInCart.product.id },
         requiresConfirmation: false,
-      };
+      }
     }
 
     if (intent === 'POS_CLEAR') {
@@ -159,10 +240,10 @@ export async function executeCommand(
         return {
           success: true, message: 'Vider le panier', data: {},
           requiresConfirmation: true, confirmationMessage: 'Voulez-vous vider tout le panier ?',
-        };
+        }
       }
-      cartStore.clearCart();
-      return { success: true, message: 'Panier vidé.', data: {}, requiresConfirmation: false };
+      cartStore.clearCart()
+      return { success: true, message: 'Panier vidé.', data: {}, requiresConfirmation: false }
     }
 
     if (intent === 'POS_CHECKOUT') {
@@ -170,15 +251,15 @@ export async function executeCommand(
         return {
           success: true, message: 'Finaliser la commande', data: {},
           requiresConfirmation: true, confirmationMessage: 'Voulez-vous finaliser la commande ?',
-        };
+        }
       }
       if (cartStore.getSnapshot().length === 0) {
-        return { success: false, message: 'Le panier est vide, rien à finaliser.', data: {}, requiresConfirmation: false };
+        return { success: false, message: 'Le panier est vide, rien à finaliser.', data: {}, requiresConfirmation: false }
       }
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('barkahflow:open-checkout'));
+        window.dispatchEvent(new CustomEvent('barkahflow:open-checkout'))
       }
-      return { success: true, message: 'Ouverture du récapitulatif de commande.', data: {}, requiresConfirmation: false };
+      return { success: true, message: 'Ouverture du récapitulatif de commande.', data: {}, requiresConfirmation: false }
     }
 
     if (intent === 'POS_CANCEL') {
@@ -186,153 +267,484 @@ export async function executeCommand(
         return {
           success: true, message: 'Annuler la vente', data: {},
           requiresConfirmation: true, confirmationMessage: 'Voulez-vous annuler cette vente ?',
-        };
+        }
       }
-      cartStore.clearCart();
+      cartStore.clearCart()
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('barkahflow:close-checkout'));
+        window.dispatchEvent(new CustomEvent('barkahflow:close-checkout'))
       }
-      return { success: true, message: 'Vente annulée, panier vidé.', data: {}, requiresConfirmation: false };
+      return { success: true, message: 'Vente annulée, panier vidé.', data: {}, requiresConfirmation: false }
     }
 
-    // ─── Produits (⚠️ toujours des stubs — pas encore branchés) ──
-    // Ces intents nécessitent des formulaires (nom, prix, catégorie...) qu'une
-    // seule commande vocale ne peut pas fournir. Dis-moi si tu veux qu'on les
-    // câble sur un flux "ouvrir le formulaire pré-rempli" plutôt qu'une création directe.
-    if (intent === 'PRODUCT_ADD') {
-      const product = entities.find(e => e.type === 'product')?.value as string;
-      return {
-        success: true, message: `Création du produit "${product}" (non branché)`, data: { product },
-        requiresConfirmation: true, confirmationMessage: `Voulez-vous créer le produit "${product}" ?`,
-      };
-    }
-
-    if (intent === 'PRODUCT_DELETE') {
-      const product = entities.find(e => e.type === 'product')?.value as string;
-      return {
-        success: true, message: `Suppression du produit "${product}" (non branché)`, data: { product },
-        requiresConfirmation: true, confirmationMessage: `Voulez-vous supprimer le produit "${product}" ?`,
-      };
-    }
-
-    if (intent === 'PRODUCT_MODIFY') {
-      const product = entities.find(e => e.type === 'product')?.value as string;
-      return {
-        success: true, message: `Modification du produit "${product}" (non branché)`, data: { product },
-        requiresConfirmation: true, confirmationMessage: `Voulez-vous modifier le produit "${product}" ?`,
-      };
-    }
-
-    if (intent === 'PRODUCT_COUNT') {
-      try {
-        const products = await getAllProducts();
-        return {
-          success: true, message: `Il y a ${products.length} produits en stock.`,
-          data: { count: products.length }, requiresConfirmation: false,
-        };
-      } catch {
-        return { success: false, message: 'Impossible de compter les produits.', data: null, requiresConfirmation: false };
-      }
-    }
-
-    // ─── Clients (⚠️ CLIENT_ADD toujours un stub) ────────────────
+    // ─── CLIENTS ──────────────────────────────────────────────────
     if (intent === 'CLIENT_ADD') {
-      const client = entities.find(e => e.type === 'client')?.value as string;
+      const rawName = entities.find(e => e.type === 'client')?.value as string
+      if (!isConfirmed) {
+        const msg = rawName ? `Ajout du client "${rawName}"` : 'Ajout d\'un nouveau client'
+        return {
+          success: true,
+          message: msg,
+          data: { clientName: rawName },
+          requiresConfirmation: true,
+          confirmationMessage: rawName ? `Voulez-vous ajouter le client "${rawName}" ?` : 'Voulez-vous créer un nouveau client ?',
+        }
+      }
       return {
-        success: true, message: `Création du client "${client}" (non branché)`, data: { client },
-        requiresConfirmation: true, confirmationMessage: `Voulez-vous créer le client "${client}" ?`,
-      };
+        success: true,
+        message: rawName ? `Redirection pour ajouter "${rawName}"` : 'Redirection vers le formulaire d\'ajout de client',
+        data: { path: '/dashboard/clients/nouveau' },
+        requiresConfirmation: false,
+        navigateTo: '/dashboard/clients/nouveau',
+      }
+    }
+
+    if (intent === 'CLIENT_DELETE') {
+      const rawName = entities.find(e => e.type === 'client')?.value as string
+      if (!rawName) {
+        return { success: false, message: 'Veuillez préciser le nom du client.', data: null, requiresConfirmation: false }
+      }
+      const clients = await getAllClients()
+      const client = findClientByName(clients, rawName)
+      if (!client) {
+        return { success: false, message: `Client "${rawName}" introuvable.`, data: null, requiresConfirmation: false }
+      }
+      if (!isConfirmed) {
+        return {
+          success: true,
+          message: `Suppression du client "${client.fullName}"`,
+          data: { clientId: client.id },
+          requiresConfirmation: true,
+          confirmationMessage: `Voulez-vous supprimer le client "${client.fullName}" ? Cette action est irréversible.`,
+        }
+      }
+      try {
+        await deleteClient(client.id)
+        return {
+          success: true,
+          message: `Client "${client.fullName}" supprimé.`,
+          data: { clientId: client.id },
+          requiresConfirmation: false,
+          shouldRefresh: true,
+        }
+      } catch (error) {
+        console.error('Erreur suppression client:', error)
+        return { success: false, message: `Impossible de supprimer ce client.`, data: null, requiresConfirmation: false }
+      }
+    }
+
+    if (intent === 'CLIENT_EDIT') {
+      const rawName = entities.find(e => e.type === 'client')?.value as string
+      if (!rawName) {
+        return { success: false, message: 'Veuillez préciser le nom du client.', data: null, requiresConfirmation: false }
+      }
+      const clients = await getAllClients()
+      const client = findClientByName(clients, rawName)
+      if (!client) {
+        return { success: false, message: `Client "${rawName}" introuvable.`, data: null, requiresConfirmation: false }
+      }
+      const path = `/dashboard/clients/${client.id}/edit`
+      return {
+        success: true,
+        message: `Redirection vers l'édition du client "${client.fullName}"`,
+        data: { path },
+        requiresConfirmation: false,
+        navigateTo: path,
+      }
+    }
+
+    if (intent === 'CLIENT_VIEW') {
+      const rawName = entities.find(e => e.type === 'client')?.value as string
+      if (!rawName) {
+        return { success: false, message: 'Veuillez préciser le nom du client.', data: null, requiresConfirmation: false }
+      }
+      const clients = await getAllClients()
+      const client = findClientByName(clients, rawName)
+      if (!client) {
+        return { success: false, message: `Client "${rawName}" introuvable.`, data: null, requiresConfirmation: false }
+      }
+      const path = `/dashboard/clients/${client.id}`
+      return {
+        success: true,
+        message: `Redirection vers la fiche de "${client.fullName}"`,
+        data: { path },
+        requiresConfirmation: false,
+        navigateTo: path,
+      }
     }
 
     if (intent === 'CLIENT_COUNT') {
       try {
-        const clients = await getAllClients();
-        return { success: true, message: `Vous avez ${clients.length} clients.`, data: { count: clients.length }, requiresConfirmation: false };
+        const clients = await getAllClients()
+        return { success: true, message: `Vous avez ${clients.length} clients.`, data: { count: clients.length }, requiresConfirmation: false }
       } catch {
-        return { success: false, message: 'Impossible de compter les clients.', data: null, requiresConfirmation: false };
+        return { success: false, message: 'Impossible de compter les clients.', data: null, requiresConfirmation: false }
       }
     }
 
     if (intent === 'CLIENT_DEBTORS') {
       try {
-        const clients = await getAllClients();
-        const debtors = clients.filter((c: any) => c.debt > 0);
+        const clients = await getAllClients()
+        const debtors = clients.filter((c: any) => c.debt > 0)
         if (debtors.length === 0) {
-          return { success: true, message: "Aucun client ne vous doit de l'argent.", data: { debtors: [] }, requiresConfirmation: false };
+          return { success: true, message: "Aucun client ne vous doit de l'argent.", data: { debtors: [] }, requiresConfirmation: false }
         }
-        const names = debtors.map((c: any) => c.fullName).join(', ');
-        return { success: true, message: `Les clients endettés sont : ${names}`, data: { debtors }, requiresConfirmation: false };
+        const names = debtors.map((c: any) => c.fullName).join(', ')
+        return { success: true, message: `Les clients endettés sont : ${names}`, data: { debtors }, requiresConfirmation: false }
       } catch {
-        return { success: false, message: 'Impossible de récupérer les clients endettés.', data: null, requiresConfirmation: false };
+        return { success: false, message: 'Impossible de récupérer les clients endettés.', data: null, requiresConfirmation: false }
       }
     }
 
-    // ─── Statistiques ────────────────────────────────────────────
+    // ─── PRODUITS ──────────────────────────────────────────────────
+    if (intent === 'PRODUCT_ADD') {
+      const rawName = entities.find(e => e.type === 'product')?.value as string
+      if (!isConfirmed) {
+        const msg = rawName ? `Ajout du produit "${rawName}"` : 'Ajout d\'un nouveau produit'
+        return {
+          success: true,
+          message: msg,
+          data: { productName: rawName },
+          requiresConfirmation: true,
+          confirmationMessage: rawName ? `Voulez-vous ajouter le produit "${rawName}" ?` : 'Voulez-vous créer un nouveau produit ?',
+        }
+      }
+      return {
+        success: true,
+        message: 'Redirection vers le formulaire d\'ajout de produit',
+        data: { path: '/dashboard/produits/nouveau' },
+        requiresConfirmation: false,
+        navigateTo: '/dashboard/produits/nouveau',
+      }
+    }
+
+    if (intent === 'PRODUCT_DELETE') {
+      const rawName = entities.find(e => e.type === 'product')?.value as string
+      if (!rawName) {
+        return { success: false, message: 'Veuillez préciser le nom du produit.', data: null, requiresConfirmation: false }
+      }
+      const products = await getAllProducts(false)
+      const product = findProductByName(products, rawName)
+      if (!product) {
+        return { success: false, message: `Produit "${rawName}" introuvable.`, data: null, requiresConfirmation: false }
+      }
+      if (!isConfirmed) {
+        return {
+          success: true,
+          message: `Suppression du produit "${product.nameAr}"`,
+          data: { productId: product.id },
+          requiresConfirmation: true,
+          confirmationMessage: `Voulez-vous supprimer le produit "${product.nameAr}" ?`,
+        }
+      }
+      try {
+        await deleteProduct(product.id)
+        return {
+          success: true,
+          message: `Produit "${product.nameAr}" supprimé.`,
+          data: { productId: product.id },
+          requiresConfirmation: false,
+          shouldRefresh: true,
+        }
+      } catch (error: any) {
+        return {
+          success: false,
+          message: `Le produit "${product.nameAr}" ne peut pas être supprimé car il a des ventes associées.`,
+          data: { productId: product.id, product },
+          requiresConfirmation: true,
+          confirmationMessage: `Le produit "${product.nameAr}" a des ventes, il ne peut pas être supprimé. Voulez-vous le désactiver à la place ?`,
+          fallbackIntent: 'PRODUCT_TOGGLE',
+        }
+      }
+    }
+
+    if (intent === 'PRODUCT_EDIT') {
+      const rawName = entities.find(e => e.type === 'product')?.value as string
+      if (!rawName) {
+        return { success: false, message: 'Veuillez préciser le nom du produit.', data: null, requiresConfirmation: false }
+      }
+      const products = await getAllProducts(false)
+      const product = findProductByName(products, rawName)
+      if (!product) {
+        return { success: false, message: `Produit "${rawName}" introuvable.`, data: null, requiresConfirmation: false }
+      }
+      const path = `/dashboard/produits/nouveau?id=${product.id}`
+      return {
+        success: true,
+        message: `Redirection vers l'édition du produit "${product.nameAr}"`,
+        data: { path },
+        requiresConfirmation: false,
+        navigateTo: path,
+      }
+    }
+
+    if (intent === 'PRODUCT_VIEW') {
+      const rawName = entities.find(e => e.type === 'product')?.value as string
+      if (!rawName) {
+        return { success: false, message: 'Veuillez préciser le nom du produit.', data: null, requiresConfirmation: false }
+      }
+      const products = await getAllProducts(false)
+      const product = findProductByName(products, rawName)
+      if (!product) {
+        return { success: false, message: `Produit "${rawName}" introuvable.`, data: null, requiresConfirmation: false }
+      }
+      return {
+        success: true,
+        message: `Recherche du produit "${product.nameAr}"`,
+        data: { product },
+        requiresConfirmation: false,
+        navigateTo: `/dashboard/produits?search=${encodeURIComponent(product.nameAr)}`,
+      }
+    }
+
+    if (intent === 'PRODUCT_TOGGLE') {
+      const rawName = entities.find(e => e.type === 'product')?.value as string
+      if (!rawName) {
+        return { success: false, message: 'Veuillez préciser le nom du produit.', data: null, requiresConfirmation: false }
+      }
+      const products = await getAllProducts(false)
+      const product = findProductByName(products, rawName)
+      if (!product) {
+        return { success: false, message: `Produit "${rawName}" introuvable.`, data: null, requiresConfirmation: false }
+      }
+      if (!isConfirmed) {
+        const action = product.isActive ? 'désactiver' : 'activer'
+        return {
+          success: true,
+          message: `${action} le produit "${product.nameAr}"`,
+          data: { productId: product.id },
+          requiresConfirmation: true,
+          confirmationMessage: `Voulez-vous ${action} le produit "${product.nameAr}" ?`,
+        }
+      }
+      try {
+        await toggleProductStatus(product.id, !product.isActive)
+        const action = product.isActive ? 'désactivé' : 'activé'
+        return {
+          success: true,
+          message: `Produit "${product.nameAr}" ${action}.`,
+          data: { productId: product.id },
+          requiresConfirmation: false,
+          shouldRefresh: true,
+        }
+      } catch (error) {
+        return { success: false, message: `Erreur lors de la modification du produit.`, data: null, requiresConfirmation: false }
+      }
+    }
+
+    // ─── Réapprovisionner un produit ──────────────────────────────
+    if (intent === 'PRODUCT_REPLENISH') {
+      const rawName = entities.find(e => e.type === 'product')?.value as string
+      if (!rawName) {
+        return { success: false, message: 'Veuillez préciser le nom du produit.', data: null, requiresConfirmation: false }
+      }
+      const products = await getAllProducts(false)
+      const product = findProductByName(products, rawName)
+      if (!product) {
+        return { success: false, message: `Produit "${rawName}" introuvable.`, data: null, requiresConfirmation: false }
+      }
+      if (!isConfirmed) {
+        return {
+          success: true,
+          message: `Réapprovisionnement du produit "${product.nameAr}"`,
+          data: { productId: product.id },
+          requiresConfirmation: true,
+          confirmationMessage: `Voulez-vous réapprovisionner le produit "${product.nameAr}" ?`,
+        }
+      }
+      const path = `/dashboard/produits?replenish=${product.id}`
+      return {
+        success: true,
+        message: `Ouverture du réapprovisionnement pour "${product.nameAr}"`,
+        data: { path },
+        requiresConfirmation: false,
+        navigateTo: path,
+      }
+    }
+
+    // ─── Historique de stock d'un produit ───────────────────────────
+    if (intent === 'PRODUCT_HISTORY') {
+      const rawName = entities.find(e => e.type === 'product')?.value as string
+      if (!rawName) {
+        return { success: false, message: 'Veuillez préciser le nom du produit.', data: null, requiresConfirmation: false }
+      }
+      const products = await getAllProducts(false)
+      const product = findProductByName(products, rawName)
+      if (!product) {
+        return { success: false, message: `Produit "${rawName}" introuvable.`, data: null, requiresConfirmation: false }
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('barkahflow:history', { detail: product.id }))
+      }
+      return {
+        success: true,
+        message: `Ouverture de l'historique du produit "${product.nameAr}"`,
+        data: { productId: product.id },
+        requiresConfirmation: false,
+      }
+    }
+
+    if (intent === 'PRODUCT_COUNT') {
+      try {
+        const products = await getAllProducts()
+        return {
+          success: true, message: `Il y a ${products.length} produits en stock.`,
+          data: { count: products.length }, requiresConfirmation: false,
+        }
+      } catch {
+        return { success: false, message: 'Impossible de compter les produits.', data: null, requiresConfirmation: false }
+      }
+    }
+
+    // ─── FACTURES ──────────────────────────────────────────────────
+    if (intent === 'INVOICE_ADD') {
+      return {
+        success: true,
+        message: 'Redirection vers la caisse pour créer une facture',
+        data: { path: '/dashboard/caisse' },
+        requiresConfirmation: false,
+        navigateTo: '/dashboard/caisse',
+      }
+    }
+
+    if (intent === 'INVOICE_DELETE') {
+      const rawNumber = entities.find(e => e.type === 'invoice')?.value as string
+      if (!rawNumber) {
+        return { success: false, message: 'Veuillez préciser le numéro de la facture.', data: null, requiresConfirmation: false }
+      }
+      const invoices = await getAllInvoices()
+      const invoice = findInvoiceByNumber(invoices, rawNumber)
+      if (!invoice) {
+        return { success: false, message: `Facture "${rawNumber}" introuvable.`, data: null, requiresConfirmation: false }
+      }
+      if (!isConfirmed) {
+        return {
+          success: true,
+          message: `Suppression de la facture "${invoice.invoiceNumber}"`,
+          data: { invoiceId: invoice.id },
+          requiresConfirmation: true,
+          confirmationMessage: `Voulez-vous supprimer la facture "${invoice.invoiceNumber}" ? Cette action est irréversible.`,
+        }
+      }
+      try {
+        await deleteInvoice(invoice.id)
+        return {
+          success: true,
+          message: `Facture "${invoice.invoiceNumber}" supprimée.`,
+          data: { invoiceId: invoice.id },
+          requiresConfirmation: false,
+          shouldRefresh: true,
+        }
+      } catch (error) {
+        return { success: false, message: `Impossible de supprimer cette facture.`, data: null, requiresConfirmation: false }
+      }
+    }
+
+    if (intent === 'INVOICE_EDIT') {
+      const rawNumber = entities.find(e => e.type === 'invoice')?.value as string
+      if (!rawNumber) {
+        return { success: false, message: 'Veuillez préciser le numéro de la facture.', data: null, requiresConfirmation: false }
+      }
+      const invoices = await getAllInvoices()
+      const invoice = findInvoiceByNumber(invoices, rawNumber)
+      if (!invoice) {
+        return { success: false, message: `Facture "${rawNumber}" introuvable.`, data: null, requiresConfirmation: false }
+      }
+      const path = `/dashboard/factures/${invoice.id}/edit`
+      return {
+        success: true,
+        message: `Redirection vers l'édition de la facture "${invoice.invoiceNumber}"`,
+        data: { path },
+        requiresConfirmation: false,
+        navigateTo: path,
+      }
+    }
+
+    if (intent === 'INVOICE_VIEW') {
+      const rawNumber = entities.find(e => e.type === 'invoice')?.value as string
+      if (!rawNumber) {
+        return { success: false, message: 'Veuillez préciser le numéro de la facture.', data: null, requiresConfirmation: false }
+      }
+      const invoices = await getAllInvoices()
+      const invoice = findInvoiceByNumber(invoices, rawNumber)
+      if (!invoice) {
+        return { success: false, message: `Facture "${rawNumber}" introuvable.`, data: null, requiresConfirmation: false }
+      }
+      const path = `/dashboard/factures/${invoice.id}`
+      return {
+        success: true,
+        message: `Redirection vers la facture "${invoice.invoiceNumber}"`,
+        data: { path },
+        requiresConfirmation: false,
+        navigateTo: path,
+      }
+    }
+
+    // ─── STATISTIQUES ──────────────────────────────────────────────
     if (intent === 'STATS_REVENUE') {
       try {
-        const stats = await getDashboardStats();
-        const total = stats.todayRevenue * 30;
+        const stats = await getDashboardStats()
+        const total = stats.todayRevenue * 30
         return {
           success: true, message: `Votre chiffre d'affaires estimé est de ${(total / 100).toFixed(2)} MAD.`,
           data: { revenue: total }, requiresConfirmation: false,
-        };
+        }
       } catch {
-        return { success: false, message: "Impossible de récupérer le chiffre d'affaires.", data: null, requiresConfirmation: false };
+        return { success: false, message: "Impossible de récupérer le chiffre d'affaires.", data: null, requiresConfirmation: false }
       }
     }
 
     if (intent === 'STATS_SALES_TODAY') {
       try {
-        const stats = await getDashboardStats();
+        const stats = await getDashboardStats()
         return {
           success: true, message: `Vous avez encaissé ${(stats.todayRevenue / 100).toFixed(2)} MAD aujourd'hui.`,
           data: { revenue: stats.todayRevenue }, requiresConfirmation: false,
-        };
+        }
       } catch {
-        return { success: false, message: "Impossible de récupérer l'encaissement du jour.", data: null, requiresConfirmation: false };
+        return { success: false, message: "Impossible de récupérer l'encaissement du jour.", data: null, requiresConfirmation: false }
       }
     }
 
     if (intent === 'STATS_LOW_STOCK') {
       try {
-        const products = await getAllProducts();
-        const lowStock = products.filter((p: any) => p.stockQty <= p.alertThreshold);
+        const products = await getAllProducts()
+        const lowStock = products.filter((p: any) => p.stockQty <= p.alertThreshold)
         return {
           success: true, message: `Vous avez ${lowStock.length} produits en rupture de stock ou stock faible.`,
           data: { count: lowStock.length }, requiresConfirmation: false,
-        };
+        }
       } catch {
-        return { success: false, message: 'Impossible de récupérer les alertes stock.', data: null, requiresConfirmation: false };
+        return { success: false, message: 'Impossible de récupérer les alertes stock.', data: null, requiresConfirmation: false }
       }
     }
 
     if (intent === 'STATS_TOTAL_DEBT') {
       try {
-        const clients = await getAllClients();
-        const totalDebt = clients.reduce((sum: number, c: any) => sum + c.debt, 0);
+        const clients = await getAllClients()
+        const totalDebt = clients.reduce((sum: number, c: any) => sum + c.debt, 0)
         return {
           success: true, message: `Le total des dettes actives est de ${(totalDebt / 100).toFixed(2)} MAD.`,
           data: { debt: totalDebt }, requiresConfirmation: false,
-        };
+        }
       } catch {
-        return { success: false, message: 'Impossible de récupérer le total des dettes.', data: null, requiresConfirmation: false };
+        return { success: false, message: 'Impossible de récupérer le total des dettes.', data: null, requiresConfirmation: false }
       }
     }
 
-    // ─── Fallback ──────────────────────────────────────────────
+    // ─── FALLBACK ──────────────────────────────────────────────────
     return {
       success: false,
       message: "Désolé, je n'ai pas compris votre commande. Pouvez-vous répéter ?",
       data: null,
       requiresConfirmation: false,
-    };
+    }
   } catch (error) {
-    console.error('[voice-executor] erreur inattendue:', error);
+    console.error('[voice-executor] erreur inattendue:', error)
     return {
       success: false,
       message: 'Une erreur interne est survenue. Réessayez.',
       data: null,
       requiresConfirmation: false,
-    };
+    }
   }
 }

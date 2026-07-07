@@ -97,11 +97,6 @@ const URGENCY_LABELS: Record<string, string> = {
 
 const NOT_DUE_COLOR = '#3B82F6'
 
-// ── Distingue "pas encore due" de "vient de devenir en retard" ────
-// oldestDebtDays est calculé depuis l'échéance et clampé à 0 quand
-// l'échéance est future (voir debt-data.ts). Sans cette distinction,
-// une facture à 30 jours fraîchement créée et une facture en retard
-// depuis aujourd'hui afficheraient toutes les deux "0 j — Récent".
 function getDueStatus(client: ClientDebt): { label: string; color: string; isNotDueYet: boolean } {
   const isNotDueYet = !!client.oldestDebtDate && new Date(client.oldestDebtDate).getTime() > Date.now()
   if (isNotDueYet) {
@@ -114,7 +109,6 @@ function getDueStatus(client: ClientDebt): { label: string; color: string; isNot
   }
 }
 
-// ─── Tooltip personnalisé pour le graphe de tendance ──────────────
 function CustomTooltip({ active, payload, label }: any) {
   if (!active || !payload || payload.length === 0) return null
   return (
@@ -127,7 +121,6 @@ function CustomTooltip({ active, payload, label }: any) {
   )
 }
 
-// ─── KPI Card ──────────────────────────────────────────────────────
 interface KpiCardProps {
   title: string
   value: string
@@ -154,7 +147,6 @@ function KpiCard({ title, value, subtitle, icon }: KpiCardProps) {
   )
 }
 
-// ─── Pagination ────────────────────────────────────────────────────
 interface PaginationProps {
   currentPage: number
   totalPages: number
@@ -197,8 +189,6 @@ function Pagination({ currentPage, totalPages, totalItems, pageSize, onPageChang
   )
 }
 
-// ─── Page principale ──────────────────────────────────────────────
-
 export default function DebtManagementPage() {
   const router = useRouter()
 
@@ -209,7 +199,7 @@ export default function DebtManagementPage() {
   const [agingBuckets, setAgingBuckets] = useState<AgingBucket[]>([])
   const [trendData, setTrendData] = useState<DebtTrendPoint[]>([])
   const [trendLoading, setTrendLoading] = useState(false)
-  const [trendPeriod, setTrendPeriod] = useState(30) // 7, 30 ou 90 jours
+  const [trendPeriod, setTrendPeriod] = useState(30)
   const [search, setSearch] = useState('')
   const [sortBy, setSortBy] = useState('amount')
   const [currentPage, setCurrentPage] = useState(1)
@@ -227,7 +217,27 @@ export default function DebtManagementPage() {
     loadData()
   }, [])
 
-  // Recharge uniquement la tendance quand la période change
+  // ✅ Recherche vocale
+  useEffect(() => {
+    const handleSearch = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (typeof detail === 'string') {
+        setSearch(detail);
+      }
+    };
+    window.addEventListener('barkahflow:search', handleSearch);
+    return () => window.removeEventListener('barkahflow:search', handleSearch);
+  }, []);
+
+  // ✅ Effacer la recherche
+  useEffect(() => {
+    const handleClearSearch = () => {
+      setSearch('');
+    };
+    window.addEventListener('barkahflow:clear-search', handleClearSearch);
+    return () => window.removeEventListener('barkahflow:clear-search', handleClearSearch);
+  }, []);
+
   useEffect(() => {
     loadTrend(trendPeriod)
   }, [trendPeriod])
@@ -268,7 +278,6 @@ export default function DebtManagementPage() {
     }
   }
 
-  // Filtrage et tri
   const filteredClients = clients
     .filter((c) =>
       c.clientName.toLowerCase().includes(search.toLowerCase()) ||
@@ -287,7 +296,6 @@ export default function DebtManagementPage() {
     currentPage * pageSize
   )
 
-  // OUVERTURE DU DIALOG DE PAIEMENT
   const openPaymentDialog = async (client: ClientDebt) => {
     try {
       const debts = await getActiveDebtsByClient(client.clientId)
@@ -364,7 +372,6 @@ export default function DebtManagementPage() {
     }
   }
 
-  // ─── RAPPEL WHATSAPP (via plugin Tauri shell) ──────────────────
   const handleRappel = async (client: ClientDebt) => {
     const phone = client.phone?.replace(/^0/, '212').replace(/\s/g, '')
     if (!phone) {
@@ -388,7 +395,6 @@ export default function DebtManagementPage() {
   return (
     <div className="flex flex-col gap-6 max-w-7xl mx-auto w-full">
 
-      {/* En-tête */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
           Gestion des dettes
@@ -413,7 +419,6 @@ export default function DebtManagementPage() {
         </div>
       ) : (
         <>
-          {/* ─── KPI ────────────────────────────────────────────────────── */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <KpiCard
               title="Total des dettes en cours"
@@ -438,9 +443,7 @@ export default function DebtManagementPage() {
             />
           </div>
 
-          {/* ─── SECTION GRAPHIQUE (2 colonnes) ────────────────────── */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Aging buckets */}
             <Card className="rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
               <CardHeader>
                 <CardTitle className="text-base font-semibold text-gray-900 dark:text-white">
@@ -476,7 +479,6 @@ export default function DebtManagementPage() {
               </CardContent>
             </Card>
 
-            {/* Tendance avec filtre de période */}
             <Card className="rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between space-y-0">
                 <CardTitle className="text-base font-semibold text-gray-900 dark:text-white">
@@ -524,7 +526,6 @@ export default function DebtManagementPage() {
             </Card>
           </div>
 
-          {/* ─── TABLEAU CLIENTS ENDETTÉS ────────────────────────────── */}
           <Card className="rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-base font-semibold text-gray-900 dark:text-white">
@@ -680,7 +681,6 @@ export default function DebtManagementPage() {
             </CardContent>
           </Card>
 
-          {/* ─── RÈGLEMENTS RÉCENTS ──────────────────────────────────── */}
           {recentPayments.length > 0 && (
             <Card className="rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
               <CardHeader>
@@ -727,7 +727,6 @@ export default function DebtManagementPage() {
         </>
       )}
 
-      {/* ─── DIALOG DE PAIEMENT ────────────────────────────────────── */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md rounded-2xl">
           <DialogHeader>

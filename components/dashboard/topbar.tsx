@@ -23,6 +23,7 @@ import {
 import { useSidebarStore } from '@/lib/sidebar-store'
 import { supabase } from '@/src/lib/supabase'
 import { getStockAlerts, countStockAlerts, type StockAlert } from '@/lib/stock-alerts-data'
+import { VoiceAssistantButton } from '@/components/voice/VoiceAssistantButton'
 
 const langs = [
   { code: 'fr', label: 'français (French)', flag: 'https://flagcdn.com/w40/fr.png' },
@@ -394,6 +395,9 @@ export function TopBar({ user }: TopBarProps) {
             )}
           </PopoverContent>
         </Popover>
+
+        {/* ✅ Assistant vocal intégré ici */}
+        <VoiceAssistantButton />
 
         <LanguageDropdown />
 

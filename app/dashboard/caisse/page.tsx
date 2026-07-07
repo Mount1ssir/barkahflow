@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
@@ -31,16 +31,19 @@ export default function CaissePage() {
   }, [])
 
   // ✅ Écoute des événements envoyés par l'assistant vocal
-  // (ex : "finalise la commande" -> ouvre le modal de checkout)
   useEffect(() => {
     const handleOpenCheckout = () => setCheckoutOpen(true)
     const handleCloseCheckout = () => setCheckoutOpen(false)
+    const handleOpenScanner = () => setScannerOpen(true)
 
     window.addEventListener('barkahflow:open-checkout', handleOpenCheckout)
     window.addEventListener('barkahflow:close-checkout', handleCloseCheckout)
+    window.addEventListener('barkahflow:open-scanner', handleOpenScanner)
+
     return () => {
       window.removeEventListener('barkahflow:open-checkout', handleOpenCheckout)
       window.removeEventListener('barkahflow:close-checkout', handleCloseCheckout)
+      window.removeEventListener('barkahflow:open-scanner', handleOpenScanner)
     }
   }, [])
 
