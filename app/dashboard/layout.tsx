@@ -1,18 +1,18 @@
 "use client";
 
-import { useEffect, useState } from 'react'
-import { supabase } from '@/src/lib/supabase'
-import { Sidebar } from '@/components/dashboard/sidebar'
-import { TopBar } from '@/components/dashboard/topbar'
-import { PinProvider, usePin } from '@/components/pin/pin-context'
-import { PinLockScreen } from '@/components/pin/PinLockScreen'
-import { isPinEnabled } from '@/lib/pin-storage'
-import { NotificationProvider } from '@/context/NotificationContext'
+import { useEffect, useState } from "react";
+import { supabase } from "@/src/lib/supabase";
+import { Sidebar } from "@/components/dashboard/sidebar";
+import { TopBar } from "@/components/dashboard/topbar";
+import { PinProvider, usePin } from "@/components/pin/pin-context";
+import { PinLockScreen } from "@/components/pin/PinLockScreen";
+import { isPinEnabled } from "@/lib/pin-storage";
+import { NotificationProvider } from "@/context/NotificationContext";
 
 function DashboardContent({ children }: { children: React.ReactNode }) {
-  const { isLocked, unlockApp } = usePin()
-  const [user, setUser] = useState<any>(null)
-  const [checking, setChecking] = useState(true)
+  const [user, setUser] = useState<any>(null);
+  const [checking, setChecking] = useState(true);
+  const { isLocked, unlockApp } = usePin();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -44,15 +44,12 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
   }
 
   return (
-<<<<<<< HEAD
     <>
       <div className="flex min-h-screen bg-muted/30 dark:bg-background">
         <Sidebar />
         <div className="flex-1 flex flex-col min-w-0">
           <TopBar user={user} />
-          <main className="flex-1 overflow-auto p-6">
-            {children}
-          </main>
+          <main className="flex-1 overflow-auto p-6">{children}</main>
         </div>
       </div>
 
@@ -60,26 +57,19 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
         <PinLockScreen onSuccess={unlockApp} />
       )}
     </>
-  )
+  );
 }
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <PinProvider>
       <NotificationProvider>
         <DashboardContent>{children}</DashboardContent>
       </NotificationProvider>
     </PinProvider>
-  )
-}
-=======
-    <div className="flex min-h-screen bg-muted/30 dark:bg-background">
-      <Sidebar />
-      <div className="flex-1 flex flex-col min-w-0">
-        <TopBar user={user} />
-        <main className="flex-1 overflow-auto p-6">{children}</main>
-      </div>
-    </div>
   );
 }
->>>>>>> main
