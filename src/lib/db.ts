@@ -1,3 +1,4 @@
+// lib.ts
 import { Capacitor } from '@capacitor/core'
 
 export interface DbDriver {
@@ -7,13 +8,12 @@ export interface DbDriver {
 
 let driverInstance: DbDriver | null = null
 
+// ─── SCHÉMA COMPLET ──────────────────────────────────────────────────
 const SCHEMA = `
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
--- ---------------------------------------------------------------------
 -- TABLE: clients
--- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS clients (
   id TEXT PRIMARY KEY,
   full_name TEXT NOT NULL,
@@ -21,14 +21,12 @@ CREATE TABLE IF NOT EXISTS clients (
   email TEXT,
   address TEXT,
   notes TEXT,
-  credit_limit INTEGER DEFAULT NULL,   -- ajout
+  credit_limit INTEGER DEFAULT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
 
--- ---------------------------------------------------------------------
 -- TABLE: products
--- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS products (
   id TEXT PRIMARY KEY,
   sku TEXT UNIQUE NOT NULL,
@@ -42,9 +40,7 @@ CREATE TABLE IF NOT EXISTS products (
   updated_at TEXT NOT NULL
 );
 
--- ---------------------------------------------------------------------
 -- TABLE: invoices
--- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS invoices (
   id TEXT PRIMARY KEY,
   invoice_number TEXT UNIQUE NOT NULL,
@@ -54,15 +50,14 @@ CREATE TABLE IF NOT EXISTS invoices (
   discount INTEGER NOT NULL DEFAULT 0,
   total INTEGER NOT NULL,
   status TEXT NOT NULL CHECK(status IN ('PAID', 'PARTIAL', 'UNPAID')),
-  due_date TEXT,                        -- ajout : date limite de paiement
-  po_number TEXT,                       -- ajout : référence commande client
+  due_date TEXT,
+  po_number TEXT,
+  user_id TEXT REFERENCES users(id),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
 
--- ---------------------------------------------------------------------
 -- TABLE: line_items
--- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS line_items (
   id TEXT PRIMARY KEY,
   invoice_id TEXT NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
@@ -73,9 +68,7 @@ CREATE TABLE IF NOT EXISTS line_items (
   subtotal INTEGER NOT NULL
 );
 
--- ---------------------------------------------------------------------
 -- TABLE: transactions
--- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS transactions (
   id TEXT PRIMARY KEY,
   type TEXT NOT NULL CHECK(type IN ('INCOME', 'EXPENSE')),
@@ -83,15 +76,14 @@ CREATE TABLE IF NOT EXISTS transactions (
   source_type TEXT CHECK(source_type IN ('invoice', 'manual')),
   source_id TEXT,
   category TEXT,
-  payment_method TEXT DEFAULT 'cash',   -- ajout
+  payment_method TEXT DEFAULT 'cash',
+  user_id TEXT REFERENCES users(id),
   transaction_date TEXT NOT NULL,
   notes TEXT,
   created_at TEXT NOT NULL
 );
 
--- ---------------------------------------------------------------------
 -- TABLE: debt_ledger
--- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS debt_ledger (
   id TEXT PRIMARY KEY,
   type TEXT NOT NULL CHECK(type IN ('RECEIVABLE', 'PAYABLE')),
@@ -104,9 +96,7 @@ CREATE TABLE IF NOT EXISTS debt_ledger (
   updated_at TEXT NOT NULL
 );
 
--- ---------------------------------------------------------------------
 -- TABLE: reminders_queue
--- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS reminders_queue (
   id TEXT PRIMARY KEY,
   client_id TEXT NOT NULL REFERENCES clients(id),
@@ -119,19 +109,32 @@ CREATE TABLE IF NOT EXISTS reminders_queue (
   updated_at TEXT NOT NULL
 );
 
--- ---------------------------------------------------------------------
+-- TABLE: users (employés / caissiers)
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  pin_hash TEXT NOT NULL,
+  role TEXT CHECK(role IN ('admin', 'cashier')) DEFAULT 'cashier',
+  active INTEGER NOT NULL DEFAULT 1,
+  permissions TEXT DEFAULT '[]',
+  avatar_url TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 -- INDEXES
--- ---------------------------------------------------------------------
 CREATE INDEX IF NOT EXISTS idx_products_sku ON products(sku);
 CREATE INDEX IF NOT EXISTS idx_products_name ON products(name_ar, name_en);
 CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status, created_at);
 CREATE INDEX IF NOT EXISTS idx_invoices_due_date ON invoices(due_date);
 CREATE INDEX IF NOT EXISTS idx_clients_phone ON clients(phone);
+CREATE INDEX IF NOT EXISTS idx_invoices_user_id ON invoices(user_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
 `
 
-// ─── Migrations ─────────────────────────────────────────────────────
+// ─── MIGRATIONS ─────────────────────────────────────────────────────
 const MIGRATIONS = [
-  // Ajout de credit_limit sur clients (si pas déjà)
+  // Ajout de credit_limit sur clients
   `ALTER TABLE clients ADD COLUMN credit_limit INTEGER DEFAULT NULL;`,
   // Ajout de payment_method sur transactions
   `ALTER TABLE transactions ADD COLUMN payment_method TEXT DEFAULT 'cash';`,
@@ -147,10 +150,31 @@ const MIGRATIONS = [
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );`,
-  // ── Ajout : date d'échéance + référence commande sur invoices ──────
+  // Ajout due_date et po_number sur invoices
   `ALTER TABLE invoices ADD COLUMN due_date TEXT;`,
   `ALTER TABLE invoices ADD COLUMN po_number TEXT;`,
-  `CREATE INDEX IF NOT EXISTS idx_invoices_due_date ON invoices(due_date);`,
+  // Ajout des colonnes user_id
+  `ALTER TABLE invoices ADD COLUMN user_id TEXT REFERENCES users(id);`,
+  `ALTER TABLE transactions ADD COLUMN user_id TEXT REFERENCES users(id);`,
+  // ✅ Création de la table users si elle n'existe pas
+  `CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    pin_hash TEXT NOT NULL,
+    role TEXT CHECK(role IN ('admin', 'cashier')) DEFAULT 'cashier',
+    active INTEGER NOT NULL DEFAULT 1,
+    permissions TEXT DEFAULT '[]',
+    avatar_url TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );`,
+  // ✅ Ajout de la colonne avatar_url si elle n'existe pas déjà
+  `ALTER TABLE users ADD COLUMN avatar_url TEXT;`,
+  // ✅ Ajout de la colonne permissions si elle n'existe pas déjà
+  `ALTER TABLE users ADD COLUMN permissions TEXT DEFAULT '[]';`,
+  // Index
+  `CREATE INDEX IF NOT EXISTS idx_invoices_user_id ON invoices(user_id);`,
+  `CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);`,
 ]
 
 async function runMigrations(db: any) {
@@ -173,6 +197,7 @@ async function runMigrations(db: any) {
   }
 }
 
+// ─── DÉTECTION ENVIRONNEMENT ──────────────────────────────────────
 function isTauriEnv(): boolean {
   if (typeof window === 'undefined') return false
   return (
@@ -191,6 +216,7 @@ function isCapacitorMobile(): boolean {
   }
 }
 
+// ─── DRIVERS ──────────────────────────────────────────────────────
 async function createTauriDriver(): Promise<DbDriver> {
   console.log('BarkahFlow: Initialisation SQLite Tauri Desktop...')
 
@@ -286,6 +312,7 @@ function createMockDriver(): DbDriver {
   }
 }
 
+// ─── EXPOSITION PUBLIQUE ──────────────────────────────────────────
 export async function getDriver(): Promise<DbDriver> {
   if (driverInstance) return driverInstance
 

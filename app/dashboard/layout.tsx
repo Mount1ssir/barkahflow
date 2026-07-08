@@ -4,9 +4,13 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/src/lib/supabase'
 import { Sidebar } from '@/components/dashboard/sidebar'
 import { TopBar } from '@/components/dashboard/topbar'
-import { VoiceAssistantButton } from '@/components/voice/VoiceAssistantButton' // 👈 Import
+// ✅ Import depuis components/pin/pin-context (existant)
+import { PinProvider, usePin } from '@/components/pin/pin-context'
+import { PinLockScreen } from '@/components/pin/PinLockScreen'
+import { isPinEnabled } from '@/lib/pin-storage'
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+function DashboardContent({ children }: { children: React.ReactNode }) {
+  const { isLocked, unlockApp } = usePin()
   const [user, setUser] = useState<any>(null)
   const [checking, setChecking] = useState(true)
 
@@ -33,16 +37,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="flex min-h-screen bg-muted/30 dark:bg-background">
-      <Sidebar />
-      <div className="flex-1 flex flex-col min-w-0">
-        <TopBar user={user} />
-        <main className="flex-1 overflow-auto p-6">
-          {children}
-        </main>
-        {/* 👇 Bouton de l'assistant vocal - en bas à droite */}
-        <VoiceAssistantButton />
+    <>
+      <div className="flex min-h-screen bg-muted/30 dark:bg-background">
+        <Sidebar />
+        <div className="flex-1 flex flex-col min-w-0">
+          <TopBar user={user} />
+          <main className="flex-1 overflow-auto p-6">
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+
+      {isPinEnabled() && isLocked && (
+        <PinLockScreen onSuccess={unlockApp} />
+      )}
+    </>
+  )
+}
+
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <PinProvider>
+      <DashboardContent>{children}</DashboardContent>
+    </PinProvider>
   )
 }

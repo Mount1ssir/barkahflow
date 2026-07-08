@@ -16,7 +16,6 @@ export function PinPad({ length = 4, onComplete, error, disabled }: PinPadProps)
   useEffect(() => {
     if (pin.length === length) {
       onComplete(pin)
-      // Réinitialise après un court délai pour laisser voir le dernier chiffre
       const timeout = setTimeout(() => setPin(''), 400)
       return () => clearTimeout(timeout)
     }
@@ -43,7 +42,6 @@ export function PinPad({ length = 4, onComplete, error, disabled }: PinPadProps)
   return (
     <div className="flex flex-col items-center gap-8 w-full max-w-xs">
 
-      {/* Indicateurs visuels du PIN */}
       <div className="flex gap-3">
         {Array.from({ length }).map((_, i) => (
           <div
@@ -59,7 +57,6 @@ export function PinPad({ length = 4, onComplete, error, disabled }: PinPadProps)
         ))}
       </div>
 
-      {/* Clavier numérique */}
       <div className="grid grid-cols-3 gap-3 w-full">
         {digits.map((d, i) => {
           if (d === '') return <div key={i} />
@@ -70,8 +67,7 @@ export function PinPad({ length = 4, onComplete, error, disabled }: PinPadProps)
                 key={i}
                 onClick={handleDelete}
                 disabled={disabled || pin.length === 0}
-                className="h-16 rounded-2xl flex items-center justify-center
-                           transition-colors hover:bg-gray-100 disabled:opacity-30"
+                className="h-16 rounded-2xl flex items-center justify-center transition-colors hover:bg-gray-100 disabled:opacity-30"
               >
                 <Delete size={20} className="text-gray-500" />
               </button>
@@ -83,8 +79,7 @@ export function PinPad({ length = 4, onComplete, error, disabled }: PinPadProps)
               key={i}
               onClick={() => handleDigit(d)}
               disabled={disabled}
-              className="h-16 rounded-2xl flex items-center justify-center text-xl font-semibold
-                         border transition-colors hover:bg-gray-50 disabled:opacity-30"
+              className="h-16 rounded-2xl flex items-center justify-center text-xl font-semibold border transition-colors hover:bg-gray-50 disabled:opacity-30"
               style={{ borderColor: '#e5e7eb' }}
             >
               {d}

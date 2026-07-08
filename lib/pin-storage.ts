@@ -1,8 +1,4 @@
-// ─── Stockage local du PIN et de l'utilisateur mémorisé ───────────
-// Le PIN protège l'accès à l'app sur CET appareil (pas le compte
-// Google lui-même). Stocké en localStorage, jamais en clair (hashé
-// via SHA-256). Verrouillage après 5 tentatives échouées.
-
+// lib/pin-storage.ts
 const PIN_HASH_KEY = 'barkahflow_pin_hash'
 const PIN_ATTEMPTS_KEY = 'barkahflow_pin_attempts'
 const PIN_LOCKED_UNTIL_KEY = 'barkahflow_pin_locked_until'
@@ -10,15 +6,10 @@ const BIOMETRIC_ENABLED_KEY = 'barkahflow_biometric_enabled'
 const REMEMBERED_USER_KEY = 'barkahflow_remembered_user'
 
 const MAX_ATTEMPTS = 5
-const LOCKOUT_DURATION_MS = 5 * 60 * 1000 // 5 minutes
+const LOCKOUT_WARNING_MS = 30 * 1000      // 30 secondes
+const LOCKOUT_FINAL_MS = 5 * 60 * 1000    // 5 minutes
 
-export interface RememberedUser {
-  name: string
-  email: string
-  avatarUrl?: string
-}
-
-// ─── Hash SHA-256 (Web Crypto API, disponible nativement dans la webview) ──
+// ─── Hash SHA-256 ──────────────────────────────────────────────────
 async function hashPin(pin: string): Promise<string> {
   const encoder = new TextEncoder()
   const data = encoder.encode(pin)
@@ -27,7 +18,7 @@ async function hashPin(pin: string): Promise<string> {
   return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
-// ─── Configuration du PIN ──────────────────────────────────────────
+// ─── PIN ──────────────────────────────────────────────────────────
 export function isPinEnabled(): boolean {
   if (typeof window === 'undefined') return false
   return !!localStorage.getItem(PIN_HASH_KEY)
@@ -66,7 +57,7 @@ export async function verifyPinCode(pin: string): Promise<boolean> {
   return isCorrect
 }
 
-// ─── Gestion des tentatives / verrouillage ─────────────────────────
+// ─── Gestion des tentatives ──────────────────────────────────────
 function getAttempts(): number {
   if (typeof window === 'undefined') return 0
   return parseInt(localStorage.getItem(PIN_ATTEMPTS_KEY) || '0', 10)
@@ -75,8 +66,16 @@ function getAttempts(): number {
 function incrementAttempts(): void {
   const attempts = getAttempts() + 1
   localStorage.setItem(PIN_ATTEMPTS_KEY, String(attempts))
+
+  let lockoutDuration = 0
   if (attempts >= MAX_ATTEMPTS) {
-    const lockedUntil = Date.now() + LOCKOUT_DURATION_MS
+    lockoutDuration = LOCKOUT_FINAL_MS
+  } else if (attempts >= 3) {
+    lockoutDuration = LOCKOUT_WARNING_MS
+  }
+
+  if (lockoutDuration > 0) {
+    const lockedUntil = Date.now() + lockoutDuration
     localStorage.setItem(PIN_LOCKED_UNTIL_KEY, String(lockedUntil))
   }
 }
@@ -95,9 +94,7 @@ export function isLockedOut(): boolean {
   const lockedUntil = localStorage.getItem(PIN_LOCKED_UNTIL_KEY)
   if (!lockedUntil) return false
   const stillLocked = Date.now() < parseInt(lockedUntil, 10)
-  if (!stillLocked) {
-    resetAttempts() // le verrouillage a expiré, on nettoie
-  }
+  if (!stillLocked) resetAttempts()
   return stillLocked
 }
 
@@ -109,7 +106,7 @@ export function getLockoutRemainingSeconds(): number {
   return Math.max(0, Math.ceil(remaining / 1000))
 }
 
-// ─── Biométrie (activation/désactivation, la logique WebAuthn est dans biometric-auth.ts) ──
+// ─── Biométrie ──────────────────────────────────────────────────────
 export function isBiometricEnabled(): boolean {
   if (typeof window === 'undefined') return false
   return localStorage.getItem(BIOMETRIC_ENABLED_KEY) === 'true'
@@ -123,12 +120,12 @@ export function setBiometricEnabled(enabled: boolean): void {
   }
 }
 
-// ─── Utilisateur mémorisé (affiché sur l'écran de verrouillage) ────
-export function setRememberedUser(user: RememberedUser): void {
-  localStorage.setItem(REMEMBERED_USER_KEY, JSON.stringify(user))
+// ─── Utilisateur mémorisé ──────────────────────────────────────────
+export function setRememberedUser(name: string, avatarUrl?: string): void {
+  localStorage.setItem(REMEMBERED_USER_KEY, JSON.stringify({ name, avatarUrl }))
 }
 
-export function getRememberedUser(): RememberedUser | null {
+export function getRememberedUser(): { name: string; avatarUrl?: string } | null {
   if (typeof window === 'undefined') return null
   const raw = localStorage.getItem(REMEMBERED_USER_KEY)
   if (!raw) return null

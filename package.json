@@ -19,6 +19,7 @@
     "@capacitor/cli": "^8.4.0",
     "@capacitor/core": "^8.4.0",
     "@capacitor/filesystem": "^8.1.2",
+    "@rive-app/react-canvas": "^4.29.4",
     "@supabase/supabase-js": "^2.108.2",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-barcode-scanner": "^2.4.5",
