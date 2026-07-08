@@ -1,199 +1,120 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { Skeleton } from '@/components/ui/skeleton'
-import { formatMAD } from '@/lib/stats-data'
-import {
-  getDailySales,
-  getWeeklySales,
-  getMonthlySales,
-  getTopProducts,
-  getSalesByCategory,
-  type SalesStats,
-  type TopProduct,
-  type CategoryStat,
-} from '@/lib/report-data'
-
-const GOLD = '#D4A017'
+import Link from 'next/link'
+import { 
+  ChevronRight, 
+  TrendingUp, 
+  Package, 
+  Briefcase, 
+  FileText, 
+  Users 
+} from 'lucide-react'
 
 export default function ReportsPage() {
   const { t } = useTranslation()
-  const [period, setPeriod] = useState<'daily' | 'weekly' | 'monthly'>('daily')
-  const [salesStats, setSalesStats] = useState<SalesStats | null>(null)
-  const [topProducts, setTopProducts] = useState<TopProduct[]>([])
-  const [categoryStats, setCategoryStats] = useState<CategoryStat[]>([])
-  const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    loadData()
-  }, [period])
+  const reportCategories = [
+    {
+      id: 'sales',
+      title: t('reports.categories.sales', 'Sales Reports'),
+      desc: t('reports.desc.sales', 'Track revenue, average order value, and product performance.'),
+      icon: TrendingUp,
+      badge: t('reports.badges.popular', 'Popular'),
+      href: '/dashboard/rapports/sales'
+    },
+    {
+      id: 'inventory',
+      title: t('reports.categories.inventory', 'Inventory Reports'),
+      desc: t('reports.desc.inventory', 'Monitor stock levels, value of goods, and replenishment alerts.'),
+      icon: Package,
+      badge: null,
+      href: '/dashboard/rapports/inventory'
+    },
+    {
+      id: 'business',
+      title: t('reports.categories.business', 'Business Reports'),
+      desc: t('reports.desc.business', 'Overview of profit margins, expenses, and cash flow ledger.'),
+      icon: Briefcase,
+      badge: null,
+      href: '/dashboard/rapports/business'
+    },
 
-  const loadData = async () => {
-    setLoading(true)
-    try {
-      let stats: SalesStats
-      if (period === 'daily') stats = await getDailySales()
-      else if (period === 'weekly') stats = await getWeeklySales()
-      else stats = await getMonthlySales()
-
-      const [products, categories] = await Promise.all([
-        getTopProducts(5),
-        getSalesByCategory(),
-      ])
-      setSalesStats(stats)
-      setTopProducts(products)
-      setCategoryStats(categories)
-    } catch (error) {
-      console.error(error)
-    } finally {
-      setLoading(false)
-    }
-  }
+    {
+      id: 'tax',
+      title: t('reports.categories.tax', 'Tax & Invoice Reports'),
+      desc: t('reports.desc.tax', 'Export summaries of taxes collected and client invoicing histories.'),
+      icon: FileText,
+      badge: null,
+      href: '/dashboard/rapports/tax-invoice'
+    },
+    {
+      id: 'customers',
+      title: t('reports.categories.customers', 'Customer Reports'),
+      desc: t('reports.desc.customers', 'Analyse client credit levels, unpaid debts, and top customers.'),
+      icon: Users,
+      badge: null,
+      href: '/dashboard/rapports/customer'
+    },
+  ]
 
   return (
-    <div className="flex flex-col gap-6 max-w-7xl mx-auto w-full">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-50">
-          {t('reports.title', 'Rapports')}
+    <div className="flex flex-col gap-6 max-w-7xl mx-auto w-full p-1 bg-slate-50/50 dark:bg-transparent min-h-screen">
+      {/* Page Header */}
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
+          {t('reports.title', 'Reports')}
         </h1>
-        <p className="text-sm text-slate-500 dark:text-gray-400">
-          {t('reports.subtitle', 'Statistiques et analyses de vos ventes')}
+        <p className="text-sm text-slate-500 dark:text-zinc-400">
+          {t('reports.subtitle', 'Access summaries, sales statistics, and store business indicators')}
         </p>
       </div>
 
-      <Tabs defaultValue="sales" className="space-y-4">
-        <TabsList className="rounded-xl">
-          <TabsTrigger value="sales">{t('reports.sales', 'Ventes')}</TabsTrigger>
-          <TabsTrigger value="products">{t('reports.products', 'Produits')}</TabsTrigger>
-          <TabsTrigger value="categories">{t('reports.categories', 'Catégories')}</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="sales">
-          <div className="flex flex-wrap gap-4 mb-4">
-            <Tabs value={period} onValueChange={(v) => setPeriod(v as 'daily' | 'weekly' | 'monthly')}>
-              <TabsList>
-                <TabsTrigger value="daily">{t('reports.daily', 'Aujourd\'hui')}</TabsTrigger>
-                <TabsTrigger value="weekly">{t('reports.weekly', 'Cette semaine')}</TabsTrigger>
-                <TabsTrigger value="monthly">{t('reports.monthly', 'Ce mois')}</TabsTrigger>
-              </TabsList>
-            </Tabs>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card className="rounded-2xl shadow-sm">
-              <CardHeader>
-                <CardTitle className="text-sm font-medium text-slate-500">
-                  {t('reports.total_sales', 'Total des ventes')}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <Skeleton className="h-8 w-32" />
-                ) : (
-                  <p className="text-2xl font-bold" style={{ color: GOLD }}>
-                    {formatMAD(salesStats?.total || 0)}
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-            <Card className="rounded-2xl shadow-sm">
-              <CardHeader>
-                <CardTitle className="text-sm font-medium text-slate-500">
-                  {t('reports.invoice_count', 'Nombre de factures')}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <Skeleton className="h-8 w-16" />
-                ) : (
-                  <p className="text-2xl font-bold">{salesStats?.count || 0}</p>
-                )}
-              </CardContent>
-            </Card>
-            <Card className="rounded-2xl shadow-sm">
-              <CardHeader>
-                <CardTitle className="text-sm font-medium text-slate-500">
-                  {t('reports.average_ticket', 'Panier moyen')}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loading ? (
-                  <Skeleton className="h-8 w-32" />
-                ) : (
-                  <p className="text-2xl font-bold" style={{ color: GOLD }}>
-                    {formatMAD(salesStats?.average || 0)}
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="products">
-          <Card className="rounded-2xl shadow-sm">
-            <CardHeader>
-              <CardTitle>{t('reports.top_products', 'Meilleurs produits')}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="space-y-2">
-                  {[1, 2, 3].map((i) => (
-                    <Skeleton key={i} className="h-8 w-full" />
-                  ))}
+      {/* Grid of Report Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {reportCategories.map((report) => {
+          const Icon = report.icon
+          return (
+            <Link
+              key={report.id}
+              href={report.href}
+              className="group flex flex-col justify-between p-6 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl text-left transition-all duration-200 hover:border-emerald-600/30 hover:shadow-md dark:hover:shadow-zinc-950 hover:bg-slate-50/30 dark:hover:bg-zinc-800/30 cursor-pointer focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+            >
+              <div className="w-full">
+                {/* Icon & Badge */}
+                <div className="flex items-center justify-between mb-4 w-full">
+                  <div className="p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-450 group-hover:bg-emerald-100 dark:group-hover:bg-emerald-900/50 group-hover:text-emerald-700 dark:group-hover:text-emerald-350 transition-colors duration-200">
+                    <Icon size={20} className="shrink-0" />
+                  </div>
+                  {report.badge && (
+                    <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-405 border border-emerald-100 dark:border-emerald-900/30">
+                      {report.badge}
+                    </span>
+                  )}
                 </div>
-              ) : topProducts.length === 0 ? (
-                <p className="text-sm text-slate-500">{t('reports.no_data', 'Aucune donnée')}</p>
-              ) : (
-                <div className="space-y-3">
-                  {topProducts.map((p, i) => (
-                    <div key={p.id} className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm font-bold text-slate-400">#{i + 1}</span>
-                        <span className="font-medium">{p.name}</span>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <span className="text-sm text-slate-500">{p.quantity} {t('reports.units', 'unités')}</span>
-                        <span className="font-bold" style={{ color: GOLD }}>{formatMAD(p.total)}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
 
-        <TabsContent value="categories">
-          <Card className="rounded-2xl shadow-sm">
-            <CardHeader>
-              <CardTitle>{t('reports.sales_by_category', 'Ventes par catégorie')}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="space-y-2">
-                  {[1, 2, 3].map((i) => (
-                    <Skeleton key={i} className="h-8 w-full" />
-                  ))}
-                </div>
-              ) : categoryStats.length === 0 ? (
-                <p className="text-sm text-slate-500">{t('reports.no_data', 'Aucune donnée')}</p>
-              ) : (
-                <div className="space-y-3">
-                  {categoryStats.map((cat) => (
-                    <div key={cat.name} className="flex items-center justify-between">
-                      <span className="font-medium">{cat.name}</span>
-                      <span className="font-bold" style={{ color: GOLD }}>{cat.value}%</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+                {/* Title */}
+                <h3 className="text-base font-semibold text-slate-800 dark:text-zinc-100 mb-2 group-hover:text-emerald-950 dark:group-hover:text-emerald-400 transition-colors duration-200">
+                  {report.title}
+                </h3>
+
+                {/* Description */}
+                <p className="text-xs text-slate-500 dark:text-zinc-400 leading-relaxed">
+                  {report.desc}
+                </p>
+              </div>
+
+              {/* Action Indicator (Chevron) */}
+              <div className="flex items-center justify-end w-full mt-6 pt-4 border-t border-slate-100 dark:border-zinc-800/50 text-slate-400 dark:text-zinc-500 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors duration-200">
+                <span className="text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity duration-200 me-1">
+                  {t('reports.view', 'View Report')}
+                </span>
+                <ChevronRight size={16} className="rtl:rotate-180" />
+              </div>
+            </Link>
+          )
+        })}
+      </div>
     </div>
   )
 }
