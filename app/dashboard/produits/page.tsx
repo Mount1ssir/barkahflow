@@ -20,6 +20,7 @@ import {
   Filter,
   LayoutGrid,
   List,
+  X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -208,6 +209,8 @@ export default function ProduitsPage() {
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [stockFilter, setStockFilter] = useState<'all' | 'stock_bas'>('all')
+  const [productIdFilter, setProductIdFilter] = useState<string | null>(null)
+  const [productNameFilter, setProductNameFilter] = useState<string | null>(null)
   const [showInactive, setShowInactive] = useState(false)
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null)
@@ -309,6 +312,27 @@ export default function ProduitsPage() {
     }
   }, [searchParams])
 
+  // ── Filtre produit unique depuis URL (?produit=ID) — venant d'une notification stock ──
+  useEffect(() => {
+    const produit = searchParams.get('produit')
+    setProductIdFilter(produit)
+    if (!produit) setProductNameFilter(null)
+  }, [searchParams])
+
+  // Met à jour le nom du produit filtré une fois les produits chargés
+  useEffect(() => {
+    if (productIdFilter && products.length > 0) {
+      const found = products.find((p) => p.id === productIdFilter)
+      if (found) setProductNameFilter(found.nameAr)
+    }
+  }, [productIdFilter, products])
+
+  const clearProductFilter = () => {
+    setProductIdFilter(null)
+    setProductNameFilter(null)
+    router.replace('/dashboard/produits')
+  }
+
   // ── Réapprovisionnement depuis URL ──
   useEffect(() => {
     const replenish = searchParams.get('replenish')
@@ -337,6 +361,17 @@ export default function ProduitsPage() {
     try {
       let data = query ? await searchProducts(query) : await getAllProducts()
       if (!showInactive) { data = data.filter(p => p.isActive) }
+
+      // Filtre par un seul produit (venant d'une notification) : prioritaire,
+      // ignore les autres filtres pour montrer exactement ce produit.
+      if (productIdFilter) {
+        const single = data.filter((p) => p.id === productIdFilter)
+        setProducts(single)
+        setStats(computeStats(single))
+        setLoading(false)
+        return
+      }
+
       if (categoryFilter !== 'all') {
         data = data.filter((p) => p.categoryId === categoryFilter)
       }
@@ -367,7 +402,7 @@ export default function ProduitsPage() {
     } finally {
       setLoading(false)
     }
-  }, [query, categoryFilter, statusFilter, stockFilter, scannedProduct, showInactive, computeStats])
+  }, [query, categoryFilter, statusFilter, stockFilter, productIdFilter, scannedProduct, showInactive, computeStats])
 
   useEffect(() => {
     loadProducts()
@@ -484,13 +519,17 @@ export default function ProduitsPage() {
             <div className="h-20 w-20 rounded-full flex items-center justify-center mb-4" style={{ backgroundColor: 'rgba(224,184,111,0.1)' }}>
               <Package className="h-9 w-9" style={{ color: GOLD }} />
             </div>
-            <h4 className="text-base font-semibold text-foreground mb-1">Aucun produit</h4>
+            <h4 className="text-base font-semibold text-foreground mb-1">
+              {productIdFilter ? 'Produit introuvable' : 'Aucun produit'}
+            </h4>
             <p className="text-sm text-muted-foreground mb-5 max-w-xs">
-              Commencez par ajouter votre premier produit
+              {productIdFilter ? 'Ce produit a peut-être été supprimé.' : 'Commencez par ajouter votre premier produit'}
             </p>
-            <Button className="gap-2 rounded-xl text-white font-semibold" style={{ backgroundColor: PRIMARY }} onClick={handleAddProduct}>
-              <Plus size={16} /> Ajouter un produit
-            </Button>
+            {!productIdFilter && (
+              <Button className="gap-2 rounded-xl text-white font-semibold" style={{ backgroundColor: PRIMARY }} onClick={handleAddProduct}>
+                <Plus size={16} /> Ajouter un produit
+              </Button>
+            )}
           </CardContent>
         </Card>
       )
@@ -673,6 +712,24 @@ export default function ProduitsPage() {
           <Plus size={16} /> Ajouter un produit
         </Button>
       </div>
+
+      {/* Bandeau filtre produit unique (venant d'une notification stock) */}
+      {productIdFilter && (
+        <div className="flex items-center gap-3 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl">
+          <AlertTriangle className="h-4 w-4 text-blue-500 shrink-0" />
+          <p className="text-sm text-blue-700 dark:text-blue-300 flex-1">
+            Affichage filtré pour le produit : <strong>{productNameFilter || productIdFilter}</strong>
+          </p>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearProductFilter}
+            className="text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded-lg h-7 px-2 gap-1"
+          >
+            <X className="h-3.5 w-3.5" /> Effacer le filtre
+          </Button>
+        </div>
+      )}
 
       {loading ? (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

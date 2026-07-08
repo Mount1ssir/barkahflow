@@ -50,8 +50,9 @@ export default function CaissePage() {
   const loadData = async () => {
     setLoading(true)
     try {
+      // ✅ FILTRE : showInPosOnly = true pour n'afficher que les produits visibles dans le POS
       const [prodData, catData] = await Promise.all([
-        getAllProducts(true),
+        getAllProducts(true, true), // activeOnly = true, showInPosOnly = true
         getAllCategories(),
       ])
       setProducts(prodData)

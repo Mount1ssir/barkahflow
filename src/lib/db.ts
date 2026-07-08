@@ -8,12 +8,10 @@ export interface DbDriver {
 
 let driverInstance: DbDriver | null = null
 
-// ─── SCHÉMA COMPLET ──────────────────────────────────────────────────
 const SCHEMA = `
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
 
--- TABLE: clients
 CREATE TABLE IF NOT EXISTS clients (
   id TEXT PRIMARY KEY,
   full_name TEXT NOT NULL,
@@ -26,7 +24,6 @@ CREATE TABLE IF NOT EXISTS clients (
   updated_at TEXT NOT NULL
 );
 
--- TABLE: products
 CREATE TABLE IF NOT EXISTS products (
   id TEXT PRIMARY KEY,
   sku TEXT UNIQUE NOT NULL,
@@ -37,10 +34,12 @@ CREATE TABLE IF NOT EXISTS products (
   stock_qty INTEGER NOT NULL DEFAULT 0,
   alert_threshold INTEGER NOT NULL DEFAULT 5,
   tax_rate REAL DEFAULT 0,
+  show_in_pos INTEGER DEFAULT 1,
+  track_stock INTEGER DEFAULT 1,
+  is_favorite INTEGER DEFAULT 0,
   updated_at TEXT NOT NULL
 );
 
--- TABLE: invoices
 CREATE TABLE IF NOT EXISTS invoices (
   id TEXT PRIMARY KEY,
   invoice_number TEXT UNIQUE NOT NULL,
@@ -57,7 +56,6 @@ CREATE TABLE IF NOT EXISTS invoices (
   updated_at TEXT NOT NULL
 );
 
--- TABLE: line_items
 CREATE TABLE IF NOT EXISTS line_items (
   id TEXT PRIMARY KEY,
   invoice_id TEXT NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
@@ -68,7 +66,6 @@ CREATE TABLE IF NOT EXISTS line_items (
   subtotal INTEGER NOT NULL
 );
 
--- TABLE: transactions
 CREATE TABLE IF NOT EXISTS transactions (
   id TEXT PRIMARY KEY,
   type TEXT NOT NULL CHECK(type IN ('INCOME', 'EXPENSE')),
@@ -83,7 +80,6 @@ CREATE TABLE IF NOT EXISTS transactions (
   created_at TEXT NOT NULL
 );
 
--- TABLE: debt_ledger
 CREATE TABLE IF NOT EXISTS debt_ledger (
   id TEXT PRIMARY KEY,
   type TEXT NOT NULL CHECK(type IN ('RECEIVABLE', 'PAYABLE')),
@@ -96,7 +92,6 @@ CREATE TABLE IF NOT EXISTS debt_ledger (
   updated_at TEXT NOT NULL
 );
 
--- TABLE: reminders_queue
 CREATE TABLE IF NOT EXISTS reminders_queue (
   id TEXT PRIMARY KEY,
   client_id TEXT NOT NULL REFERENCES clients(id),
@@ -109,7 +104,6 @@ CREATE TABLE IF NOT EXISTS reminders_queue (
   updated_at TEXT NOT NULL
 );
 
--- TABLE: users (employés / caissiers)
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -122,7 +116,31 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TEXT NOT NULL
 );
 
--- INDEXES
+CREATE TABLE IF NOT EXISTS dismissed_notifications (
+  id TEXT PRIMARY KEY,
+  notification_id TEXT NOT NULL,
+  dismissed_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS notification_read_status (
+  id TEXT PRIMARY KEY,
+  notification_id TEXT NOT NULL,
+  read_at TEXT NOT NULL,
+  UNIQUE(notification_id)
+);
+
+CREATE TABLE IF NOT EXISTS stock_movements (
+  id TEXT PRIMARY KEY,
+  product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  type TEXT NOT NULL CHECK(type IN ('IN', 'OUT', 'ADJUSTMENT')),
+  quantity INTEGER NOT NULL,
+  previous_qty INTEGER NOT NULL,
+  new_qty INTEGER NOT NULL,
+  reason TEXT,
+  user_id TEXT REFERENCES users(id),
+  created_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_products_sku ON products(sku);
 CREATE INDEX IF NOT EXISTS idx_products_name ON products(name_ar, name_en);
 CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status, created_at);
@@ -130,15 +148,18 @@ CREATE INDEX IF NOT EXISTS idx_invoices_due_date ON invoices(due_date);
 CREATE INDEX IF NOT EXISTS idx_clients_phone ON clients(phone);
 CREATE INDEX IF NOT EXISTS idx_invoices_user_id ON invoices(user_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
+CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON stock_movements(product_id);
+CREATE INDEX IF NOT EXISTS idx_stock_movements_created ON stock_movements(created_at);
 `
 
-// ─── MIGRATIONS ─────────────────────────────────────────────────────
 const MIGRATIONS = [
-  // Ajout de credit_limit sur clients
+  // Clients
   `ALTER TABLE clients ADD COLUMN credit_limit INTEGER DEFAULT NULL;`,
-  // Ajout de payment_method sur transactions
+  
+  // Transactions
   `ALTER TABLE transactions ADD COLUMN payment_method TEXT DEFAULT 'cash';`,
-  // Création de reminders_queue
+  
+  // Reminders Queue
   `CREATE TABLE IF NOT EXISTS reminders_queue (
     id TEXT PRIMARY KEY,
     client_id TEXT NOT NULL REFERENCES clients(id),
@@ -150,13 +171,16 @@ const MIGRATIONS = [
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );`,
-  // Ajout due_date et po_number sur invoices
+  
+  // Invoices
   `ALTER TABLE invoices ADD COLUMN due_date TEXT;`,
   `ALTER TABLE invoices ADD COLUMN po_number TEXT;`,
-  // Ajout des colonnes user_id
   `ALTER TABLE invoices ADD COLUMN user_id TEXT REFERENCES users(id);`,
+  
+  // Transactions user_id
   `ALTER TABLE transactions ADD COLUMN user_id TEXT REFERENCES users(id);`,
-  // ✅ Création de la table users si elle n'existe pas
+  
+  // Users
   `CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -168,13 +192,47 @@ const MIGRATIONS = [
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );`,
-  // ✅ Ajout de la colonne avatar_url si elle n'existe pas déjà
   `ALTER TABLE users ADD COLUMN avatar_url TEXT;`,
-  // ✅ Ajout de la colonne permissions si elle n'existe pas déjà
   `ALTER TABLE users ADD COLUMN permissions TEXT DEFAULT '[]';`,
+  
+  // Products - options
+  `ALTER TABLE products ADD COLUMN show_in_pos INTEGER DEFAULT 1;`,
+  `ALTER TABLE products ADD COLUMN track_stock INTEGER DEFAULT 1;`,
+  `ALTER TABLE products ADD COLUMN is_favorite INTEGER DEFAULT 0;`,
+  
+  // Notifications
+  `CREATE TABLE IF NOT EXISTS dismissed_notifications (
+    id TEXT PRIMARY KEY,
+    notification_id TEXT NOT NULL,
+    dismissed_at TEXT NOT NULL
+  );`,
+  `CREATE TABLE IF NOT EXISTS notification_read_status (
+    id TEXT PRIMARY KEY,
+    notification_id TEXT NOT NULL,
+    read_at TEXT NOT NULL,
+    UNIQUE(notification_id)
+  );`,
+  
+  // Stock Movements
+  `CREATE TABLE IF NOT EXISTS stock_movements (
+    id TEXT PRIMARY KEY,
+    product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    type TEXT NOT NULL CHECK(type IN ('IN', 'OUT', 'ADJUSTMENT')),
+    quantity INTEGER NOT NULL,
+    reason TEXT,
+    created_at TEXT NOT NULL
+  );`,
+  
+  // ✅ AJOUT DES COLONNES MANQUANTES SUR stock_movements
+  `ALTER TABLE stock_movements ADD COLUMN previous_qty INTEGER DEFAULT 0;`,
+  `ALTER TABLE stock_movements ADD COLUMN new_qty INTEGER DEFAULT 0;`,
+  `ALTER TABLE stock_movements ADD COLUMN user_id TEXT REFERENCES users(id);`,
+  
   // Index
   `CREATE INDEX IF NOT EXISTS idx_invoices_user_id ON invoices(user_id);`,
   `CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);`,
+  `CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON stock_movements(product_id);`,
+  `CREATE INDEX IF NOT EXISTS idx_stock_movements_created ON stock_movements(created_at);`,
 ]
 
 async function runMigrations(db: any) {
@@ -189,7 +247,7 @@ async function runMigrations(db: any) {
         msg.includes('no such table') ||
         msg.includes('SQLITE_ERROR')
       ) {
-        // ignoré
+        // ignored
       } else {
         console.warn('Migration warning:', msg)
       }
@@ -197,7 +255,6 @@ async function runMigrations(db: any) {
   }
 }
 
-// ─── DÉTECTION ENVIRONNEMENT ──────────────────────────────────────
 function isTauriEnv(): boolean {
   if (typeof window === 'undefined') return false
   return (
@@ -216,7 +273,6 @@ function isCapacitorMobile(): boolean {
   }
 }
 
-// ─── DRIVERS ──────────────────────────────────────────────────────
 async function createTauriDriver(): Promise<DbDriver> {
   console.log('BarkahFlow: Initialisation SQLite Tauri Desktop...')
 
@@ -242,7 +298,7 @@ async function createTauriDriver(): Promise<DbDriver> {
 
   await runMigrations(db)
 
-  console.log('BarkahFlow: SQLite Tauri prêt avec migrations')
+  console.log('BarkahFlow: SQLite Tauri pret avec migrations')
 
   return {
     select: async <T>(query: string, params: any[] = []) => {
@@ -290,7 +346,7 @@ async function createCapacitorDriver(): Promise<DbDriver> {
 
   await runMigrations(db)
 
-  console.log('BarkahFlow: SQLite Capacitor prêt avec migrations')
+  console.log('BarkahFlow: SQLite Capacitor pret avec migrations')
 
   return {
     select: async <T>(query: string, params: any[] = []) => {
@@ -305,14 +361,13 @@ async function createCapacitorDriver(): Promise<DbDriver> {
 
 function createMockDriver(): DbDriver {
   console.warn('BarkahFlow: Mode navigateur web SQLite non disponible.')
-  console.warn('Lance npm run tauri dev pour la vraie base de données.')
+  console.warn('Lance npm run tauri dev pour la vraie base de donnees.')
   return {
     select: async <T>() => [] as T[],
     execute: async () => {},
   }
 }
 
-// ─── EXPOSITION PUBLIQUE ──────────────────────────────────────────
 export async function getDriver(): Promise<DbDriver> {
   if (driverInstance) return driverInstance
 
@@ -357,7 +412,7 @@ export async function dbSelectWithRetry<T>(
       lastError = error
       const msg = error?.message || ''
       if (msg.includes('database is locked') && attempt < maxRetries) {
-        console.warn(`⚠️ Base verrouillée (lecture), tentative ${attempt}/${maxRetries}...`)
+        console.warn(`Base verrouillee (lecture), tentative ${attempt}/${maxRetries}...`)
         await new Promise(resolve => setTimeout(resolve, delay * attempt))
         continue
       }
@@ -381,7 +436,7 @@ export async function dbExecuteWithRetry(
       lastError = error
       const msg = error?.message || ''
       if (msg.includes('database is locked') && attempt < maxRetries) {
-        console.warn(`⚠️ Base verrouillée (écriture), tentative ${attempt}/${maxRetries}...`)
+        console.warn(`Base verrouillee (ecriture), tentative ${attempt}/${maxRetries}...`)
         await new Promise(resolve => setTimeout(resolve, delay * attempt))
         continue
       }

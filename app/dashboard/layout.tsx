@@ -4,10 +4,10 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/src/lib/supabase'
 import { Sidebar } from '@/components/dashboard/sidebar'
 import { TopBar } from '@/components/dashboard/topbar'
-// ✅ Import depuis components/pin/pin-context (existant)
 import { PinProvider, usePin } from '@/components/pin/pin-context'
 import { PinLockScreen } from '@/components/pin/PinLockScreen'
 import { isPinEnabled } from '@/lib/pin-storage'
+import { NotificationProvider } from '@/context/NotificationContext'
 
 function DashboardContent({ children }: { children: React.ReactNode }) {
   const { isLocked, unlockApp } = usePin()
@@ -58,7 +58,9 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
     <PinProvider>
-      <DashboardContent>{children}</DashboardContent>
+      <NotificationProvider>
+        <DashboardContent>{children}</DashboardContent>
+      </NotificationProvider>
     </PinProvider>
   )
 }

@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { useRouter } from 'next/navigation'
 import i18n, { initI18n } from '@/lib/i18n/config'
 import {
-  Menu, Search, Moon, Sun, Bell, Settings, LogOut, ChevronDown,
+  Menu, Search, Moon, Sun, Settings, LogOut, ChevronDown,
   User, Store, HelpCircle, LayoutDashboard, ShoppingCart, Package,
   FileText, Users, Wallet, BarChart3,
 } from 'lucide-react'
@@ -15,15 +15,10 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
 import { useSidebarStore } from '@/lib/sidebar-store'
 import { supabase } from '@/src/lib/supabase'
-import { getStockAlerts, countStockAlerts, type StockAlert } from '@/lib/stock-alerts-data'
 import { VoiceAssistantButton } from '@/components/voice/VoiceAssistantButton'
+import { Notifications } from '@/components/dashboard/notifications'
 
 const langs = [
   { code: 'fr', label: 'français (French)', flag: 'https://flagcdn.com/w40/fr.png' },
@@ -31,7 +26,6 @@ const langs = [
   { code: 'ar', label: 'عربي (Arabic)',      flag: 'https://flagcdn.com/w40/ma.png' },
 ]
 
-// ─── Sections de l'app pour la recherche globale ───────────────────
 interface AppSection {
   label: string
   path: string
@@ -47,17 +41,14 @@ const APP_SECTIONS: AppSection[] = [
   { label: 'Clients', path: '/dashboard/clients', keywords: ['clients', 'client', 'contacts'], icon: <Users className="h-4 w-4" /> },
   { label: 'Gestion des dettes', path: '/dashboard/dettes', keywords: ['dettes', 'créances', 'impayés', 'debt'], icon: <Wallet className="h-4 w-4" /> },
   { label: 'Rapports & Revenus', path: '/dashboard/rapports', keywords: ['rapports', 'revenus', 'ca', 'chiffre affaires', 'statistiques'], icon: <BarChart3 className="h-4 w-4" /> },
-  { label: 'Paramètres', path: '/dashboard/parametres', keywords: ['paramètres', 'settings', 'sécurité', 'pin', 'biométrie'], icon: <Settings className="h-4 w-4" /> },
+  { label: 'Paramètres', path: '/dashboard/parametres', keywords: ['paramètres', 'settings', 'sécurité', 'pin'], icon: <Settings className="h-4 w-4" /> },
   { label: 'Mon profil', path: '/dashboard/profil', keywords: ['profil', 'compte', 'profile'], icon: <User className="h-4 w-4" /> },
   { label: 'Ma boutique', path: '/dashboard/boutique', keywords: ['boutique', 'shop', 'entreprise'], icon: <Store className="h-4 w-4" /> },
   { label: 'Support / Aide', path: '/dashboard/support', keywords: ['support', 'aide', 'help'], icon: <HelpCircle className="h-4 w-4" /> },
 ]
 
 function normalize(str: string): string {
-  return str
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+  return str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 }
 
 function searchSections(query: string): AppSection[] {
@@ -97,8 +88,7 @@ function LanguageDropdown() {
         onClick={() => setOpen(p => !p)}
         className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
       >
-        <img src={current.flag} alt={current.label}
-             className="w-6 h-6 rounded-full object-cover shadow-sm" />
+        <img src={current.flag} alt={current.label} className="w-6 h-6 rounded-full object-cover shadow-sm" />
       </button>
 
       {open && (
@@ -114,8 +104,7 @@ function LanguageDropdown() {
               }}
             >
               <span>{lang.label}</span>
-              <img src={lang.flag} alt={lang.label}
-                   className="w-7 h-7 rounded-full object-cover shadow-sm" />
+              <img src={lang.flag} alt={lang.label} className="w-7 h-7 rounded-full object-cover shadow-sm" />
             </button>
           ))}
         </div>
@@ -124,7 +113,6 @@ function LanguageDropdown() {
   )
 }
 
-// ─── Barre de recherche globale ────────────────────────────────────
 function GlobalSearch() {
   const router = useRouter()
   const { t } = useTranslation()
@@ -143,9 +131,7 @@ function GlobalSearch() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  useEffect(() => {
-    setActiveIndex(0)
-  }, [query])
+  useEffect(() => { setActiveIndex(0) }, [query])
 
   useEffect(() => {
     const inputEl = ref.current?.querySelector('input')
@@ -168,18 +154,10 @@ function GlobalSearch() {
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!open || results.length === 0) return
-    if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      setActiveIndex((prev) => (prev + 1) % results.length)
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      setActiveIndex((prev) => (prev - 1 + results.length) % results.length)
-    } else if (e.key === 'Enter') {
-      e.preventDefault()
-      goToSection(results[activeIndex])
-    } else if (e.key === 'Escape') {
-      setOpen(false)
-    }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActiveIndex((prev) => (prev + 1) % results.length) }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActiveIndex((prev) => (prev - 1 + results.length) % results.length) }
+    else if (e.key === 'Enter') { e.preventDefault(); goToSection(results[activeIndex]) }
+    else if (e.key === 'Escape') { setOpen(false) }
   }
 
   return (
@@ -189,10 +167,7 @@ function GlobalSearch() {
         <input
           type="text"
           value={query}
-          onChange={(e) => {
-            setQuery(e.target.value)
-            setOpen(true)
-          }}
+          onChange={(e) => { setQuery(e.target.value); setOpen(true) }}
           onFocus={() => query && setOpen(true)}
           onKeyDown={handleKeyDown}
           placeholder={t('dashboard.header.search', 'Rechercher dans le tableau de bord...')}
@@ -216,9 +191,7 @@ function GlobalSearch() {
                 onClick={() => goToSection(section)}
                 onMouseEnter={() => setActiveIndex(index)}
                 className={`w-full flex items-center gap-3 px-4 py-3 text-left text-sm transition-colors ${
-                  index === activeIndex
-                    ? 'bg-gray-50 dark:bg-zinc-800'
-                    : 'hover:bg-gray-50 dark:hover:bg-zinc-800'
+                  index === activeIndex ? 'bg-gray-50 dark:bg-zinc-800' : 'hover:bg-gray-50 dark:hover:bg-zinc-800'
                 }`}
               >
                 <span className="text-gray-400">{section.icon}</span>
@@ -243,32 +216,7 @@ export function TopBar({ user }: TopBarProps) {
   const { t } = useTranslation()
   const [mounted, setMounted] = useState(false)
 
-  const [alerts, setAlerts] = useState<StockAlert[]>([])
-  const [alertCount, setAlertCount] = useState(0)
-  const [notifOpen, setNotifOpen] = useState(false)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  const loadAlerts = async () => {
-    try {
-      const [count, data] = await Promise.all([
-        countStockAlerts(),
-        getStockAlerts(10),
-      ])
-      setAlertCount(count)
-      setAlerts(data)
-    } catch (error) {
-      console.error('Erreur chargement alertes:', error)
-    }
-  }
-
-  useEffect(() => {
-    loadAlerts()
-    const interval = setInterval(loadAlerts, 30000)
-    return () => clearInterval(interval)
-  }, [])
+  useEffect(() => { setMounted(true) }, [])
 
   const isDark = theme === 'dark'
 
@@ -285,16 +233,6 @@ export function TopBar({ user }: TopBarProps) {
     ? fullName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
     : email.slice(0, 2).toUpperCase() || 'A'
 
-  const goToReplenish = (productId: string) => {
-    setNotifOpen(false)
-    router.push(`/dashboard/produits?replenish=${productId}`)
-  }
-
-  const goToAllAlerts = () => {
-    setNotifOpen(false)
-    router.push('/dashboard/produits?filter=stock_bas')
-  }
-
   return (
     <header className="h-16 flex items-center justify-between px-5 gap-4 sticky top-0 z-30 bg-white dark:bg-zinc-900 border-b border-[#EAECEF] dark:border-zinc-800">
 
@@ -309,94 +247,9 @@ export function TopBar({ user }: TopBarProps) {
 
       <div className="flex items-center gap-1 shrink-0">
 
-        <Popover open={notifOpen} onOpenChange={setNotifOpen}>
-          <PopoverTrigger asChild>
-            <button
-              className="relative w-9 h-9 flex items-center justify-center rounded-xl text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800 hover:text-gray-700 transition-colors"
-              onClick={() => setNotifOpen(!notifOpen)}
-            >
-              <Bell size={18} />
-              {alertCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 flex items-center justify-center w-5 h-5 text-[10px] font-bold text-white bg-red-500 rounded-full animate-pulse border-2 border-white dark:border-zinc-900">
-                  {alertCount > 99 ? '99+' : alertCount}
-                </span>
-              )}
-            </button>
-          </PopoverTrigger>
+        {/* ✅ Composant Notifications unifié (stock + dettes + échéances) */}
+        <Notifications />
 
-          <PopoverContent className="w-80 p-0 rounded-2xl shadow-xl border border-[#EAECEF] dark:border-zinc-700" align="end">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#EAECEF] dark:border-zinc-700">
-              <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
-                {t('notifications.title', 'Alertes stock')}
-              </h4>
-              {alertCount > 0 && (
-                <span className="text-xs text-gray-500 dark:text-gray-400">
-                  {alertCount} {t('notifications.products', 'produit(s)')}
-                </span>
-              )}
-            </div>
-
-            <div className="max-h-72 overflow-y-auto">
-              {alerts.length === 0 ? (
-                <div className="p-6 text-center">
-                  <div className="flex flex-col items-center gap-2">
-                    <div className="w-12 h-12 rounded-full bg-green-50 dark:bg-green-900/20 flex items-center justify-center">
-                      <span className="text-2xl">✅</span>
-                    </div>
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      {t('notifications.all_good', 'Tout est en stock')}
-                    </p>
-                    <p className="text-xs text-gray-400 dark:text-gray-500">
-                      {t('notifications.no_alerts', 'Aucun produit en dessous du seuil')}
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                alerts.map((alert) => (
-                  <div
-                    key={alert.productId}
-                    className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-zinc-800/50 cursor-pointer border-b border-[#EAECEF] dark:border-zinc-700 last:border-0 transition-colors"
-                    onClick={() => goToReplenish(alert.productId)}
-                  >
-                    <div className="flex flex-col min-w-0 flex-1">
-                      <span className="text-sm font-semibold text-gray-900 dark:text-white truncate">
-                        {alert.nameAr}
-                      </span>
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
-                        {t('notifications.stock_left', 'Stock restant')} : <strong className="text-gray-700 dark:text-gray-300">{alert.stockQty}</strong>
-                        {t('notifications.threshold', ' (seuil: ')}{alert.alertThreshold})
-                      </span>
-                    </div>
-                    <span
-                      className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-                        alert.severity === 'critical'
-                          ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                          : 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400'
-                      }`}
-                    >
-                      {alert.severity === 'critical'
-                        ? t('notifications.critical', 'Critique')
-                        : t('notifications.low', 'Bas')}
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-
-            {alerts.length > 0 && (
-              <div className="p-2 border-t border-[#EAECEF] dark:border-zinc-700">
-                <button
-                  className="w-full text-center text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 font-medium py-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
-                  onClick={goToAllAlerts}
-                >
-                  {t('notifications.view_all', 'Voir toutes les alertes →')}
-                </button>
-              </div>
-            )}
-          </PopoverContent>
-        </Popover>
-
-        {/* ✅ Assistant vocal intégré ici */}
         <VoiceAssistantButton />
 
         <LanguageDropdown />
@@ -432,7 +285,6 @@ export function TopBar({ user }: TopBarProps) {
           </DropdownMenuTrigger>
 
           <DropdownMenuContent align="end" className="w-64 rounded-2xl border border-[#EAECEF] dark:border-zinc-700 shadow-xl bg-white dark:bg-zinc-900 z-[999] p-1">
-
             <div className="flex items-center gap-3 px-3 py-3 mb-1">
               <Avatar className="h-10 w-10">
                 <AvatarImage src={avatarUrl} referrerPolicy="no-referrer" />
@@ -442,51 +294,32 @@ export function TopBar({ user }: TopBarProps) {
                 </AvatarFallback>
               </Avatar>
               <div className="flex flex-col min-w-0">
-                <span className="text-[13px] font-semibold text-gray-900 dark:text-white truncate">
-                  {displayName}
-                </span>
+                <span className="text-[13px] font-semibold text-gray-900 dark:text-white truncate">{displayName}</span>
                 <span className="text-[11px] text-gray-400 truncate">{email}</span>
               </div>
             </div>
 
             <DropdownMenuSeparator className="bg-[#EAECEF] dark:bg-zinc-700" />
 
-            <DropdownMenuItem
-              onClick={() => router.push('/dashboard/profil')}
-              className="gap-2.5 py-2.5 px-3 rounded-xl cursor-pointer text-[13px] text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-800 focus:bg-gray-50"
-            >
-              <User size={15} className="text-gray-400" />
-              {t('dashboard.menu.profile', 'Mon profil')}
+            <DropdownMenuItem onClick={() => router.push('/dashboard/profil')} className="gap-2.5 py-2.5 px-3 rounded-xl cursor-pointer text-[13px] text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-800 focus:bg-gray-50">
+              <User size={15} className="text-gray-400" /> {t('dashboard.menu.profile', 'Mon profil')}
             </DropdownMenuItem>
 
             <DropdownMenuSeparator className="bg-[#EAECEF] dark:bg-zinc-700" />
 
-            <DropdownMenuItem
-              onClick={() => router.push('/dashboard/parametres')}
-              className="gap-2.5 py-2.5 px-3 rounded-xl cursor-pointer text-[13px] text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-800 focus:bg-gray-50"
-            >
-              <Settings size={15} className="text-gray-400" />
-              {t('dashboard.menu.settings', 'Paramètres')}
+            <DropdownMenuItem onClick={() => router.push('/dashboard/parametres')} className="gap-2.5 py-2.5 px-3 rounded-xl cursor-pointer text-[13px] text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-800 focus:bg-gray-50">
+              <Settings size={15} className="text-gray-400" /> {t('dashboard.menu.settings', 'Paramètres')}
             </DropdownMenuItem>
 
-            <DropdownMenuItem
-              onClick={() => router.push('/dashboard/support')}
-              className="gap-2.5 py-2.5 px-3 rounded-xl cursor-pointer text-[13px] text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-800 focus:bg-gray-50"
-            >
-              <HelpCircle size={15} className="text-gray-400" />
-              {t('dashboard.menu.support', 'Support / Aide')}
+            <DropdownMenuItem onClick={() => router.push('/dashboard/support')} className="gap-2.5 py-2.5 px-3 rounded-xl cursor-pointer text-[13px] text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-800 focus:bg-gray-50">
+              <HelpCircle size={15} className="text-gray-400" /> {t('dashboard.menu.support', 'Support / Aide')}
             </DropdownMenuItem>
 
             <DropdownMenuSeparator className="bg-[#EAECEF] dark:bg-zinc-700" />
 
-            <DropdownMenuItem
-              onSelect={async (e) => { e.preventDefault(); await handleLogout() }}
-              className="gap-2.5 py-2.5 px-3 rounded-xl cursor-pointer text-[13px] text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 focus:bg-red-50 focus:text-red-500"
-            >
-              <LogOut size={15} />
-              {t('dashboard.menu.logout', 'Déconnexion')}
+            <DropdownMenuItem onSelect={async (e) => { e.preventDefault(); await handleLogout() }} className="gap-2.5 py-2.5 px-3 rounded-xl cursor-pointer text-[13px] text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 focus:bg-red-50 focus:text-red-500">
+              <LogOut size={15} /> {t('dashboard.menu.logout', 'Déconnexion')}
             </DropdownMenuItem>
-
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
