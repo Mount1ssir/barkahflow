@@ -1,3 +1,4 @@
+// lib/stats-data.ts
 import { dbSelect } from '@/src/lib/db'
 
 export interface DashboardStats {
@@ -24,20 +25,27 @@ function computeChangePct(today: number, yesterday: number): number {
 
 export async function getDashboardStats(): Promise<DashboardStats> {
   // ── Encaissé d'aujourd'hui (heure LOCALE) ──────────────────────
+  // ✅ Utilisation de date(transaction_date) car la date est déjà locale
   const todayRevenueRows = await dbSelect<{ total: number }>(
     `SELECT COALESCE(SUM(amount), 0) as total
      FROM transactions
      WHERE type = 'INCOME'
-       AND (source_type = 'invoice' OR (source_type = 'manual' AND category = 'debt_payment'))
-       AND date(transaction_date, 'localtime') = date('now', 'localtime')`
+       AND (
+         source_type = 'invoice'
+         OR (source_type = 'manual' AND category IN ('debt_payment', 'external_revenue'))
+       )
+       AND date(transaction_date) = date('now', 'localtime')`
   )
 
   const yesterdayRevenueRows = await dbSelect<{ total: number }>(
     `SELECT COALESCE(SUM(amount), 0) as total
      FROM transactions
      WHERE type = 'INCOME'
-       AND (source_type = 'invoice' OR (source_type = 'manual' AND category = 'debt_payment'))
-       AND date(transaction_date, 'localtime') = date('now', '-1 day', 'localtime')`
+       AND (
+         source_type = 'invoice'
+         OR (source_type = 'manual' AND category IN ('debt_payment', 'external_revenue'))
+       )
+       AND date(transaction_date) = date('now', '-1 day', 'localtime')`
   )
 
   const todayRevenue = todayRevenueRows[0]?.total || 0
@@ -49,14 +57,14 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     `SELECT COUNT(*) as count
      FROM invoices
      WHERE status != 'CANCELLED'
-       AND date(created_at, 'localtime') = date('now', 'localtime')`
+       AND date(created_at) = date('now', 'localtime')`
   )
 
   const yesterdaySalesRows = await dbSelect<{ count: number }>(
     `SELECT COUNT(*) as count
      FROM invoices
      WHERE status != 'CANCELLED'
-       AND date(created_at, 'localtime') = date('now', '-1 day', 'localtime')`
+       AND date(created_at) = date('now', '-1 day', 'localtime')`
   )
 
   const todaySales = todaySalesRows[0]?.count || 0
@@ -68,12 +76,12 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     `SELECT COUNT(*) as count FROM products WHERE is_active = 1 AND stock_qty <= alert_threshold`
   )
 
-  // ─── Total produits actifs (snapshot, pas de comparaison journalière) ──
+  // ─── Total produits actifs ──────────────────────────────────────
   const totalProductsRows = await dbSelect<{ count: number }>(
     `SELECT COUNT(*) as count FROM products WHERE is_active = 1`
   )
 
-  // ─── Total clients (snapshot, pas de comparaison journalière) ──
+  // ─── Total clients ────────────────────────────────────────────
   const totalClientsRows = await dbSelect<{ count: number }>(
     `SELECT COUNT(*) as count FROM clients WHERE id != 'client_walkin'`
   )

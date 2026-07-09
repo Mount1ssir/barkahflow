@@ -28,6 +28,16 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
   PieChart,
   Pie,
   Cell,
@@ -55,6 +65,7 @@ import {
   Clock,
   ChevronLeft,
   ChevronRight,
+  Plus,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -63,6 +74,7 @@ import {
   getTopProductsByRevenue,
   getTransactions,
   getAgedReceivables,
+  addExternalRevenue,
   type RevenueSummary,
   type PaymentMethodDistribution,
   type TopProductRevenue,
@@ -213,6 +225,14 @@ export default function RevenusPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const pageSize = 5
 
+  // ─── Ajout d'un revenu externe ──────────────────────────────────
+  const [addRevenueOpen, setAddRevenueOpen] = useState(false)
+  const [newAmount, setNewAmount] = useState('')
+  const [newPaymentMethod, setNewPaymentMethod] = useState('cash')
+  const [newDescription, setNewDescription] = useState('')
+  const [newDate, setNewDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [submitting, setSubmitting] = useState(false)
+
   useEffect(() => {
     setCurrentPage(1)
   }, [period, statusFilter, paymentFilter])
@@ -243,6 +263,36 @@ export default function RevenusPage() {
   useEffect(() => {
     loadData()
   }, [period, statusFilter, paymentFilter])
+
+  const handleAddExternalRevenue = async () => {
+    const amountValue = parseFloat(newAmount.replace(',', '.'))
+    if (!amountValue || amountValue <= 0) {
+      toast.error('Merci de saisir un montant valide')
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      await addExternalRevenue({
+        amount: Math.round(amountValue * 100),
+        paymentMethod: newPaymentMethod,
+        description: newDescription.trim() || undefined,
+        date: newDate ? new Date(newDate).toISOString() : undefined,
+      })
+      toast.success('Revenu externe ajouté')
+      setAddRevenueOpen(false)
+      setNewAmount('')
+      setNewDescription('')
+      setNewPaymentMethod('cash')
+      setNewDate(new Date().toISOString().slice(0, 10))
+      loadData()
+    } catch (error) {
+      console.error(error)
+      toast.error("Erreur lors de l'ajout du revenu")
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   const totalItems = transactions.length
   const totalPages = Math.ceil(totalItems / pageSize)
@@ -382,6 +432,12 @@ export default function RevenusPage() {
             onClick={handleExport}
           >
             <Download className="h-4 w-4" /> Exporter
+          </Button>
+          <Button
+            className="gap-2 rounded-xl h-10 bg-blue-600 hover:bg-blue-700 text-white"
+            onClick={() => setAddRevenueOpen(true)}
+          >
+            <Plus className="h-4 w-4" /> Ajouter un revenu externe
           </Button>
         </div>
       </div>
@@ -691,11 +747,26 @@ export default function RevenusPage() {
                           return (
                             <TableRow
                               key={tx.id}
-                              className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors cursor-pointer"
-                              onClick={() => window.location.href = `/dashboard/factures/${tx.id}`}
+                              className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${
+                                tx.isExternal ? 'cursor-default' : 'cursor-pointer'
+                              }`}
+                              onClick={() => {
+                                if (tx.isExternal) return
+                                window.location.href = `/dashboard/factures/${tx.id}`
+                              }}
                             >
                               <TableCell className="font-mono text-sm font-medium text-blue-600 dark:text-blue-400">
-                                {tx.invoiceNumber}
+                                <div className="flex items-center gap-2">
+                                  {tx.invoiceNumber}
+                                  {tx.isExternal && (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-[10px] font-sans border-orange-300 text-orange-600 dark:border-orange-700 dark:text-orange-400"
+                                    >
+                                      Externe
+                                    </Badge>
+                                  )}
+                                </div>
                               </TableCell>
                               <TableCell className="text-sm">
                                 {new Date(tx.date).toLocaleDateString('fr-FR')}
@@ -738,6 +809,84 @@ export default function RevenusPage() {
           </Card>
         </>
       )}
+
+      {/* ─── DIALOG : AJOUTER UN REVENU EXTERNE ─────────────────────── */}
+      <Dialog open={addRevenueOpen} onOpenChange={setAddRevenueOpen}>
+        <DialogContent className="sm:max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle>Ajouter un revenu externe</DialogTitle>
+            <DialogDescription>
+              Enregistre un encaissement qui ne provient pas d'une facture (vente occasionnelle, remboursement, autre revenu...).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="amount">Montant (MAD)</Label>
+              <Input
+                id="amount"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                value={newAmount}
+                onChange={(e) => setNewAmount(e.target.value)}
+                className="rounded-xl"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Mode de paiement</Label>
+              <Select value={newPaymentMethod} onValueChange={setNewPaymentMethod}>
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">Espèces</SelectItem>
+                  <SelectItem value="card">TPE</SelectItem>
+                  <SelectItem value="mobile">Mobile</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="description">Description / motif</Label>
+              <Input
+                id="description"
+                placeholder="Ex: Vente occasionnelle, remboursement..."
+                value={newDescription}
+                onChange={(e) => setNewDescription(e.target.value)}
+                className="rounded-xl"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="date">Date</Label>
+              <Input
+                id="date"
+                type="date"
+                value={newDate}
+                max={new Date().toISOString().slice(0, 10)}
+                onChange={(e) => setNewDate(e.target.value)}
+                className="rounded-xl"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              className="rounded-xl"
+              onClick={() => setAddRevenueOpen(false)}
+              disabled={submitting}
+            >
+              Annuler
+            </Button>
+            <Button
+              className="rounded-xl bg-blue-600 hover:bg-blue-700 text-white"
+              onClick={handleAddExternalRevenue}
+              disabled={submitting}
+            >
+              {submitting ? 'Ajout...' : 'Ajouter'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
