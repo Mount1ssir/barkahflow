@@ -88,7 +88,7 @@ interface KpiCardProps {
   icon: React.ReactNode
   iconBg: string
   iconColor: string
-  progress: number       // 0–100, représentant le pourcentage du total facturé
+  progress: number
   barColor: string
   delay: number
   isLoaded: boolean
@@ -106,7 +106,6 @@ function KpiCard({
   isLoaded,
 }: KpiCardProps) {
   const pct = Math.min(100, Math.max(0, progress))
-
   return (
     <Card
       className="rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm transition-all duration-700 ease-out"
@@ -126,7 +125,6 @@ function KpiCard({
             <span style={{ color: iconColor }}>{icon}</span>
           </div>
         </div>
-
         <div className="mt-3 h-1.5 w-full rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
           <div
             className="h-full rounded-full transition-all duration-1000 ease-out"
@@ -155,7 +153,6 @@ function Pagination({ currentPage, totalPages, totalItems, pageSize, onPageChang
   const { t } = useTranslation()
   const start = (currentPage - 1) * pageSize + 1
   const end = Math.min(currentPage * pageSize, totalItems)
-
   return (
     <div className="flex items-center justify-between mt-4 text-sm text-gray-500 dark:text-gray-400">
       <span>
@@ -163,23 +160,13 @@ function Pagination({ currentPage, totalPages, totalItems, pageSize, onPageChang
         {t('invoices.invoices', 'factures')}
       </span>
       <div className="flex items-center gap-1">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => onPageChange(currentPage - 1)}
-          disabled={currentPage === 1}
-          className="h-8 w-8 p-0 rounded-xl"
-        >
+        <Button variant="outline" size="sm" onClick={() => onPageChange(currentPage - 1)}
+          disabled={currentPage === 1} className="h-8 w-8 p-0 rounded-xl">
           <ChevronLeft className="h-4 w-4" />
         </Button>
         <span className="px-3 text-sm font-medium">{currentPage} / {totalPages}</span>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => onPageChange(currentPage + 1)}
-          disabled={currentPage === totalPages}
-          className="h-8 w-8 p-0 rounded-xl"
-        >
+        <Button variant="outline" size="sm" onClick={() => onPageChange(currentPage + 1)}
+          disabled={currentPage === totalPages} className="h-8 w-8 p-0 rounded-xl">
           <ChevronRight className="h-4 w-4" />
         </Button>
       </div>
@@ -193,9 +180,8 @@ export default function InvoicesPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // ── États ──
   const [invoices, setInvoices] = useState<Invoice[]>([])
-  const [pendingDebt, setPendingDebt] = useState(0)   // montant restant dû (debt_ledger)
+  const [pendingDebt, setPendingDebt] = useState(0)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [selectedIds, setSelectedIds] = useState<string[]>([])
@@ -204,28 +190,60 @@ export default function InvoicesPage() {
   const [isLoaded, setIsLoaded] = useState(false)
   const pageSize = 5
 
-  // ── Filtres depuis l'URL ──
   const urlStatus = searchParams.get('status') || ''
   const urlDateFrom = searchParams.get('dateFrom') || ''
   const urlDateTo = searchParams.get('dateTo') || ''
-
-  // ── Filtres locaux ──
   const [dateFilter, setDateFilter] = useState('')
 
-  // ── Effet de chargement ──
+  // ── Chargement initial ──
   useEffect(() => {
     loadInvoices()
     const timer = setTimeout(() => setIsLoaded(true), 150)
     return () => clearTimeout(timer)
   }, [])
 
-  // ── Chargement des factures + montant en attente ──
+  // ✅ Recherche vocale
+  useEffect(() => {
+    const handleSearch = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (typeof detail === 'string') {
+        setSearch(detail)
+      }
+    }
+    window.addEventListener('barkahflow:search', handleSearch)
+    return () => window.removeEventListener('barkahflow:search', handleSearch)
+  }, [])
+
+  // ✅ Effacer la recherche
+  useEffect(() => {
+    const handleClearSearch = () => {
+      setSearch('')
+    }
+    window.addEventListener('barkahflow:clear-search', handleClearSearch)
+    return () => window.removeEventListener('barkahflow:clear-search', handleClearSearch)
+  }, [])
+
+  // ✅ Export CSV
+  useEffect(() => {
+    const handleExport = () => {
+      exportAllCSV()
+    }
+    window.addEventListener('barkahflow:export', handleExport)
+    return () => window.removeEventListener('barkahflow:export', handleExport)
+  }, [])
+
+  // ✅ Rafraîchissement après suppression
+  useEffect(() => {
+    const handleRefresh = () => {
+      loadInvoices()
+    }
+    window.addEventListener('barkahflow:refresh-list', handleRefresh)
+    return () => window.removeEventListener('barkahflow:refresh-list', handleRefresh)
+  }, [])
+
   const loadInvoices = async () => {
     try {
-      const [data, pending] = await Promise.all([
-        getAllInvoices(),
-        getPendingDebtTotal()
-      ])
+      const [data, pending] = await Promise.all([getAllInvoices(), getPendingDebtTotal()])
       setInvoices(data)
       setPendingDebt(pending)
     } catch (error) {
@@ -236,11 +254,9 @@ export default function InvoicesPage() {
     }
   }
 
-  // ── Filtrage des données ──
   const filteredData = useMemo(() => {
     let data = invoices
-
-    // Recherche
+    // ✅ La recherche conserve les tirets – le terme vient directement de l'événement
     if (search.trim()) {
       const q = search.toLowerCase()
       data = data.filter(
@@ -249,21 +265,15 @@ export default function InvoicesPage() {
           inv.clientName?.toLowerCase().includes(q)
       )
     }
-
-    // Filtre statut depuis l'URL
     if (urlStatus && urlStatus !== 'all') {
       data = data.filter((inv) => inv.status === urlStatus)
     }
-
-    // Filtre plage de dates depuis l'URL
     if (urlDateFrom && urlDateTo) {
       data = data.filter((inv) => {
         const invDate = inv.createdAt.split('T')[0]
         return invDate >= urlDateFrom && invDate <= urlDateTo
       })
     }
-
-    // Filtre date exacte (local)
     if (dateFilter) {
       const selectedDate = new Date(dateFilter)
       data = data.filter((inv) => {
@@ -275,7 +285,6 @@ export default function InvoicesPage() {
         )
       })
     }
-
     return data
   }, [invoices, search, urlStatus, urlDateFrom, urlDateTo, dateFilter])
 
@@ -291,77 +300,29 @@ export default function InvoicesPage() {
   }, [search, urlStatus, urlDateFrom, urlDateTo, dateFilter])
 
   // ─── KPI ──────────────────────────────────────────────────────
-  // Calcul des montants (en centimes)
   const totalAmount = invoices.reduce((sum, inv) => sum + inv.total, 0)
-  const paidTotal = invoices
-    .filter((inv) => inv.status === 'PAID')
-    .reduce((sum, inv) => sum + inv.total, 0)
-  const unpaidTotal = invoices
-    .filter((inv) => inv.status === 'UNPAID')
-    .reduce((sum, inv) => sum + inv.total, 0)
-  const pendingTotal = pendingDebt   // issu de debt_ledger
-
-  // Éviter division par zéro
+  const paidTotal = invoices.filter((inv) => inv.status === 'PAID').reduce((sum, inv) => sum + inv.total, 0)
+  const unpaidTotal = invoices.filter((inv) => inv.status === 'UNPAID').reduce((sum, inv) => sum + inv.total, 0)
+  const pendingTotal = pendingDebt
   const denominator = totalAmount || 1
-
-  // Pourcentages par rapport au total facturé
   const paidPercent = (paidTotal / denominator) * 100
   const pendingPercent = (pendingTotal / denominator) * 100
   const unpaidPercent = (unpaidTotal / denominator) * 100
 
   const kpiData = [
-    {
-      label: t('invoices.total_invoiced', 'Total facturé'),
-      value: formatMAD(totalAmount),
-      icon: <FileText className="h-5 w-5" />,
-      iconBg: 'bg-blue-50 dark:bg-blue-900/20',
-      iconColor: PRIMARY,
-      progress: 100,   // toujours plein
-      barColor: GOLD,
-    },
-    {
-      label: t('invoices.paid_total', 'Payées'),
-      value: formatMAD(paidTotal),
-      icon: <FileText className="h-5 w-5" />,
-      iconBg: 'bg-green-50 dark:bg-green-900/20',
-      iconColor: '#16A34A',
-      progress: paidPercent,
-      barColor: '#16A34A',
-    },
-    {
-      label: t('invoices.pending_total', 'En attente'),
-      value: formatMAD(pendingTotal),
-      icon: <FileText className="h-5 w-5" />,
-      iconBg: 'bg-amber-50 dark:bg-amber-900/20',
-      iconColor: '#F59E0B',
-      progress: pendingPercent,
-      barColor: '#F59E0B',
-    },
-    {
-      label: t('invoices.unpaid_total', 'Impayées'),
-      value: formatMAD(unpaidTotal),
-      icon: <FileText className="h-5 w-5" />,
-      iconBg: 'bg-red-50 dark:bg-red-900/20',
-      iconColor: '#DC2626',
-      progress: unpaidPercent,
-      barColor: '#DC2626',
-    },
+    { label: t('invoices.total_invoiced', 'Total facturé'), value: formatMAD(totalAmount), icon: <FileText className="h-5 w-5" />, iconBg: 'bg-blue-50 dark:bg-blue-900/20', iconColor: PRIMARY, progress: 100, barColor: GOLD },
+    { label: t('invoices.paid_total', 'Payées'), value: formatMAD(paidTotal), icon: <FileText className="h-5 w-5" />, iconBg: 'bg-green-50 dark:bg-green-900/20', iconColor: '#16A34A', progress: paidPercent, barColor: '#16A34A' },
+    { label: t('invoices.pending_total', 'En attente'), value: formatMAD(pendingTotal), icon: <FileText className="h-5 w-5" />, iconBg: 'bg-amber-50 dark:bg-amber-900/20', iconColor: '#F59E0B', progress: pendingPercent, barColor: '#F59E0B' },
+    { label: t('invoices.unpaid_total', 'Impayées'), value: formatMAD(unpaidTotal), icon: <FileText className="h-5 w-5" />, iconBg: 'bg-red-50 dark:bg-red-900/20', iconColor: '#DC2626', progress: unpaidPercent, barColor: '#DC2626' },
   ]
 
   // ─── Sélection ────────────────────────────────────────────────
-  const toggleSelectAll = (checked: boolean) =>
-    setSelectedIds(checked ? paginatedData.map((inv) => inv.id) : [])
-  const toggleSelect = (id: string) =>
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
-    )
-  const isAllSelected =
-    paginatedData.length > 0 && paginatedData.every((inv) => selectedIds.includes(inv.id))
+  const toggleSelectAll = (checked: boolean) => setSelectedIds(checked ? paginatedData.map((inv) => inv.id) : [])
+  const toggleSelect = (id: string) => setSelectedIds((prev) => prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id])
+  const isAllSelected = paginatedData.length > 0 && paginatedData.every((inv) => selectedIds.includes(inv.id))
 
   // ─── Actions ──────────────────────────────────────────────────
-  const handleView = (invoice: Invoice) => {
-    router.push(`/dashboard/factures/${invoice.id}`)
-  }
+  const handleView = (invoice: Invoice) => router.push(`/dashboard/factures/${invoice.id}`)
   const handleEdit = (id: string) => router.push(`/dashboard/factures/${id}/edit`)
 
   const handleDeleteSelected = async () => {
@@ -439,13 +400,9 @@ export default function InvoicesPage() {
     return false
   }
 
-  const resetUrlFilters = () => {
-    router.push('/dashboard/factures')
-  }
-
+  const resetUrlFilters = () => router.push('/dashboard/factures')
   const hasActiveFilters = !!(urlStatus || urlDateFrom || urlDateTo)
 
-  // ── Échéance : aide pour l'affichage ──────────────────────────
   const getDueDateInfo = (inv: Invoice) => {
     if (!inv.dueDate) return { label: '—', isOverdue: false }
     const due = new Date(inv.dueDate)
@@ -455,7 +412,6 @@ export default function InvoicesPage() {
 
   return (
     <div className="flex flex-col gap-6 max-w-7xl mx-auto w-full">
-      {/* ─── Titre ─── */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
           {t('invoices.title', 'Factures')}
@@ -465,128 +421,65 @@ export default function InvoicesPage() {
         </p>
       </div>
 
-      {/* ─── Badge filtres actifs ─── */}
       {hasActiveFilters && (
         <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800">
           <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
             {urlStatus === 'UNPAID' && 'Factures impayées'}
             {urlDateFrom && urlDateTo && ` — du ${new Date(urlDateFrom).toLocaleDateString('fr-FR')} au ${new Date(urlDateTo).toLocaleDateString('fr-FR')}`}
           </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={resetUrlFilters}
-            className="text-blue-600 hover:text-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/30 gap-1"
-          >
-            <X className="h-4 w-4" />
-            Réinitialiser
+          <Button variant="ghost" size="sm" onClick={resetUrlFilters} className="text-blue-600 hover:text-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/30 gap-1">
+            <X className="h-4 w-4" /> Réinitialiser
           </Button>
         </div>
       )}
 
-      {/* ─── KPI ─── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {kpiData.map((kpi, index) => (
-          <KpiCard
-            key={kpi.label}
-            label={kpi.label}
-            value={kpi.value}
-            icon={kpi.icon}
-            iconBg={kpi.iconBg}
-            iconColor={kpi.iconColor}
-            progress={kpi.progress}
-            barColor={kpi.barColor}
-            delay={index * 100}
-            isLoaded={isLoaded}
-          />
+          <KpiCard key={kpi.label} label={kpi.label} value={kpi.value} icon={kpi.icon} iconBg={kpi.iconBg} iconColor={kpi.iconColor} progress={kpi.progress} barColor={kpi.barColor} delay={index * 100} isLoaded={isLoaded} />
         ))}
       </div>
 
-      {/* ─── Toolbar ─── */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-gray-900 p-4 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
         <div className="flex flex-wrap items-center gap-3 flex-1">
           <div className="relative flex-1 min-w-[180px] max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input
-              placeholder={t('invoices.search', 'Rechercher...')}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 rounded-xl bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 h-10"
-            />
+            <Input placeholder={t('invoices.search', 'Rechercher...')} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 rounded-xl bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 h-10" />
           </div>
           <div className="relative">
             <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input
-              type="date"
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
-              className="pl-9 rounded-xl bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 h-10 w-48"
-            />
+            <Input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="pl-9 rounded-xl bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 h-10 w-48" />
           </div>
           {dateFilter && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setDateFilter('')}
-              className="text-gray-400 hover:text-gray-600"
-            >
+            <Button variant="ghost" size="sm" onClick={() => setDateFilter('')} className="text-gray-400 hover:text-gray-600">
               ✕ Effacer
             </Button>
           )}
         </div>
-
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full">
-            {totalItems}
-          </span>
+          <span className="text-sm text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full">{totalItems}</span>
           {selectedIds.length > 0 && (
             <>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2 rounded-xl h-9 border-red-200 text-red-600 hover:bg-red-50"
-                onClick={handleDeleteSelected}
-              >
+              <Button variant="outline" size="sm" className="gap-2 rounded-xl h-9 border-red-200 text-red-600 hover:bg-red-50" onClick={handleDeleteSelected}>
                 <Trash2 className="h-4 w-4" /> Supprimer ({selectedIds.length})
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2 rounded-xl h-9 border-gray-200"
-                onClick={exportSelected}
-              >
+              <Button variant="outline" size="sm" className="gap-2 rounded-xl h-9 border-gray-200" onClick={exportSelected}>
                 <Download className="h-4 w-4" /> Exporter sélection
               </Button>
             </>
           )}
-          <Button
-            variant="outline"
-            className="gap-2 rounded-xl h-10 border-gray-200"
-            onClick={exportAllCSV}
-          >
+          <Button variant="outline" className="gap-2 rounded-xl h-10 border-gray-200" onClick={exportAllCSV}>
             <Download className="h-4 w-4" /> {t('invoices.export', 'Exporter')}
           </Button>
-          <Button
-            className="gap-2 rounded-xl h-10 text-white font-semibold shadow-sm hover:shadow-md transition-all"
-            style={{ backgroundColor: PRIMARY }}
-            onClick={() => router.push('/dashboard/caisse')}
-          >
+          <Button className="gap-2 rounded-xl h-10 text-white font-semibold shadow-sm hover:shadow-md transition-all" style={{ backgroundColor: PRIMARY }} onClick={() => router.push('/dashboard/caisse')}>
             <Plus className="h-4 w-4" /> {t('invoices.new', 'Nouvelle facture')}
           </Button>
         </div>
       </div>
 
-      {/* ─── Table ─── */}
       <Card className="rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
         <CardContent className="p-0">
           {loading ? (
-            <div className="p-4 space-y-2">
-              {Array(3)
-                .fill(0)
-                .map((_, i) => (
-                  <Skeleton key={i} className="h-12 w-full" />
-                ))}
-            </div>
+            <div className="p-4 space-y-2">{Array(3).fill(0).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
           ) : paginatedData.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <FileText className="h-12 w-12 text-gray-300 mb-2" />
@@ -600,30 +493,14 @@ export default function InvoicesPage() {
                     <TableHead className="w-10">
                       <Checkbox checked={isAllSelected} onCheckedChange={toggleSelectAll} />
                     </TableHead>
-                    <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                      {t('invoices.number', 'N° facture')}
-                    </TableHead>
-                    <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                      {t('invoices.client', 'Client')}
-                    </TableHead>
-                    <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                      {t('invoices.date', 'Date')}
-                    </TableHead>
-                    <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                      Échéance
-                    </TableHead>
-                    <TableHead className="font-semibold text-gray-700 dark:text-gray-300">
-                      {t('invoices.status', 'Statut')}
-                    </TableHead>
-                    <TableHead className="text-right font-semibold text-gray-700 dark:text-gray-300">
-                      {t('invoices.total_ht', 'Total HT')}
-                    </TableHead>
-                    <TableHead className="text-right font-semibold text-gray-700 dark:text-gray-300">
-                      {t('invoices.total_ttc', 'Total TTC')}
-                    </TableHead>
-                    <TableHead className="w-12 text-right font-semibold text-gray-700 dark:text-gray-300">
-                      {t('invoices.actions', 'Actions')}
-                    </TableHead>
+                    <TableHead className="font-semibold text-gray-700 dark:text-gray-300">{t('invoices.number', 'N° facture')}</TableHead>
+                    <TableHead className="font-semibold text-gray-700 dark:text-gray-300">{t('invoices.client', 'Client')}</TableHead>
+                    <TableHead className="font-semibold text-gray-700 dark:text-gray-300">{t('invoices.date', 'Date')}</TableHead>
+                    <TableHead className="font-semibold text-gray-700 dark:text-gray-300">Échéance</TableHead>
+                    <TableHead className="font-semibold text-gray-700 dark:text-gray-300">{t('invoices.status', 'Statut')}</TableHead>
+                    <TableHead className="text-right font-semibold text-gray-700 dark:text-gray-300">{t('invoices.total_ht', 'Total HT')}</TableHead>
+                    <TableHead className="text-right font-semibold text-gray-700 dark:text-gray-300">{t('invoices.total_ttc', 'Total TTC')}</TableHead>
+                    <TableHead className="w-12 text-right font-semibold text-gray-700 dark:text-gray-300">{t('invoices.actions', 'Actions')}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -632,26 +509,12 @@ export default function InvoicesPage() {
                     const statusColor = STATUS_COLORS[inv.status] || '#6B7280'
                     const statusLabel = STATUS_LABELS[inv.status] || inv.status
                     const isWalkin = isWalkInClient(inv.clientName, inv.clientId)
-                    const clientDisplay = isWalkin
-                      ? t('pos.walkin_client', 'Client de passage')
-                      : inv.clientName || t('invoices.anonymous', 'Anonyme')
+                    const clientDisplay = isWalkin ? t('pos.walkin_client', 'Client de passage') : inv.clientName || t('invoices.anonymous', 'Anonyme')
                     const dueDateInfo = getDueDateInfo(inv)
                     return (
-                      <TableRow
-                        key={inv.id}
-                        className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${
-                          isSelected ? 'bg-blue-50/50' : ''
-                        }`}
-                      >
-                        <TableCell>
-                          <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={() => toggleSelect(inv.id)}
-                          />
-                        </TableCell>
-                        <TableCell className="font-mono text-sm font-bold" style={{ color: PRIMARY }}>
-                          {inv.invoiceNumber}
-                        </TableCell>
+                      <TableRow key={inv.id} className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${isSelected ? 'bg-blue-50/50' : ''}`}>
+                        <TableCell><Checkbox checked={isSelected} onCheckedChange={() => toggleSelect(inv.id)} /></TableCell>
+                        <TableCell className="font-mono text-sm font-bold" style={{ color: PRIMARY }}>{inv.invoiceNumber}</TableCell>
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-xs font-medium text-gray-500">
@@ -660,54 +523,33 @@ export default function InvoicesPage() {
                             <span className="text-sm">{clientDisplay}</span>
                           </div>
                         </TableCell>
-                        <TableCell className="text-sm text-gray-500">
-                          {new Date(inv.createdAt).toLocaleDateString('fr-FR')}
-                        </TableCell>
+                        <TableCell className="text-sm text-gray-500">{new Date(inv.createdAt).toLocaleDateString('fr-FR')}</TableCell>
                         <TableCell className="text-sm">
                           {dueDateInfo.isOverdue ? (
                             <span className="inline-flex items-center gap-1 text-red-600 font-medium">
-                              <AlertTriangle className="h-3.5 w-3.5" />
-                              {dueDateInfo.label}
+                              <AlertTriangle className="h-3.5 w-3.5" /> {dueDateInfo.label}
                             </span>
                           ) : (
                             <span className="text-gray-500">{dueDateInfo.label}</span>
                           )}
                         </TableCell>
                         <TableCell>
-                          <Badge
-                            style={{ backgroundColor: statusColor, color: '#ffffff' }}
-                            className="border-0 font-medium px-2.5 py-0.5 text-xs flex items-center gap-1.5"
-                          >
+                          <Badge style={{ backgroundColor: statusColor, color: '#ffffff' }} className="border-0 font-medium px-2.5 py-0.5 text-xs flex items-center gap-1.5">
                             <span className="w-1.5 h-1.5 rounded-full bg-white/80" /> {statusLabel}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-right text-sm text-gray-500">
-                          {formatMAD(inv.subtotal)}
-                        </TableCell>
-                        <TableCell className="text-right font-medium text-gray-900 dark:text-white">
-                          {formatMAD(inv.total)}
-                        </TableCell>
+                        <TableCell className="text-right text-sm text-gray-500">{formatMAD(inv.subtotal)}</TableCell>
+                        <TableCell className="text-right font-medium text-gray-900 dark:text-white">{formatMAD(inv.total)}</TableCell>
                         <TableCell className="text-right">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full"><MoreHorizontal className="h-4 w-4" /></Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="rounded-xl">
-                              <DropdownMenuItem onClick={() => handleView(inv)} className="gap-2">
-                                <Eye className="h-4 w-4" /> {t('common.view', 'Voir')}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleEdit(inv.id)} className="gap-2">
-                                <Pencil className="h-4 w-4" /> {t('common.edit', 'Modifier')}
-                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleView(inv)} className="gap-2"><Eye className="h-4 w-4" /> {t('common.view', 'Voir')}</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleEdit(inv.id)} className="gap-2"><Pencil className="h-4 w-4" /> {t('common.edit', 'Modifier')}</DropdownMenuItem>
                               <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => setDeleteTarget(inv)}
-                                className="gap-2 text-red-500"
-                              >
-                                <Trash2 className="h-4 w-4" /> {t('common.delete', 'Supprimer')}
-                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setDeleteTarget(inv)} className="gap-2 text-red-500"><Trash2 className="h-4 w-4" /> {t('common.delete', 'Supprimer')}</DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
@@ -717,34 +559,24 @@ export default function InvoicesPage() {
                 </TableBody>
               </Table>
               <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-800">
-                <Pagination
-                  currentPage={currentPage}
-                  totalPages={totalPages}
-                  totalItems={totalItems}
-                  pageSize={pageSize}
-                  onPageChange={setCurrentPage}
-                />
+                <Pagination currentPage={currentPage} totalPages={totalPages} totalItems={totalItems} pageSize={pageSize} onPageChange={setCurrentPage} />
               </div>
             </>
           )}
         </CardContent>
       </Card>
 
-      {/* ─── Dialog suppression ─── */}
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
             <AlertDialogDescription>
-              Êtes-vous sûr de vouloir supprimer la facture {deleteTarget?.invoiceNumber} ? Cette action
-              est irréversible.
+              Êtes-vous sûr de vouloir supprimer la facture {deleteTarget?.invoiceNumber} ? Cette action est irréversible.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-red-500 hover:bg-red-600 text-white">
-              Supprimer
-            </AlertDialogAction>
+            <AlertDialogAction onClick={handleDelete} className="bg-red-500 hover:bg-red-600 text-white">Supprimer</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

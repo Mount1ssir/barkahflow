@@ -63,7 +63,7 @@ import { formatMAD } from '@/lib/stats-data'
 const GOLD = '#D4A017'
 const PRIMARY = '#2C3E50'
 
-// ─── Score de fidélité (sans émojis) ─────────────────────────────
+// ─── Score de fidélité ─────────────────────────────────────────────
 type FidelityScore = 'vip' | 'fidele' | 'nouveau' | 'inactif'
 
 interface ScoreConfig {
@@ -141,7 +141,6 @@ function KpiCard({
   isLoaded,
 }: KpiCardProps) {
   const pct = Math.min(100, Math.max(0, progress))
-
   return (
     <Card
       className="rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm transition-all duration-700 ease-out"
@@ -161,7 +160,6 @@ function KpiCard({
             <span style={{ color: iconColor }}>{icon}</span>
           </div>
         </div>
-
         <div className="mt-3 h-1.5 w-full rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
           <div
             className="h-full rounded-full transition-all duration-1000 ease-out"
@@ -190,7 +188,6 @@ function Pagination({ currentPage, totalPages, totalItems, pageSize, onPageChang
   const { t } = useTranslation()
   const start = (currentPage - 1) * pageSize + 1
   const end   = Math.min(currentPage * pageSize, totalItems)
-
   return (
     <div className="flex items-center justify-between mt-4 text-sm text-gray-500 dark:text-gray-400">
       <span>
@@ -226,10 +223,50 @@ export default function ClientsPage() {
   const [isLoaded, setIsLoaded]         = useState(false)
   const pageSize = 5
 
+  // ── Chargement initial ──
   useEffect(() => {
     loadClients()
     const timer = setTimeout(() => setIsLoaded(true), 150)
     return () => clearTimeout(timer)
+  }, [])
+
+  // ── Recherche vocale ──
+  useEffect(() => {
+    const handleSearch = (e: Event) => {
+      const detail = (e as CustomEvent).detail
+      if (typeof detail === 'string') {
+        setSearch(detail)
+      }
+    }
+    window.addEventListener('barkahflow:search', handleSearch)
+    return () => window.removeEventListener('barkahflow:search', handleSearch)
+  }, [])
+
+  // ── Effacer la recherche ──
+  useEffect(() => {
+    const handleClearSearch = () => {
+      setSearch('')
+    }
+    window.addEventListener('barkahflow:clear-search', handleClearSearch)
+    return () => window.removeEventListener('barkahflow:clear-search', handleClearSearch)
+  }, [])
+
+  // ── Export ──
+  useEffect(() => {
+    const handleExport = () => {
+      exportCSV()
+    }
+    window.addEventListener('barkahflow:export', handleExport)
+    return () => window.removeEventListener('barkahflow:export', handleExport)
+  }, [])
+
+  // ── Rafraîchissement ──
+  useEffect(() => {
+    const handleRefresh = () => {
+      loadClients()
+    }
+    window.addEventListener('barkahflow:refresh-list', handleRefresh)
+    return () => window.removeEventListener('barkahflow:refresh-list', handleRefresh)
   }, [])
 
   const loadClients = async () => {
@@ -278,10 +315,9 @@ export default function ClientsPage() {
   const totalDebt     = clients.reduce((sum, c) => sum + c.debt, 0)
   const debtors       = clients.filter((c) => c.debt > 0).length
 
-  // ✅ Progression des barres (corrigée)
-  const progressTotal    = 100 // toujours plein
+  const progressTotal    = 100
   const progressActive   = totalClients > 0 ? (activeClients / totalClients) * 100 : 0
-  const progressDebt     = totalDebt > 0 ? 100 : 0   // 100% si dette > 0, sinon 0%
+  const progressDebt     = totalDebt > 0 ? 100 : 0
   const progressDebtors  = totalClients > 0 ? (debtors / totalClients) * 100 : 0
 
   const kpiProgress = [
@@ -307,7 +343,6 @@ export default function ClientsPage() {
   const handleView = (client: Client) => {
     router.push(`/dashboard/clients/${client.id}`)
   }
-
   const handleEdit = (id: string) => router.push(`/dashboard/clients/${id}/edit`)
 
   const handleDeleteSelected = async () => {
@@ -477,7 +512,6 @@ export default function ClientsPage() {
                     const hasDebt    = client.debt > 0
                     const debtColor  = hasDebt ? '#DC2626' : '#6B7280'
                     const debtLabel  = hasDebt ? formatMAD(client.debt) : '0 MAD'
-
                     return (
                       <TableRow
                         key={client.id}

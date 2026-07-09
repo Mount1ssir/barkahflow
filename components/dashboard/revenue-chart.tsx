@@ -18,12 +18,11 @@ import { useTranslation } from 'react-i18next'
 import '@/lib/i18n/config'
 
 type ViewMode = 'ventes' | 'solde'
+type Period = 'jours' | 'semaines' | 'mois'
 
-// ─── Couleurs ──────────────────────────────────────────────────────
-const BLUE = '#38BDF8'          // Bleu ciel pour la ligne actuelle
-const ORANGE = '#F59E0B'        // Orange doux pour la ligne précédente
+const BLUE = '#38BDF8'
+const ORANGE = '#F59E0B'
 
-// ─── EmptyState ──────────────────────────────────────────────────
 function EmptyState() {
   const { t } = useTranslation()
   return (
@@ -49,7 +48,6 @@ function EmptyState() {
   )
 }
 
-// ─── Insight ─────────────────────────────────────────────────────
 function Insight({ currentTotal, previousTotal }: { currentTotal: number; previousTotal: number }) {
   const { t } = useTranslation()
   const diff = currentTotal - previousTotal
@@ -78,7 +76,6 @@ function Insight({ currentTotal, previousTotal }: { currentTotal: number; previo
   )
 }
 
-// ─── Composant principal ────────────────────────────────────────
 export function RevenueChart() {
   const { t } = useTranslation()
 
@@ -92,7 +89,7 @@ export function RevenueChart() {
   const [previousData, setPreviousData] = useState<ChartDataPoint[]>([])
   const [loading, setLoading] = useState(true)
   const [mode, setMode] = useState<ViewMode>('ventes')
-  const [period, setPeriod] = useState<'jours' | 'semaines' | 'mois'>('jours')
+  const [period, setPeriod] = useState<Period>('jours')
 
   useEffect(() => {
     loadData()
@@ -103,18 +100,22 @@ export function RevenueChart() {
     try {
       let days = 7
       let offset = 7
+      let groupBy: 'day' | 'week' | 'month' = 'day'
+
       if (period === 'semaines') {
         days = 28
         offset = 28
+        groupBy = 'week'
       } else if (period === 'mois') {
         days = 90
         offset = 90
+        groupBy = 'month'
       }
 
-      const current = await getRevenueChartData(0, days)
+      const current = await getRevenueChartData(0, days, groupBy)
       setCurrentData(current)
 
-      const previous = await getRevenueChartData(offset, days)
+      const previous = await getRevenueChartData(offset, days, groupBy)
       setPreviousData(previous)
     } catch (error) {
       console.error('Erreur chargement données', error)
@@ -123,14 +124,12 @@ export function RevenueChart() {
     }
   }
 
-  // Fusion par position (index)
   const mergedData = currentData.map((point, index) => ({
     ...point,
     previousSales: previousData[index]?.ventes ?? 0,
   }))
 
   const hasData = currentData.some(d => d.ventes > 0 || d.solde !== 0)
-
   const currentTotal = currentData.reduce((acc, d) => acc + d.ventes, 0)
   const previousTotal = previousData.reduce((acc, d) => acc + d.ventes, 0)
 
@@ -152,14 +151,10 @@ export function RevenueChart() {
                   <span className="w-3 h-0.5 border-t border-dashed" style={{ borderColor: ORANGE }} />
                   {t('revenue.legend.previous', 'Période précédente')}
                 </span>
-                <span className="flex items-center gap-1.5">
-                  <span className="w-3 h-0.5 border-t" style={{ borderColor: '#10b981' }} />
-                  {t('revenue.legend.balance', 'Solde caisse')}
-                </span>
               </div>
             </div>
 
-            <Tabs value={period} onValueChange={(v) => setPeriod(v as typeof period)}>
+            <Tabs value={period} onValueChange={(v) => setPeriod(v as Period)}>
               <TabsList className="rounded-lg">
                 <TabsTrigger value="jours" className="text-xs">
                   {t('revenue.tabs.days', 'Jours')}
@@ -195,7 +190,15 @@ export function RevenueChart() {
                 </linearGradient>
               </defs>
               <CartesianGrid vertical={false} strokeDasharray="3 3" className="stroke-border" />
-              <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} className="text-xs" />
+              <XAxis
+                dataKey="date"
+                tickLine={false}
+                axisLine={false}
+                tickMargin={8}
+                className="text-xs"
+                // Pour les mois, afficher le nom complet ; pour semaines, date courte
+                interval={0}
+              />
               <YAxis tickLine={false} axisLine={false} tickMargin={8} className="text-xs" />
               <ChartTooltip
                 content={
@@ -209,7 +212,6 @@ export function RevenueChart() {
                   />
                 }
               />
-              {/* Ligne actuelle (bleu) */}
               <Area
                 dataKey={mode}
                 type="monotone"
@@ -217,7 +219,6 @@ export function RevenueChart() {
                 stroke={BLUE}
                 strokeWidth={2}
               />
-              {/* Ligne précédente (orange pointillée) */}
               <Line
                 dataKey="previousSales"
                 type="monotone"

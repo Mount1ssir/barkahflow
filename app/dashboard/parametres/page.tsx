@@ -169,7 +169,7 @@ export default function SecuritySettingsPage() {
               </div>
               <div className="flex gap-2">
                 <Button variant="outline" size="sm" className="rounded-xl" onClick={handleOpenSetPin}>
-                  Changer le code
+                  Changer le code   {/* ✅ Bouton pour changer le PIN */}
                 </Button>
                 <Button
                   variant="outline"
@@ -230,7 +230,7 @@ export default function SecuritySettingsPage() {
         </CardContent>
       </Card>
 
-      {/* ─── Dialog création/changement de PIN ─── */}
+      {/* Dialog pour créer ou changer le PIN */}
       <Dialog open={pinDialogOpen} onOpenChange={setPinDialogOpen}>
         <DialogContent className="rounded-2xl sm:max-w-sm">
           <DialogHeader>
@@ -277,7 +277,7 @@ export default function SecuritySettingsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ─── Dialog confirmation désactivation ─── */}
+      {/* Dialog de confirmation pour désactiver */}
       <Dialog open={disablePinDialogOpen} onOpenChange={setDisablePinDialogOpen}>
         <DialogContent className="rounded-2xl sm:max-w-sm">
           <DialogHeader>

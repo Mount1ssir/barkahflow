@@ -283,9 +283,9 @@ export default function NewProductPage() {
               supplierRef: product.supplierName || '',
               description: product.description || '',
               isActive: product.isActive,
-              showInPos: true,
-              trackStock: true,
-              isFavorite: false,
+              showInPos: product.showInPos,
+              trackStock: product.trackStock,
+              isFavorite: product.isFavorite,
               imageFile: null,
               imagePreview: product.imagePath || null,
             })
@@ -375,9 +375,9 @@ export default function NewProductPage() {
           supplierRef: product.supplierName || '',
           description: product.description || '',
           isActive: product.isActive,
-          showInPos: true,
-          trackStock: true,
-          isFavorite: false,
+          showInPos: product.showInPos,
+          trackStock: product.trackStock,
+          isFavorite: product.isFavorite,
           imageFile: null,
           imagePreview: product.imagePath || null,
         })
@@ -436,9 +436,9 @@ export default function NewProductPage() {
         supplierRef: existingProduct.supplierName || '',
         description: existingProduct.description || '',
         isActive: existingProduct.isActive,
-        showInPos: true,
-        trackStock: true,
-        isFavorite: false,
+        showInPos: existingProduct.showInPos,
+        trackStock: existingProduct.trackStock,
+        isFavorite: existingProduct.isFavorite,
         imageFile: null,
         imagePreview: existingProduct.imagePath || null,
       })
@@ -501,6 +501,9 @@ export default function NewProductPage() {
       supplierName: form.supplierRef.trim() || null,
       description: form.description.trim() || null,
       isActive: form.isActive,
+      showInPos: form.showInPos,     // ✅ AJOUTÉ
+      trackStock: form.trackStock,   // ✅ AJOUTÉ
+      isFavorite: form.isFavorite,   // ✅ AJOUTÉ
     }
 
     const validation = validateProductInput(input)

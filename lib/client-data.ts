@@ -1,3 +1,4 @@
+// lib/client-data.ts
 import { dbSelect, dbExecute } from '@/src/lib/db'
 
 export interface Client {
@@ -103,7 +104,6 @@ export async function searchClients(query: string): Promise<Client[]> {
   return rows.map(mapClient)
 }
 
-// ── Ajout : creditLimit optionnel à la création ────────────────────
 export async function createClient(
   data: Omit<Client, 'id' | 'debt' | 'invoiceCount' | 'totalSpent' | 'lastInvoiceDate' | 'createdAt' | 'updatedAt'>
 ): Promise<string> {
@@ -154,7 +154,7 @@ export async function deleteClient(id: string): Promise<void> {
   await dbExecute(`DELETE FROM clients WHERE id = ?`, [id])
 }
 
-// ✅ recordPaymentForClient – on garde source_type = 'manual' et category = 'debt_payment'
+// ✅ recordPaymentForClient – avec date locale via recordTransaction
 export async function recordPaymentForClient(
   clientId: string,
   debtId: string,
@@ -176,13 +176,13 @@ export async function recordPaymentForClient(
     userAgent
   )
 
-  // On garde 'manual' car c'est le seul type accepté pour les paiements de dette
+  // recordTransaction utilise maintenant datetime('now', 'localtime')
   await recordTransaction(
     'INCOME',
     amount,
     'manual',
     debtId,
-    'debt_payment',   // <- ce tag permet d'identifier les paiements de dette
+    'debt_payment',
     `Paiement dette client ${clientId}`,
     paymentMethod
   )

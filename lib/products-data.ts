@@ -1,4 +1,5 @@
-import { dbExecute, dbSelect } from '@/src/lib/db'
+// lib/products-data.ts
+import { dbExecute, dbSelect, dbExecuteWithRetry } from '@/src/lib/db'
 
 export interface Product {
   id: string
@@ -21,6 +22,9 @@ export interface Product {
   supplierName: string | null
   description: string | null
   isActive: boolean
+  showInPos: boolean
+  trackStock: boolean
+  isFavorite: boolean
   updatedAt: string
 }
 
@@ -43,6 +47,9 @@ interface ProductRow {
   supplier_name: string | null
   description: string | null
   is_active: number
+  show_in_pos: number
+  track_stock: number
+  is_favorite: number
   updated_at: string
 }
 
@@ -73,8 +80,15 @@ function mapRow(row: ProductRow): Product {
     supplierName: row.supplier_name,
     description: row.description,
     isActive: row.is_active === 1,
+    showInPos: row.show_in_pos === 1,
+    trackStock: row.track_stock === 1,
+    isFavorite: row.is_favorite === 1,
     updatedAt: row.updated_at,
   }
+}
+
+function generateId(): string {
+  return `prod_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
 }
 
 export async function generateNextSku(): Promise<string> {
@@ -136,15 +150,24 @@ export async function findBySkuOrBarcode(value: string): Promise<Product | null>
   }
 }
 
-export async function getAllProducts(activeOnly = false): Promise<Product[]> {
+export async function getAllProducts(activeOnly = false, showInPosOnly = false): Promise<Product[]> {
   try {
-    const rows = await dbSelect<ProductRow>(
-      `SELECT p.*, c.name_fr as category_name, c.color as category_color
-       FROM products p
-       LEFT JOIN categories c ON c.id = p.category_id
-       ${activeOnly ? 'WHERE p.is_active = 1' : ''}
-       ORDER BY p.updated_at DESC`
-    )
+    let query = `
+      SELECT p.*, c.name_fr as category_name, c.color as category_color
+      FROM products p
+      LEFT JOIN categories c ON c.id = p.category_id
+      WHERE 1=1
+    `
+    const params: any[] = []
+    if (activeOnly) {
+      query += ` AND p.is_active = 1`
+    }
+    if (showInPosOnly) {
+      query += ` AND p.show_in_pos = 1`
+    }
+    query += ` ORDER BY p.is_favorite DESC, p.updated_at DESC`
+    
+    const rows = await dbSelect<ProductRow>(query, params)
     return rows.map(mapRow)
   } catch (error) {
     console.error('Erreur getAllProducts:', error)
@@ -162,7 +185,7 @@ export async function searchProducts(query: string): Promise<Product[]> {
        LEFT JOIN categories c ON c.id = p.category_id
        WHERE p.name_ar LIKE ? OR p.name_fr LIKE ?
           OR p.sku LIKE ? OR p.barcode LIKE ?
-       ORDER BY p.name_fr ASC
+       ORDER BY p.is_favorite DESC, p.name_fr ASC
        LIMIT 20`,
       [q, q, q, q]
     )
@@ -205,10 +228,9 @@ export interface ProductInput {
   supplierName?: string | null
   description?: string | null
   isActive?: boolean
-}
-
-function generateId(): string {
-  return `prod_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+  showInPos?: boolean
+  trackStock?: boolean
+  isFavorite?: boolean
 }
 
 export async function createProduct(input: ProductInput): Promise<string> {
@@ -216,17 +238,14 @@ export async function createProduct(input: ProductInput): Promise<string> {
   const now = new Date().toISOString()
   const categoryId = input.categoryId && input.categoryId.trim() !== '' ? input.categoryId : null
 
-  console.log('createProduct - categoryId:', categoryId)
-  console.log('createProduct - costPrice:', input.costPrice)
-  console.log('createProduct - retailPrice:', input.retailPrice)
-
   try {
-    await dbExecute(
+    await dbExecuteWithRetry(
       `INSERT INTO products
        (id, sku, barcode, name_ar, name_fr, category_id, unit,
         cost_price, retail_price, stock_qty, alert_threshold, tax_rate,
-        image_path, supplier_name, description, is_active, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        image_path, supplier_name, description, is_active,
+        show_in_pos, track_stock, is_favorite, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         input.sku,
@@ -244,6 +263,9 @@ export async function createProduct(input: ProductInput): Promise<string> {
         input.supplierName || null,
         input.description || null,
         input.isActive !== false ? 1 : 0,
+        input.showInPos !== false ? 1 : 0,
+        input.trackStock !== false ? 1 : 0,
+        input.isFavorite === true ? 1 : 0,
         now,
       ]
     )
@@ -261,12 +283,13 @@ export async function updateProduct(id: string, input: ProductInput): Promise<vo
   const categoryId = input.categoryId && input.categoryId.trim() !== '' ? input.categoryId : null
 
   try {
-    await dbExecute(
+    await dbExecuteWithRetry(
       `UPDATE products SET
          sku = ?, barcode = ?, name_ar = ?, name_fr = ?, category_id = ?,
          unit = ?, cost_price = ?, retail_price = ?, stock_qty = ?,
          alert_threshold = ?, tax_rate = ?, image_path = ?,
-         supplier_name = ?, description = ?, is_active = ?, updated_at = ?
+         supplier_name = ?, description = ?, is_active = ?,
+         show_in_pos = ?, track_stock = ?, is_favorite = ?, updated_at = ?
        WHERE id = ?`,
       [
         input.sku,
@@ -284,6 +307,9 @@ export async function updateProduct(id: string, input: ProductInput): Promise<vo
         input.supplierName || null,
         input.description || null,
         input.isActive !== false ? 1 : 0,
+        input.showInPos !== false ? 1 : 0,
+        input.trackStock !== false ? 1 : 0,
+        input.isFavorite === true ? 1 : 0,
         now,
         id,
       ]
@@ -295,16 +321,13 @@ export async function updateProduct(id: string, input: ProductInput): Promise<vo
   }
 }
 
-// ─── Vérification des références ──────────────────────────────
 async function hasReferences(productId: string): Promise<boolean> {
-  // Vérifier dans line_items
   const lineItems = await dbSelect<{ count: number }>(
     `SELECT COUNT(*) as count FROM line_items WHERE product_id = ?`,
     [productId]
   )
   if (lineItems[0]?.count > 0) return true
 
-  // Vérifier dans stock_movements
   const movements = await dbSelect<{ count: number }>(
     `SELECT COUNT(*) as count FROM stock_movements WHERE product_id = ?`,
     [productId]
@@ -315,11 +338,10 @@ async function hasReferences(productId: string): Promise<boolean> {
 }
 
 export async function deleteProduct(id: string): Promise<void> {
-  // Vérifier les références
   const hasRefs = await hasReferences(id)
   if (hasRefs) {
     throw new Error(
-      'Ce produit ne peut pas être supprimé car il est lié à des ventes ou des mouvements de stock. Vous pouvez le désactiver à la place.'
+      'Ce produit ne peut pas etre supprime car il est lie a des ventes ou des mouvements de stock. Vous pouvez le desactiver a la place.'
     )
   }
 
@@ -344,16 +366,41 @@ export async function toggleProductStatus(id: string, isActive: boolean): Promis
   }
 }
 
-export async function updateStock(id: string, newQty: number): Promise<void> {
+export async function updateStock(id: string, newQty: number, reason?: string): Promise<void> {
   const now = new Date().toISOString()
-  try {
+  
+  // Récupérer le produit pour connaître l'ancienne quantité et track_stock
+  const product = await getProductById(id)
+  if (!product) throw new Error('Produit non trouve')
+  
+  const oldQty = product.stockQty
+  
+  // Mettre à jour le stock
+  await dbExecute(
+    `UPDATE products SET stock_qty = ?, updated_at = ? WHERE id = ?`,
+    [newQty, now, id]
+  )
+  
+  // Enregistrer le mouvement SEULEMENT si track_stock est activé
+  if (product.trackStock) {
+    const movementId = `mov_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+    const type = newQty > oldQty ? 'IN' : newQty < oldQty ? 'OUT' : 'ADJUSTMENT'
+    
     await dbExecute(
-      `UPDATE products SET stock_qty = ?, updated_at = ? WHERE id = ?`,
-      [newQty, now, id]
+      `INSERT INTO stock_movements 
+       (id, product_id, type, quantity, previous_qty, new_qty, reason, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        movementId,
+        id,
+        type,
+        Math.abs(newQty - oldQty),
+        oldQty,
+        newQty,
+        reason || null,
+        now
+      ]
     )
-  } catch (error: any) {
-    console.error('Erreur updateStock:', error)
-    throw new Error(`Erreur lors de la mise a jour du stock: ${error?.message || 'inconnue'}`)
   }
 }
 
