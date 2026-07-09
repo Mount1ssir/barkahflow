@@ -1,0 +1,22 @@
+
+[functions.generate-temp-pin]
+enabled = true
+verify_jwt = false
+import_map = "./functions/generate-temp-pin/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/generate-temp-pin/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/generate-temp-pin/*.html" ]
+
+[functions.verify-temp-pin]
+enabled = true
+verify_jwt = false
+import_map = "./functions/verify-temp-pin/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/verify-temp-pin/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/verify-temp-pin/*.html" ]
