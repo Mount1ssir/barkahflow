@@ -382,3 +382,118 @@ export async function fetchTaxReportData(): Promise<TaxReportStats> {
     return { totalTaxCollected: 0, outstandingCount: 0, invoices: [] }
   }
 }
+
+// ==========================================
+// REVENUE REPORTS DATA
+// ==========================================
+
+export interface RegularSaleEntry {
+  id: string
+  invoiceNumber: string
+  client: string
+  date: string
+  amount: number
+  paymentMethod: string
+  status: string
+}
+
+export interface ExternalSaleEntry {
+  id: string
+  description: string
+  date: string
+  amount: number
+  paymentMethod: string
+  status: string
+}
+
+export interface RevenueReportStats {
+  regularTotal: number
+  regularCount: number
+  externalTotal: number
+  externalCount: number
+  regularSales: RegularSaleEntry[]
+  externalSales: ExternalSaleEntry[]
+}
+
+export async function fetchRevenueReportData(): Promise<RevenueReportStats> {
+  try {
+    // 1. Regular sales stats & list
+    const regularStatsRow = await dbSelect<any>(
+      `SELECT 
+        COALESCE(SUM(total), 0) as total,
+        COUNT(*) as count
+       FROM invoices`
+    )
+    const regularStats = regularStatsRow[0] || { total: 0, count: 0 }
+
+    const regularRows = await dbSelect<any>(
+      `SELECT 
+        i.invoice_number as id,
+        COALESCE(c.full_name, 'Client de passage') as client,
+        date(i.created_at, 'localtime') as date,
+        i.total as amount,
+        COALESCE(i.payment_method, 'cash') as payment_method,
+        i.status
+       FROM invoices i
+       LEFT JOIN clients c ON i.client_id = c.id
+       ORDER BY i.created_at DESC`
+    )
+
+    // 2. External sales stats & list
+    const externalStatsRow = await dbSelect<any>(
+      `SELECT 
+        COALESCE(SUM(amount), 0) as total,
+        COUNT(*) as count
+       FROM transactions
+       WHERE type = 'INCOME' AND source_type = 'manual' AND category = 'external_revenue'`
+    )
+    const externalStats = externalStatsRow[0] || { total: 0, count: 0 }
+
+    const externalRows = await dbSelect<any>(
+      `SELECT 
+        id,
+        COALESCE(notes, 'Revenu externe') as description,
+        date(transaction_date) as date,
+        amount,
+        COALESCE(payment_method, 'cash') as payment_method,
+        'PAID' as status
+       FROM transactions
+       WHERE type = 'INCOME' AND source_type = 'manual' AND category = 'external_revenue'
+       ORDER BY transaction_date DESC`
+    )
+
+    return {
+      regularTotal: regularStats.total,
+      regularCount: regularStats.count,
+      externalTotal: externalStats.total,
+      externalCount: externalStats.count,
+      regularSales: regularRows.map((row: any) => ({
+        id: row.id,
+        invoiceNumber: row.id,
+        client: row.client,
+        date: row.date || '',
+        amount: row.amount || 0,
+        paymentMethod: row.payment_method || 'cash',
+        status: row.status || 'UNPAID'
+      })),
+      externalSales: externalRows.map((row: any) => ({
+        id: row.id,
+        description: row.description,
+        date: row.date || '',
+        amount: row.amount || 0,
+        paymentMethod: row.payment_method || 'cash',
+        status: row.status || 'PAID'
+      }))
+    }
+  } catch (error) {
+    console.error('Error fetching revenue report data:', error)
+    return {
+      regularTotal: 0,
+      regularCount: 0,
+      externalTotal: 0,
+      externalCount: 0,
+      regularSales: [],
+      externalSales: []
+    }
+  }
+}

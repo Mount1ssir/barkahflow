@@ -9,7 +9,7 @@ import {
   Briefcase, 
   FileText, 
   Users,
-  Download
+  DollarSign
 } from 'lucide-react'
 
 export default function ReportsPage() {
@@ -56,32 +56,15 @@ export default function ReportsPage() {
       badge: null,
       href: '/dashboard/rapports/customer'
     },
+    {
+      id: 'revenue',
+      title: t('reports.categories.revenue', 'Rapports de revenus'),
+      desc: t('reports.desc.revenue', 'Consultez les rapports sur les ventes régulières et les revenus des événements externes.'),
+      icon: DollarSign,
+      badge: null,
+      href: '/dashboard/rapports/revenue'
+    },
   ]
-
-  const handleExport = () => {
-    // Generate CSV and trigger download
-    const csvContent = [
-      ['ID', 'Titre', 'Description', 'Lien'],
-      ...reportCategories.map(report => [
-        report.id,
-        report.title,
-        report.desc,
-        report.href
-      ])
-    ]
-      .map(e => e.map(val => `"${val?.replace(/"/g, '""') || ''}"`).join(','))
-      .join('\n')
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.setAttribute('href', url)
-    link.setAttribute('download', 'rapports_resume.csv')
-    link.style.visibility = 'hidden'
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-  }
 
   return (
     <div className="flex flex-col gap-6 max-w-7xl mx-auto w-full p-1 bg-slate-50/50 dark:bg-transparent min-h-screen">
@@ -95,14 +78,6 @@ export default function ReportsPage() {
             {t('reports.subtitle', 'Accédez aux résumés, statistiques de vente et indicateurs d\'activité de la boutique')}
           </p>
         </div>
-
-        <button 
-          onClick={handleExport}
-          className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 dark:text-zinc-300 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-lg hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors duration-150 shadow-sm cursor-pointer self-start sm:self-auto"
-        >
-          <Download size={15} />
-          <span>{t('reports.export', 'Exporter')}</span>
-        </button>
       </div>
 
       {/* Grid of Report Cards */}

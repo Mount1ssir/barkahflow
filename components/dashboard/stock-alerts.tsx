@@ -55,7 +55,7 @@ export function StockAlerts() {
         ) : (
           <div className="flex flex-col gap-1">
             {alerts.map((alert) => (
-              <div key={alert.id} className="flex items-center justify-between py-2">
+              <div key={alert.productId} className="flex items-center justify-between py-2">
                 <div>
                   <p className="text-sm font-medium text-foreground">{alert.nameAr}</p>
                   <p className="text-xs text-muted-foreground">
