@@ -29,6 +29,8 @@ import {
   Tooltip,
   ResponsiveContainer
 } from 'recharts'
+import { fetchExpenses, addExpenseToDb, deleteExpenseFromDb } from '@/lib/expenses-data'
+import { getRevenueChartData } from '@/lib/revenue-chart-data'
 
 interface Expense {
   id: string
@@ -47,37 +49,9 @@ export default function ExpensesPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [chartPeriod, setChartPeriod] = useState<7 | 30>(7)
   const [isMounted, setIsMounted] = useState(false)
+  const [expenses, setExpenses] = useState<Expense[]>([])
+  const [chartData, setChartData] = useState<any[]>([])
 
-  useEffect(() => {
-    setIsMounted(true)
-  }, [])
-
-  // Deterministic mock income based on date string (returns value in centimes)
-  const getMockIncomeForDate = (dateStr: string) => {
-    const MOCK_INCOMES: Record<string, number> = {
-      '2026-07-01': 450000,
-      '2026-07-02': 820000,
-      '2026-07-03': 310000,
-      '2026-07-04': 540000,
-      '2026-07-05': 680000,
-      '2026-07-06': 420000,
-      '2026-07-07': 590000,
-    }
-
-    if (MOCK_INCOMES[dateStr] !== undefined) {
-      return MOCK_INCOMES[dateStr]
-    }
-
-    // Deterministic fallback (between 3000 MAD and 7000 MAD)
-    let hash = 0
-    for (let i = 0; i < dateStr.length; i++) {
-      hash = dateStr.charCodeAt(i) + ((hash << 5) - hash)
-    }
-    const min = 300000
-    const max = 700000
-    const val = min + (Math.abs(hash) % (max - min))
-    return val
-  }
   const [activeTab, setActiveTab] = useState<'ALL' | 'PENDING' | 'SETTLED'>('ALL')
   const [showAddModal, setShowAddModal] = useState(false)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
@@ -90,88 +64,33 @@ export default function ExpensesPage() {
   const [formAmount, setFormAmount] = useState('') // in MAD
   const [formStatus, setFormStatus] = useState<'PENDING' | 'SETTLED'>('SETTLED')
 
-  // Initial Mock Data
-  const [expenses, setExpenses] = useState<Expense[]>([
-    {
-      id: 'exp-1',
-      date: '2026-07-01',
-      category: 'Inventory Supply',
-      vendor: 'Sidi Ali Distribution',
-      notes: 'Purchased 50 cases of mineral water',
-      amount: 150000, // 1,500.00 MAD
-      status: 'SETTLED'
-    },
-    {
-      id: 'exp-2',
-      date: '2026-07-02',
-      category: 'Rent',
-      vendor: 'Atlas Real Estate',
-      notes: 'Monthly warehouse rental fee',
-      amount: 500000, // 5,000.00 MAD
-      status: 'SETTLED'
-    },
-    {
-      id: 'exp-3',
-      date: '2026-07-04',
-      category: 'Utilities',
-      vendor: 'Lydec',
-      notes: 'Electricity and water bill for June',
-      amount: 85000, // 850.00 MAD
-      status: 'PENDING'
-    },
-    {
-      id: 'exp-4',
-      date: '2026-07-05',
-      category: 'Salaries',
-      vendor: 'Internal Staff',
-      notes: 'Part-time cashier weekly wages',
-      amount: 120000, // 1,200.00 MAD
-      status: 'SETTLED'
-    },
-    {
-      id: 'exp-5',
-      date: '2026-07-06',
-      category: 'Marketing',
-      vendor: 'Ad Agency',
-      notes: 'Flyers printing and distribution',
-      amount: 45000, // 450.00 MAD
-      status: 'PENDING'
-    }
-  ])
+  const loadExpenses = async () => {
+    const data = await fetchExpenses()
+    setExpenses(data)
+  }
 
-  // Dynamic Chart Calculations
-  const chartData = useMemo(() => {
-    const dataPoints = []
-    const today = new Date('2026-07-07') // Align with local current time context: 2026-07-07
-    
-    for (let i = chartPeriod - 1; i >= 0; i--) {
-      const d = new Date(today)
-      d.setDate(today.getDate() - i)
-      const dateStr = d.toISOString().split('T')[0]
-      
-      // Calculate total expenses for this date (in centimes)
-      const dailyExpensesCentimes = expenses
-        .filter(exp => exp.date === dateStr)
-        .reduce((sum, exp) => sum + exp.amount, 0)
-        
-      // Get deterministic mock income (in centimes)
-      const dailyIncomeCentimes = getMockIncomeForDate(dateStr)
-      
-      // Net revenue (in centimes)
-      const dailyNetCentimes = dailyIncomeCentimes - dailyExpensesCentimes
-      
-      // Convert to MAD (decimal) for Recharts plotting
-      dataPoints.push({
-        date: dateStr,
-        label: new Date(dateStr).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }),
-        income: dailyIncomeCentimes / 100,
-        expenses: dailyExpensesCentimes / 100,
-        netRevenue: dailyNetCentimes / 100,
-      })
+  const loadChartData = async () => {
+    const data = await getRevenueChartData(0, chartPeriod)
+    const mapped = data.map(d => ({
+      date: d.fullDate,
+      label: d.date,
+      income: d.ventes,
+      expenses: d.depenses,
+      netRevenue: d.solde
+    }))
+    setChartData(mapped)
+  }
+
+  useEffect(() => {
+    setIsMounted(true)
+    loadExpenses()
+  }, [])
+
+  useEffect(() => {
+    if (isMounted) {
+      loadChartData()
     }
-    
-    return dataPoints
-  }, [expenses, chartPeriod])
+  }, [chartPeriod, expenses, isMounted])
 
   const totals = useMemo(() => {
     let totalIncome = 0
@@ -197,25 +116,25 @@ export default function ExpensesPage() {
       return (
         <div className="bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl p-3.5 shadow-lg text-xs flex flex-col gap-2 min-w-[180px]">
           <p className="font-bold text-slate-800 dark:text-zinc-100 border-b border-slate-100 dark:border-zinc-800 pb-1.5">{data.date}</p>
-          <div className="flex flex-col gap-1.5 text-slate-600 dark:text-zinc-400">
+          <div className="flex flex-col gap-1.5 text-slate-650 dark:text-zinc-400">
             <div className="flex items-center justify-between gap-4">
               <span className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                {t('expenses.chart.tooltip.income', 'Total Income:')}
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                {t('expenses.chart.tooltip.income', 'Revenu total :')}
               </span>
               <span className="font-bold text-slate-800 dark:text-zinc-200">{data.income.toFixed(2)} MAD</span>
             </div>
             <div className="flex items-center justify-between gap-4">
               <span className="flex items-center gap-1.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                {t('expenses.chart.tooltip.expenses', 'Expenses:')}
+                {t('expenses.chart.tooltip.expenses', 'Dépenses :')}
               </span>
               <span className="font-bold text-slate-800 dark:text-zinc-200">{data.expenses.toFixed(2)} MAD</span>
             </div>
             <div className="border-t border-slate-100 dark:border-zinc-800 my-1"></div>
             <div className="flex items-center justify-between gap-4 font-semibold text-[13px]">
-              <span>{t('expenses.chart.tooltip.net', 'Net Revenue:')}</span>
-              <span className={`font-bold ${data.netRevenue >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+              <span>{t('expenses.chart.tooltip.net', 'Chiffre d\'affaires net :')}</span>
+              <span className={`font-bold ${data.netRevenue >= 0 ? 'text-blue-600' : 'text-rose-600'}`}>
                 {data.netRevenue.toFixed(2)} MAD
               </span>
             </div>
@@ -245,21 +164,20 @@ export default function ExpensesPage() {
   }, [expenses, activeTab, searchQuery])
 
   // Actions
-  const handleAddExpense = (e: React.FormEvent) => {
+  const handleAddExpense = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!formCategory || !formAmount) {
-      alert('Please fill in required fields')
+      alert(t('expenses.errors.required', 'Veuillez remplir les champs obligatoires'))
       return
     }
 
     const amountInCentimes = Math.round(parseFloat(formAmount) * 100)
     if (isNaN(amountInCentimes) || amountInCentimes <= 0) {
-      alert('Please enter a valid amount')
+      alert(t('expenses.errors.invalid_amount', 'Veuillez entrer un montant valide'))
       return
     }
 
-    const newExpense: Expense = {
-      id: `exp-${Date.now()}`,
+    const newExpenseData = {
       date: formDate,
       category: formCategory,
       vendor: formVendor || 'N/A',
@@ -268,22 +186,38 @@ export default function ExpensesPage() {
       status: formStatus
     }
 
-    setExpenses([newExpense, ...expenses])
-    setShowAddModal(false)
-    triggerToast('Expense added successfully')
+    try {
+      const newId = await addExpenseToDb(newExpenseData)
+      const newExpense: Expense = {
+        id: newId,
+        ...newExpenseData
+      }
+      setExpenses(prev => [newExpense, ...prev])
+      setShowAddModal(false)
+      triggerToast(t('expenses.messages.added', 'Dépense ajoutée avec succès'))
 
-    // Reset Form
-    setFormCategory('')
-    setFormVendor('')
-    setFormNotes('')
-    setFormAmount('')
-    setFormStatus('SETTLED')
+      // Reset Form
+      setFormCategory('')
+      setFormVendor('')
+      setFormNotes('')
+      setFormAmount('')
+      setFormStatus('SETTLED')
+    } catch (error) {
+      console.error('Error adding expense:', error)
+      alert('Erreur lors de l\'ajout de la dépense')
+    }
   }
 
-  const handleDeleteExpense = (id: string) => {
-    if (confirm('Are you sure you want to delete this expense?')) {
-      setExpenses(expenses.filter(item => item.id !== id))
-      triggerToast('Expense deleted successfully')
+  const handleDeleteExpense = async (id: string) => {
+    if (confirm(t('expenses.confirm.delete', 'Êtes-vous sûr de vouloir supprimer cette dépense ?'))) {
+      try {
+        await deleteExpenseFromDb(id)
+        setExpenses(prev => prev.filter(item => item.id !== id))
+        triggerToast(t('expenses.messages.deleted', 'Dépense supprimée avec succès'))
+      } catch (error) {
+        console.error('Error deleting expense:', error)
+        alert('Erreur lors de la suppression de la dépense')
+      }
     }
   }
 
@@ -295,7 +229,32 @@ export default function ExpensesPage() {
   }
 
   const handleExport = () => {
-    triggerToast('CSV Exported Successfully!')
+    // Implement actual CSV export logic for expenses
+    const csvContent = [
+      ['Date', 'Categorie', 'Fournisseur/Source', 'Notes', 'Statut', 'Montant (MAD)'],
+      ...filteredExpenses.map(item => [
+        item.date,
+        item.category,
+        item.vendor,
+        item.notes,
+        item.status === 'SETTLED' ? 'Réglé' : 'En attente',
+        (item.amount / 100).toFixed(2)
+      ])
+    ]
+      .map(e => e.map(val => `"${val?.replace(/"/g, '""') || ''}"`).join(','))
+      .join('\n')
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.setAttribute('href', url)
+    link.setAttribute('download', 'depenses.csv')
+    link.style.visibility = 'hidden'
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+
+    triggerToast(t('expenses.messages.exported', 'CSV exporté avec succès !'))
   }
 
   return (
@@ -304,7 +263,7 @@ export default function ExpensesPage() {
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2 bg-slate-900 text-white px-4 py-3 rounded-lg shadow-lg border border-slate-800 text-sm animate-in fade-in slide-in-from-bottom-5 duration-300">
-          <CheckCircle size={16} className="text-emerald-400" />
+          <CheckCircle size={16} className="text-blue-400" />
           <span>{toastMessage}</span>
         </div>
       )}
@@ -313,10 +272,10 @@ export default function ExpensesPage() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">
-            {t('expenses.title', 'Expenses')}
+            {t('expenses.title', 'Dépenses')}
           </h1>
           <p className="text-sm text-slate-500 dark:text-zinc-400">
-            {t('expenses.subtitle', 'Manage company operational costs, invoices and cash ledger outflows')}
+            {t('expenses.subtitle', 'Gérez les coûts opérationnels, les factures et les sorties de trésorerie de l\'entreprise')}
           </p>
         </div>
         
@@ -327,16 +286,16 @@ export default function ExpensesPage() {
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 dark:text-zinc-300 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-lg hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors duration-150 shadow-sm cursor-pointer"
           >
             <Download size={15} />
-            <span>{t('expenses.export', 'Export')}</span>
+            <span>{t('expenses.export', 'Exporter')}</span>
           </button>
 
-          {/* Primary Teal Add Button */}
+          {/* Primary Blue Add Button */}
           <button 
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 rounded-lg transition-colors duration-150 shadow-sm shadow-emerald-600/10 cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg transition-colors duration-150 shadow-sm shadow-blue-600/10 cursor-pointer"
           >
             <Plus size={15} />
-            <span>{t('expenses.add', 'Add Expense')}</span>
+            <span>{t('expenses.add', 'Ajouter une dépense')}</span>
           </button>
         </div>
       </div>
@@ -347,7 +306,7 @@ export default function ExpensesPage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4 border-b border-slate-100 dark:border-zinc-800">
           <div>
             <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-              <TrendingUp className="text-emerald-600" size={18} />
+              <TrendingUp className="text-blue-600" size={18} />
               <span>{t('expenses.chart.title', "Chiffre d'affaires net")}</span>
             </h3>
           </div>
@@ -364,7 +323,7 @@ export default function ExpensesPage() {
                     : 'text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-white'
                 }`}
               >
-                {p === 7 ? t('expenses.chart.period.7d', '7 Days') : t('expenses.chart.period.30d', '30 Days')}
+                {p === 7 ? t('expenses.chart.period.7d', '7 jours') : t('expenses.chart.period.30d', '30 jours')}
               </button>
             ))}
           </div>
@@ -375,21 +334,21 @@ export default function ExpensesPage() {
           {/* Net Revenue KPI */}
           <div className="bg-slate-50/50 dark:bg-zinc-950/40 border border-slate-100 dark:border-zinc-850 rounded-xl p-4 flex flex-col gap-1">
             <span className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
-              {t('expenses.chart.summary.net', 'Net Revenue')}
+              {t('expenses.chart.summary.net', 'Chiffre d\'affaires net')}
             </span>
-            <span className={`text-xl font-extrabold ${totals.net >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}`}>
+            <span className={`text-xl font-extrabold ${totals.net >= 0 ? 'text-blue-700 dark:text-blue-400' : 'text-rose-700 dark:text-rose-450'}`}>
               {totals.net.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} MAD
             </span>
             <div className="flex items-center gap-1 mt-1">
               {totals.net >= 0 ? (
-                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-semibold bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 rounded-md border border-emerald-100/50 dark:border-emerald-900/30">
+                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-semibold bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 rounded-md border border-blue-100/50 dark:border-blue-900/30">
                   <ArrowUpRight size={10} />
-                  <span>Positive Trend</span>
+                  <span>Tendance positive</span>
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-semibold bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-450 rounded-md border border-rose-100/50 dark:border-rose-900/30">
+                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-semibold bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-455 rounded-md border border-rose-100/50 dark:border-rose-900/30">
                   <ArrowDownRight size={10} />
-                  <span>Deficit</span>
+                  <span>Déficit</span>
                 </span>
               )}
             </div>
@@ -398,26 +357,26 @@ export default function ExpensesPage() {
           {/* Total Income KPI */}
           <div className="bg-slate-50/50 dark:bg-zinc-950/40 border border-slate-100 dark:border-zinc-850 rounded-xl p-4 flex flex-col gap-1">
             <span className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
-              {t('expenses.chart.summary.income', 'Total Income')}
+              {t('expenses.chart.summary.income', 'Revenu total')}
             </span>
             <span className="text-xl font-extrabold text-slate-800 dark:text-zinc-200">
               {totals.income.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} MAD
             </span>
             <span className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1">
-              Based on cash register records
+              Basé sur les enregistrements de caisse
             </span>
           </div>
 
           {/* Total Expenses KPI */}
           <div className="bg-slate-50/50 dark:bg-zinc-950/40 border border-slate-100 dark:border-zinc-850 rounded-xl p-4 flex flex-col gap-1">
             <span className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
-              {t('expenses.chart.summary.expenses', 'Total Expenses')}
+              {t('expenses.chart.summary.expenses', 'Total des dépenses')}
             </span>
             <span className="text-xl font-extrabold text-slate-800 dark:text-zinc-200">
               {totals.expenses.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} MAD
             </span>
             <span className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1">
-              Sum of operations in period
+              Somme des opérations sur la période
             </span>
           </div>
         </div>
@@ -426,15 +385,15 @@ export default function ExpensesPage() {
         <div className="h-64 w-full mt-2">
           {!isMounted ? (
             <div className="w-full h-full bg-slate-50 dark:bg-zinc-950 animate-pulse rounded-xl flex items-center justify-center text-xs text-slate-400 dark:text-zinc-600">
-              Loading chart...
+              Chargement du graphique...
             </div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData} margin={{ left: 20, right: 20, top: 10, bottom: 0 }}>
                 <defs>
                   <linearGradient id="fillNetRevenue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#059669" stopOpacity={0.15} />
-                    <stop offset="95%" stopColor="#059669" stopOpacity={0} />
+                    <stop offset="5%" stopColor="#2563EB" stopOpacity={0.15} />
+                    <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid vertical={false} strokeDasharray="3 3" className="stroke-slate-200/60 dark:stroke-zinc-800/60" />
@@ -458,7 +417,7 @@ export default function ExpensesPage() {
                   dataKey="netRevenue"
                   type="monotone"
                   fill="url(#fillNetRevenue)"
-                  stroke="#059669"
+                  stroke="#2563EB"
                   strokeWidth={2}
                 />
               </AreaChart>
@@ -481,13 +440,13 @@ export default function ExpensesPage() {
                 onClick={() => setActiveTab(tab)}
                 className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all duration-150 cursor-pointer ${
                   activeTab === tab 
-                    ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-450 border border-emerald-100 dark:border-emerald-900/30' 
+                    ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-450 border border-blue-100 dark:border-blue-900/30' 
                     : 'text-slate-500 dark:text-zinc-400 hover:text-slate-800 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800 border border-transparent'
                 }`}
               >
-                {tab === 'ALL' && t('expenses.filter.all', 'All')}
-                {tab === 'PENDING' && t('expenses.filter.pending', 'Pending')}
-                {tab === 'SETTLED' && t('expenses.filter.settled', 'Settled')}
+                {tab === 'ALL' && t('expenses.filter.all', 'Tout')}
+                {tab === 'PENDING' && t('expenses.filter.pending', 'En attente')}
+                {tab === 'SETTLED' && t('expenses.filter.settled', 'Réglé')}
               </button>
             ))}
           </div>
@@ -499,10 +458,10 @@ export default function ExpensesPage() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-zinc-500" size={15} />
               <input
                 type="text"
-                placeholder={t('expenses.search_placeholder', 'Search category, vendor, notes...')}
+                placeholder={t('expenses.search_placeholder', 'Rechercher une catégorie, un fournisseur, des notes...')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 text-xs border border-slate-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-slate-50/50 dark:bg-zinc-950/40 text-slate-800 dark:text-slate-100"
+                className="w-full pl-9 pr-4 py-2 text-xs border border-slate-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-slate-50/50 dark:bg-zinc-950/40 text-slate-800 dark:text-slate-100"
               />
               {searchQuery && (
                 <button 
@@ -527,11 +486,11 @@ export default function ExpensesPage() {
             <thead>
               <tr className="bg-slate-50/50 dark:bg-zinc-950/40 border-b border-slate-200 dark:border-zinc-800">
                 <th className="px-6 py-3.5 text-xs font-bold text-slate-500 dark:text-zinc-400 tracking-wider w-32">{t('expenses.table.date', 'Date')}</th>
-                <th className="px-6 py-3.5 text-xs font-bold text-slate-500 dark:text-zinc-400 tracking-wider">{t('expenses.table.category', 'Category')}</th>
-                <th className="px-6 py-3.5 text-xs font-bold text-slate-500 dark:text-zinc-400 tracking-wider">{t('expenses.table.vendor', 'Vendor/Source')}</th>
+                <th className="px-6 py-3.5 text-xs font-bold text-slate-500 dark:text-zinc-400 tracking-wider">{t('expenses.table.category', 'Catégorie')}</th>
+                <th className="px-6 py-3.5 text-xs font-bold text-slate-500 dark:text-zinc-400 tracking-wider">{t('expenses.table.vendor', 'Fournisseur/Source')}</th>
                 <th className="px-6 py-3.5 text-xs font-bold text-slate-500 dark:text-zinc-400 tracking-wider max-w-xs">{t('expenses.table.notes', 'Notes')}</th>
-                <th className="px-6 py-3.5 text-xs font-bold text-slate-500 dark:text-zinc-400 tracking-wider w-28">{t('expenses.table.status', 'Status')}</th>
-                <th className="px-6 py-3.5 text-xs font-bold text-slate-500 dark:text-zinc-400 tracking-wider text-right w-36">{t('expenses.table.amount', 'Amount')}</th>
+                <th className="px-6 py-3.5 text-xs font-bold text-slate-500 dark:text-zinc-400 tracking-wider w-28">{t('expenses.table.status', 'Statut')}</th>
+                <th className="px-6 py-3.5 text-xs font-bold text-slate-500 dark:text-zinc-400 tracking-wider text-right w-36">{t('expenses.table.amount', 'Montant')}</th>
                 <th className="px-6 py-3.5 text-xs font-bold text-slate-500 dark:text-zinc-400 tracking-wider text-center w-16"></th>
               </tr>
             </thead>
@@ -539,7 +498,7 @@ export default function ExpensesPage() {
               {filteredExpenses.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-6 py-12 text-center text-sm text-slate-400 dark:text-zinc-500">
-                    {t('expenses.table.empty', 'No expenses found matching the criteria')}
+                    {t('expenses.table.empty', 'Aucune dépense trouvée correspondant aux critères')}
                   </td>
                 </tr>
               ) : (
@@ -575,12 +534,12 @@ export default function ExpensesPage() {
                         {item.status === 'SETTLED' ? (
                           <>
                             <CheckCircle size={10} />
-                            <span>{t('expenses.status.settled', 'Settled')}</span>
+                            <span>{t('expenses.status.settled', 'Réglé')}</span>
                           </>
                         ) : (
                           <>
                             <Clock size={10} />
-                            <span>{t('expenses.status.pending', 'Pending')}</span>
+                            <span>{t('expenses.status.pending', 'En attente')}</span>
                           </>
                         )}
                       </span>
@@ -596,7 +555,7 @@ export default function ExpensesPage() {
                       <button 
                         onClick={() => handleDeleteExpense(item.id)}
                         className="text-slate-400 hover:text-rose-600 transition-colors duration-150 opacity-0 group-hover:opacity-100 cursor-pointer"
-                        title="Delete expense"
+                        title="Supprimer la dépense"
                       >
                         <Trash2 size={14} />
                       </button>
@@ -611,11 +570,11 @@ export default function ExpensesPage() {
         {/* Table Footer / Summary Row */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 bg-slate-50/50 dark:bg-zinc-950/40 border-t border-slate-100 dark:border-zinc-800 gap-2">
           <p className="text-xs text-slate-500 dark:text-zinc-400">
-            {t('expenses.summary.count', 'Showing {{count}} entries', { count: filteredExpenses.length })}
+            {t('expenses.summary.count', 'Affichage de {{count}} entrées', { count: filteredExpenses.length })}
           </p>
           <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-slate-500 dark:text-zinc-400">{t('expenses.summary.total', 'Total Amount:')}</span>
-            <span className="text-sm font-bold text-emerald-800 dark:text-emerald-400">
+            <span className="text-xs font-semibold text-slate-500 dark:text-zinc-400">{t('expenses.summary.total', 'Montant total :')}</span>
+            <span className="text-sm font-bold text-blue-800 dark:text-blue-400">
               {formatMAD(filteredExpenses.reduce((sum, item) => sum + item.amount, 0))}
             </span>
           </div>
@@ -630,7 +589,7 @@ export default function ExpensesPage() {
             {/* Header */}
             <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-zinc-800 bg-slate-50/50 dark:bg-zinc-950/40">
               <h3 className="text-base font-bold text-slate-900 dark:text-zinc-100">
-                {t('expenses.modal.title', 'Add New Expense')}
+                {t('expenses.modal.title', 'Ajouter une nouvelle dépense')}
               </h3>
               <button 
                 onClick={() => setShowAddModal(false)}
@@ -654,7 +613,7 @@ export default function ExpensesPage() {
                   required
                   value={formDate}
                   onChange={(e) => setFormDate(e.target.value)}
-                  className="w-full px-3 py-2 text-xs border border-slate-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-white dark:bg-zinc-950 text-slate-800 dark:text-slate-100"
+                  className="w-full px-3 py-2 text-xs border border-slate-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white dark:bg-zinc-950 text-slate-800 dark:text-slate-100"
                 />
               </div>
 
@@ -662,15 +621,15 @@ export default function ExpensesPage() {
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-bold text-slate-600 dark:text-zinc-400 flex items-center gap-1.5">
                   <Tag size={13} className="text-slate-400 dark:text-zinc-500" />
-                  <span>{t('expenses.modal.category', 'Category')} *</span>
+                  <span>{t('expenses.modal.category', 'Catégorie')} *</span>
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Rent, Utilities, Inventory Supply"
+                  placeholder={t('expenses.placeholder.category', 'ex. Loyer, Services publics, Fourniture de stock')}
                   value={formCategory}
                   onChange={(e) => setFormCategory(e.target.value)}
-                  className="w-full px-3 py-2 text-xs border border-slate-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-white dark:bg-zinc-950 text-slate-800 dark:text-slate-100"
+                  className="w-full px-3 py-2 text-xs border border-slate-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white dark:bg-zinc-950 text-slate-800 dark:text-slate-100"
                 />
               </div>
 
@@ -678,22 +637,22 @@ export default function ExpensesPage() {
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-bold text-slate-600 dark:text-zinc-400 flex items-center gap-1.5">
                   <Building size={13} className="text-slate-400 dark:text-zinc-500" />
-                  <span>{t('expenses.modal.vendor', 'Vendor/Source')}</span>
+                  <span>{t('expenses.modal.vendor', 'Fournisseur/Source')}</span>
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. Sidi Ali Distribution, landlord name"
+                  placeholder={t('expenses.placeholder.vendor', 'ex. Distribution Sidi Ali, nom du propriétaire')}
                   value={formVendor}
                   onChange={(e) => setFormVendor(e.target.value)}
-                  className="w-full px-3 py-2 text-xs border border-slate-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-white dark:bg-zinc-950 text-slate-800 dark:text-slate-100"
+                  className="w-full px-3 py-2 text-xs border border-slate-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white dark:bg-zinc-950 text-slate-800 dark:text-slate-100"
                 />
               </div>
 
               {/* Amount */}
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-bold text-slate-600 dark:text-zinc-400 flex items-center gap-1.5">
-                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-900/30">MAD</span>
-                  <span>{t('expenses.modal.amount', 'Amount (MAD)')} *</span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 border border-blue-100 dark:border-blue-900/30">MAD</span>
+                  <span>{t('expenses.modal.amount', 'Montant (MAD)')} *</span>
                 </label>
                 <input
                   type="number"
@@ -702,7 +661,7 @@ export default function ExpensesPage() {
                   placeholder="0.00"
                   value={formAmount}
                   onChange={(e) => setFormAmount(e.target.value)}
-                  className="w-full px-3 py-2 text-xs border border-slate-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-white dark:bg-zinc-950 text-slate-800 dark:text-slate-100"
+                  className="w-full px-3 py-2 text-xs border border-slate-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white dark:bg-zinc-950 text-slate-800 dark:text-slate-100"
                 />
               </div>
 
@@ -713,18 +672,18 @@ export default function ExpensesPage() {
                   <span>{t('expenses.modal.notes', 'Notes')}</span>
                 </label>
                 <textarea
-                  placeholder="Describe details of the expense..."
+                  placeholder={t('expenses.placeholder.notes', 'Décrivez les détails de la dépense...')}
                   value={formNotes}
                   onChange={(e) => setFormNotes(e.target.value)}
                   rows={2}
-                  className="w-full px-3 py-2 text-xs border border-slate-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-white dark:bg-zinc-950 text-slate-800 dark:text-slate-100 resize-none"
+                  className="w-full px-3 py-2 text-xs border border-slate-200 dark:border-zinc-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 bg-white dark:bg-zinc-950 text-slate-800 dark:text-slate-100 resize-none"
                 />
               </div>
 
               {/* Status */}
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-bold text-slate-600 dark:text-zinc-400">
-                  {t('expenses.modal.status', 'Status')}
+                  {t('expenses.modal.status', 'Statut')}
                 </label>
                 <div className="grid grid-cols-2 gap-3">
                   <button
@@ -732,11 +691,11 @@ export default function ExpensesPage() {
                     onClick={() => setFormStatus('SETTLED')}
                     className={`py-2 text-xs font-bold rounded-lg border transition-all duration-150 cursor-pointer ${
                       formStatus === 'SETTLED'
-                        ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-500 text-emerald-700 dark:text-emerald-400'
+                        ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-500 text-blue-700 dark:text-blue-400'
                         : 'border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400 hover:bg-slate-50 dark:hover:bg-zinc-800'
                     }`}
                   >
-                    {t('expenses.status.settled', 'Settled')}
+                    {t('expenses.status.settled', 'Réglé')}
                   </button>
                   <button
                     type="button"
@@ -747,7 +706,7 @@ export default function ExpensesPage() {
                         : 'border-slate-200 dark:border-zinc-800 text-slate-600 dark:text-zinc-400 hover:bg-slate-50 dark:hover:bg-zinc-800'
                     }`}
                   >
-                    {t('expenses.status.pending', 'Pending')}
+                    {t('expenses.status.pending', 'En attente')}
                   </button>
                 </div>
               </div>
@@ -759,13 +718,13 @@ export default function ExpensesPage() {
                   onClick={() => setShowAddModal(false)}
                   className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-zinc-400 hover:bg-slate-50 dark:hover:bg-zinc-850 border border-slate-200 dark:border-zinc-800 rounded-lg transition-colors duration-150 cursor-pointer"
                 >
-                  {t('expenses.modal.cancel', 'Cancel')}
+                  {t('expenses.modal.cancel', 'Annuler')}
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 rounded-lg transition-colors duration-150 cursor-pointer"
+                  className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg transition-colors duration-150 cursor-pointer"
                 >
-                  {t('expenses.modal.save', 'Save')}
+                  {t('expenses.modal.save', 'Enregistrer')}
                 </button>
               </div>
             </form>
