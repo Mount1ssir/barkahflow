@@ -32,6 +32,7 @@ export function PinLockScreen({ onSuccess }: PinLockScreenProps) {
   const [biometricAvailable, setBiometricAvailable] = useState(false)
   const [riveKey, setRiveKey] = useState(0)
   const [userName, setUserName] = useState('Utilisateur')
+  const [loadingReset, setLoadingReset] = useState(false)
 
   useEffect(() => {
     const remembered = getRememberedUser()
@@ -42,7 +43,7 @@ export function PinLockScreen({ onSuccess }: PinLockScreenProps) {
         const user = data.user
         if (user) {
           const fullName = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Utilisateur'
-          const firstName = fullName.split(' ')[0] // 👈 prénom uniquement
+          const firstName = fullName.split(' ')[0]
           setUserName(firstName)
           setRememberedUser(firstName, '')
         }
@@ -143,10 +144,38 @@ export function PinLockScreen({ onSuccess }: PinLockScreenProps) {
     setRiveKey(prev => prev + 1)
   }
 
-  // 🔥 Clique sur "PIN oublié ?" → verrouillage immédiat + envoi email
+  // ✅ Envoi du Magic Link (OTP) par email
   const handleResetPin = async () => {
-    // Rediriger vers la page de réinitialisation (qui enverra l'email automatiquement)
-    router.push('/auth/reset-pin')
+    setLoadingReset(true)
+    try {
+      // Récupérer l'email de l'utilisateur connecté
+      const { data } = await supabase.auth.getUser()
+      const email = data.user?.email
+
+      if (!email) {
+        toast.error('Email introuvable. Veuillez vous reconnecter.')
+        setLoadingReset(false)
+        return
+      }
+
+      // ✅ Envoyer un Magic Link (OTP) via Supabase
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/reset-pin-confirm`,
+        },
+      })
+
+      if (error) throw error
+
+      toast.success('Lien de réinitialisation envoyé !')
+      router.push('/auth/reset-pin-sent')
+    } catch (error: any) {
+      console.error('Erreur envoi email:', error)
+      toast.error(error?.message || 'Erreur lors de l\'envoi de l\'email')
+    } finally {
+      setLoadingReset(false)
+    }
   }
 
   const lockMessage = locked
@@ -157,7 +186,6 @@ export function PinLockScreen({ onSuccess }: PinLockScreenProps) {
 
   return (
     <div className="fixed inset-0 z-50 bg-white dark:bg-zinc-900 flex flex-col items-center justify-center gap-8 p-6">
-      {/* 🔥 Animation plus grande */}
       <div className="w-72 h-72">
         <Rive
           key={riveKey}
@@ -208,13 +236,13 @@ export function PinLockScreen({ onSuccess }: PinLockScreenProps) {
         </div>
       )}
 
-      {/* 🔥 Bouton "PIN oublié" – verrouille et envoie l'email */}
       <button
         onClick={handleResetPin}
+        disabled={loadingReset}
         className="mt-4 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors underline flex items-center gap-1"
       >
         <Mail className="h-3 w-3" />
-        PIN oublié ? Réinitialiser par email
+        {loadingReset ? 'Envoi en cours...' : 'PIN oublié ? Réinitialiser par email'}
       </button>
     </div>
   )

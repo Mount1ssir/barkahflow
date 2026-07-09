@@ -19,50 +19,51 @@ export default function ResetPinConfirmPage() {
   const [loading, setLoading] = useState(false)
   const [showPin, setShowPin] = useState(false)
   const [valid, setValid] = useState(false)
-  const [userEmail, setUserEmail] = useState('')
   const [checking, setChecking] = useState(true)
 
   useEffect(() => {
     const checkAuth = async () => {
-      // 🔥 Vérifier si l'utilisateur est authentifié via le lien (hash)
+      // ✅ Vérifier si l'utilisateur est authentifié via le Magic Link
       const hash = window.location.hash
       if (hash) {
         try {
           const params = new URLSearchParams(hash.substring(1))
           const accessToken = params.get('access_token')
+          const refreshToken = params.get('refresh_token')
+          
           if (accessToken) {
             const { data, error } = await supabase.auth.setSession({
               access_token: accessToken,
-              refresh_token: '',
+              refresh_token: refreshToken || '',
             })
             if (error) throw error
-            setUserEmail(data.session?.user?.email || '')
-            setValid(true)
-            toast.success('Vérification réussie')
+            if (data.session) {
+              setValid(true)
+              toast.success('Vérification réussie')
+            }
           } else {
             toast.error('Lien invalide')
-            router.push('/auth/reset-pin')
+            router.push('/auth/reset-pin-sent')
           }
         } catch (error) {
           console.error(error)
           toast.error('Lien invalide ou expiré')
-          router.push('/auth/reset-pin')
+          router.push('/auth/reset-pin-sent')
         }
       } else {
         // Essayer de récupérer la session existante
         const { data } = await supabase.auth.getSession()
         if (data.session?.user) {
-          setUserEmail(data.session.user.email || '')
           setValid(true)
         } else {
           toast.error('Vous devez être authentifié')
-          router.push('/auth/reset-pin')
+          router.push('/auth/reset-pin-sent')
         }
       }
       setChecking(false)
     }
     checkAuth()
-  }, [])
+  }, [router])
 
   const handleSetPin = async () => {
     if (!valid) {
@@ -80,9 +81,15 @@ export default function ResetPinConfirmPage() {
 
     setLoading(true)
     try {
+      // ✅ 1. Enregistrer le nouveau PIN dans SQLite
       await setPinCode(newPin)
       toast.success('PIN réinitialisé avec succès')
-      router.push('/dashboard')
+
+      // ✅ 2. DÉCONNECTER L'UTILISATEUR DE SUPABASE
+      await supabase.auth.signOut()
+
+      // ✅ 3. Rediriger vers la page de connexion (pas le dashboard)
+      router.replace('/')
     } catch (error: any) {
       toast.error(error?.message || 'Erreur')
     } finally {
@@ -99,7 +106,7 @@ export default function ResetPinConfirmPage() {
   }
 
   if (!valid) {
-    return null // sera redirigé
+    return null
   }
 
   return (
@@ -108,7 +115,7 @@ export default function ResetPinConfirmPage() {
         <CardHeader>
           <CardTitle className="text-center">Nouveau code PIN</CardTitle>
           <p className="text-center text-sm text-gray-500">
-            Pour {userEmail}
+            Choisissez un nouveau code PIN à 4-6 chiffres.
           </p>
         </CardHeader>
         <CardContent>
