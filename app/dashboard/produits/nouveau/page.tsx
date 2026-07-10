@@ -49,6 +49,7 @@ import {
   ChevronLeft,
   Search,
   Pencil,
+  Sparkles,
 } from 'lucide-react'
 import {
   createProduct,
@@ -70,6 +71,7 @@ import {
 import { uploadProductImage } from '@/lib/photo-upload'
 import { AddCategoryDialog } from '@/components/products/AddCategoryDialog'
 import { BarcodeScannerModal } from '@/components/products/BarcodeScannerModal'
+import { lookupProductByBarcode, urlToFile } from '@/lib/barcode-lookup'
 
 const UNITS = ['piece', 'kg', 'g', 'l', 'ml', 'box', 'carton'] as const
 type Unit = (typeof UNITS)[number]
@@ -143,9 +145,11 @@ export default function NewProductPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const productId = searchParams.get('id')
+  const prefilledBarcode = searchParams.get('barcode')
 
   const [loading, setLoading] = useState(false)
   const [loadingProduct, setLoadingProduct] = useState(false)
+  const [autoFilling, setAutoFilling] = useState(false)
   const [categories, setCategories] = useState<Category[]>([])
   const [categoryDialogOpen, setCategoryDialogOpen] = useState(false)
   const [currentStep, setCurrentStep] = useState(1)
@@ -283,9 +287,9 @@ export default function NewProductPage() {
               supplierRef: product.supplierName || '',
               description: product.description || '',
               isActive: product.isActive,
-              showInPos: true,
-              trackStock: true,
-              isFavorite: false,
+              showInPos: product.showInPos,
+              trackStock: product.trackStock,
+              isFavorite: product.isFavorite,
               imageFile: null,
               imagePreview: product.imagePath || null,
             })
@@ -375,9 +379,9 @@ export default function NewProductPage() {
           supplierRef: product.supplierName || '',
           description: product.description || '',
           isActive: product.isActive,
-          showInPos: true,
-          trackStock: true,
-          isFavorite: false,
+          showInPos: product.showInPos,
+          trackStock: product.trackStock,
+          isFavorite: product.isFavorite,
           imageFile: null,
           imagePreview: product.imagePath || null,
         })
@@ -395,9 +399,111 @@ export default function NewProductPage() {
     }
   }
 
-  const handleScan = (barcode: string) => {
+  // ─── Auto-remplissage via lookup externe (Open Food/Products/Beauty Facts) ─
+  const autoFillFromBarcode = useCallback(async (barcode: string) => {
+    setAutoFilling(true)
+    toast.info('Recherche des informations produit…')
+
+    const result = await lookupProductByBarcode(barcode)
+
+    if (!result.found) {
+      if (result.offline) {
+        toast.warning('Pas de connexion Internet, remplissage manuel requis')
+      } else {
+        toast.info('Produit non trouvé, veuillez remplir manuellement')
+      }
+      setAutoFilling(false)
+      return
+    }
+
+    // Teste chaque tag de catégorie (du plus spécifique au plus général)
+    // contre le nom de chaque catégorie locale, comparaison normalisée
+    // (sans accents, insensible à la casse) dans les deux sens
+    let matchedCategoryId = ''
+    if (result.categoryTags && result.categoryTags.length > 0) {
+      for (const tag of result.categoryTags) {
+        const match = categories.find((c) => {
+          const catName = c.nameFr
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+          return catName.includes(tag) || tag.includes(catName)
+        })
+        if (match) {
+          matchedCategoryId = match.id
+          break
+        }
+      }
+    }
+
+    if (result.imageUrl) {
+      const file = await urlToFile(result.imageUrl, `${barcode}.jpg`)
+      if (file) {
+        const reader = new FileReader()
+        reader.onload = () => {
+          setForm((f) => ({ ...f, imageFile: file, imagePreview: reader.result as string }))
+        }
+        reader.readAsDataURL(file)
+      }
+    }
+
+    setForm((prev) => ({
+      ...prev,
+      nameFr: result.nameFr || prev.nameFr,
+      categoryId: matchedCategoryId || prev.categoryId,
+      unit: (result.unitGuess as Unit) || prev.unit,
+      supplierRef: result.brand || prev.supplierRef,
+    }))
+
+    setAutoFilling(false)
+
+    // Si la catégorie n'a pas pu être devinée, on reste à l'étape 1
+    // pour que le commerçant la sélectionne lui-même — plutôt que de
+    // sauter à l'étape Prix avec un champ obligatoire vide
+    if (!matchedCategoryId) {
+      toast.warning('Nom et infos récupérés ! Sélectionnez juste la catégorie manquante.')
+      setCurrentStep(1)
+    } else {
+      toast.success(`Informations récupérées (${result.source}) ! Complétez le prix et le stock.`)
+      setCurrentStep(3)
+    }
+  }, [categories])
+
+  // ─── Vérifie d'abord la base locale avant tout lookup externe ─
+  const handleBarcodeDetected = useCallback(async (barcode: string) => {
+    // Si on est déjà en train de modifier CE produit, pas besoin
+    // de vérifier — on évite une redirection inutile vers soi-même
+    if (isEditMode && form.barcode === barcode) return
+
+    setAutoFilling(true)
+
+    const existing = await findBySkuOrBarcode(barcode)
+
+    if (existing) {
+      setAutoFilling(false)
+      toast.info(`Produit déjà existant : ${existing.nameFr || existing.sku}, redirection…`)
+      router.push(`/dashboard/produits/nouveau?id=${existing.id}`)
+      return
+    }
+
+    // Rien en local : on tente la récupération automatique externe
+    await autoFillFromBarcode(barcode)
+  }, [isEditMode, form.barcode, router, autoFillFromBarcode])
+
+  // ─── Déclenchement automatique si on arrive avec ?barcode=... ─
+  useEffect(() => {
+    if (prefilledBarcode && !isEditMode && categories.length > 0) {
+      setForm((prev) => ({ ...prev, barcode: prefilledBarcode }))
+      handleBarcodeDetected(prefilledBarcode)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefilledBarcode, isEditMode, categories.length])
+
+  const handleScan = async (barcode: string) => {
     setForm((prev) => ({ ...prev, barcode }))
     setBarcodeCheck({ valid: true, checked: false })
+    setScannerOpen(false)
+    await handleBarcodeDetected(barcode)
   }
 
   const handleImageUpload = (file: File) => {
@@ -436,9 +542,9 @@ export default function NewProductPage() {
         supplierRef: existingProduct.supplierName || '',
         description: existingProduct.description || '',
         isActive: existingProduct.isActive,
-        showInPos: true,
-        trackStock: true,
-        isFavorite: false,
+        showInPos: existingProduct.showInPos,
+        trackStock: existingProduct.trackStock,
+        isFavorite: existingProduct.isFavorite,
         imageFile: null,
         imagePreview: existingProduct.imagePath || null,
       })
@@ -501,6 +607,9 @@ export default function NewProductPage() {
       supplierName: form.supplierRef.trim() || null,
       description: form.description.trim() || null,
       isActive: form.isActive,
+      showInPos: form.showInPos,
+      trackStock: form.trackStock,
+      isFavorite: form.isFavorite,
     }
 
     const validation = validateProductInput(input)
@@ -622,6 +731,17 @@ export default function NewProductPage() {
             <p className="text-[10px] text-slate-400 dark:text-gray-500 mt-1 max-w-3xl mx-auto">
               Recherchez par SKU ou code-barres pour charger les données d&apos;un produit existant
             </p>
+          </div>
+        )}
+
+        {autoFilling && (
+          <div className="bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800 px-6 py-2.5 shrink-0">
+            <div className="max-w-3xl mx-auto flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-blue-600 dark:text-blue-400 animate-pulse" />
+              <span className="text-xs font-bold text-blue-700 dark:text-blue-300">
+                Vérification et récupération automatique en cours…
+              </span>
+            </div>
           </div>
         )}
 
@@ -926,12 +1046,17 @@ export default function NewProductPage() {
                                     variant="outline"
                                     size="icon"
                                     onClick={() => setScannerOpen(true)}
+                                    disabled={autoFilling}
                                     className="shrink-0 rounded-xl border-slate-200 dark:border-gray-700 hover:bg-blue-50 h-11 w-11"
                                   >
-                                    <Scan className="h-4 w-4" style={{ color: PRIMARY }} />
+                                    {autoFilling ? (
+                                      <RefreshCw className="h-4 w-4 animate-spin" style={{ color: PRIMARY }} />
+                                    ) : (
+                                      <Scan className="h-4 w-4" style={{ color: PRIMARY }} />
+                                    )}
                                   </Button>
                                 </TooltipTrigger>
-                                <TooltipContent>Scanner un code-barres</TooltipContent>
+                                <TooltipContent>Scanner (remplissage automatique)</TooltipContent>
                               </Tooltip>
                             </div>
                             {barcodeCheck.checked && !barcodeCheck.valid && (
@@ -959,7 +1084,7 @@ export default function NewProductPage() {
                               icon: AlertCircle,
                             },
                             {
-                              label: 'Scan et remplissage automatique',
+                              label: 'Scan avec remplissage automatique',
                               color: 'text-green-600 dark:text-green-400',
                               bg: 'bg-green-50 dark:bg-green-900/20',
                               icon: Scan,

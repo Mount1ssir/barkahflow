@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
@@ -11,56 +11,48 @@ import { BarcodeScannerModal } from '@/components/products/BarcodeScannerModal'
 import { getAllProducts, type Product } from '@/lib/products-data'
 import { getAllCategories, type Category } from '@/lib/categories-data'
 import { useHotkeys } from 'react-hotkeys-hook'
-
-const CART_STORAGE_KEY = 'barkahflow_cart'
-
-interface CartItem {
-  product: Product
-  quantity: number
-}
+import { useCart } from '@/lib/store/cart-store'
 
 export default function CaissePage() {
   const { t } = useTranslation()
   const router = useRouter()
-  const [cart, setCart] = useState<CartItem[]>([])
+
+  // ✅ Le panier vient maintenant du store partagé (accessible aussi depuis l'assistant vocal)
+  const { items: cart, addToCart, removeFromCart, updateQuantity, clearCart } = useCart()
+
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
   const [scannerOpen, setScannerOpen] = useState(false)
   const [checkoutOpen, setCheckoutOpen] = useState(false)
 
-  // Charger les produits et le panier depuis localStorage
   useEffect(() => {
     loadData()
-    loadCartFromStorage()
   }, [])
 
-  // Sauvegarder le panier dans localStorage à chaque modification
+  // ✅ Écoute des événements envoyés par l'assistant vocal
   useEffect(() => {
-    if (cart.length > 0) {
-      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart))
-    } else {
-      localStorage.removeItem(CART_STORAGE_KEY)
-    }
-  }, [cart])
+    const handleOpenCheckout = () => setCheckoutOpen(true)
+    const handleCloseCheckout = () => setCheckoutOpen(false)
+    const handleOpenScanner = () => setScannerOpen(true)
 
-  const loadCartFromStorage = () => {
-    try {
-      const stored = localStorage.getItem(CART_STORAGE_KEY)
-      if (stored) {
-        const parsed = JSON.parse(stored) as CartItem[]
-        setCart(parsed)
-      }
-    } catch (error) {
-      console.warn('Erreur chargement panier depuis localStorage:', error)
+    window.addEventListener('barkahflow:open-checkout', handleOpenCheckout)
+    window.addEventListener('barkahflow:close-checkout', handleCloseCheckout)
+    window.addEventListener('barkahflow:open-scanner', handleOpenScanner)
+
+    return () => {
+      window.removeEventListener('barkahflow:open-checkout', handleOpenCheckout)
+      window.removeEventListener('barkahflow:close-checkout', handleCloseCheckout)
+      window.removeEventListener('barkahflow:open-scanner', handleOpenScanner)
     }
-  }
+  }, [])
 
   const loadData = async () => {
     setLoading(true)
     try {
+      // ✅ FILTRE : showInPosOnly = true pour n'afficher que les produits visibles dans le POS
       const [prodData, catData] = await Promise.all([
-        getAllProducts(true),
+        getAllProducts(true, true), // activeOnly = true, showInPosOnly = true
         getAllCategories(),
       ])
       setProducts(prodData)
@@ -71,41 +63,6 @@ export default function CaissePage() {
     } finally {
       setLoading(false)
     }
-  }
-
-  const addToCart = (product: Product) => {
-    setCart((prev) => {
-      const existing = prev.find((item) => item.product.id === product.id)
-      if (existing) {
-        return prev.map((item) =>
-          item.product.id === product.id
-            ? { ...item, quantity: item.quantity + 1 }
-            : item
-        )
-      }
-      return [...prev, { product, quantity: 1 }]
-    })
-  }
-
-  const removeFromCart = (productId: string) => {
-    setCart((prev) => prev.filter((item) => item.product.id !== productId))
-  }
-
-  const updateQuantity = (productId: string, quantity: number) => {
-    if (quantity <= 0) {
-      removeFromCart(productId)
-      return
-    }
-    setCart((prev) =>
-      prev.map((item) =>
-        item.product.id === productId ? { ...item, quantity } : item
-      )
-    )
-  }
-
-  const clearCart = () => {
-    setCart([])
-    localStorage.removeItem(CART_STORAGE_KEY)
   }
 
   const handleScan = (barcode: string) => {
@@ -173,7 +130,7 @@ export default function CaissePage() {
           items={cartItems}
           onUpdateQuantity={updateQuantity}
           onRemove={removeFromCart}
-          onClearCart={clearCart}   // ✅ Passer la fonction
+          onClearCart={clearCart}
           onCheckout={() => setCheckoutOpen(true)}
           subtotal={subtotal}
           tax={tax}
@@ -195,7 +152,7 @@ export default function CaissePage() {
         subtotal={subtotal}
         tax={tax}
         onSuccess={(invoiceId, invoiceNumber) => {
-          clearCart()  // ✅ Vider le panier après succès
+          clearCart()
           toast.success(`Facture ${invoiceNumber} créée`)
           router.push(`/dashboard/factures/${invoiceId}`)
         }}

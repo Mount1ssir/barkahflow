@@ -2,7 +2,9 @@
   "java.configuration.updateBuildConfiguration": "interactive",
   "json.schemas": [
     {
-      "fileMatch": ["components.json"],
+      "fileMatch": [
+        "components.json"
+      ],
       "url": "https://ui.shadcn.com/schema.json"
     }
   ],
@@ -12,5 +14,27 @@
   "tailwindCSS.experimental.configFile": null,
   "files.associations": {
     "*.css": "tailwindcss"
+  },
+  "deno.enablePaths": [
+    "supabase/functions"
+  ],
+  "deno.lint": true,
+  "deno.unstable": [
+    "bare-node-builtins",
+    "byonm",
+    "sloppy-imports",
+    "unsafe-proto",
+    "webgpu",
+    "broadcast-channel",
+    "worker-options",
+    "cron",
+    "kv",
+    "ffi",
+    "fs",
+    "http",
+    "net"
+  ],
+  "[typescript]": {
+    "editor.defaultFormatter": "denoland.vscode-deno"
   }
 }

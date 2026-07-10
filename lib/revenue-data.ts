@@ -1,4 +1,5 @@
-import { dbSelect } from '@/src/lib/db'
+// lib/revenue-data.ts
+import { dbSelect, dbExecute } from '@/src/lib/db'
 
 export interface RevenueSummary {
   caHT: number
@@ -30,6 +31,7 @@ export interface Transaction {
   paymentMethod: string
   status: string
   amount: number // TTC
+  isExternal?: boolean
 }
 
 export interface AgedReceivable {
@@ -104,20 +106,23 @@ export async function getRevenueSummary(period: string = 'month'): Promise<Reven
        COALESCE(SUM(total), 0) as caTTC,
        COUNT(*) as nb
      FROM invoices
-     WHERE date(created_at, 'localtime') BETWEEN date(?) AND date(?)`,
+     WHERE date(created_at) BETWEEN date(?) AND date(?)`,
     [start, end]
   )
   const caHT = totals[0]?.caHT || 0
   const caTTC = totals[0]?.caTTC || 0
   const nbTransactions = totals[0]?.nb || 0
 
-  // ─── Encaissé (transactions INCOME réelles, factures + paiements de dette) ──
+  // ─── Encaissé (transactions INCOME réelles : factures + paiements de dette + revenus externes) ──
   const encaisseResult = await dbSelect<{ total: number }>(
     `SELECT COALESCE(SUM(amount), 0) as total
      FROM transactions
      WHERE type = 'INCOME'
-       AND (source_type = 'invoice' OR (source_type = 'manual' AND category = 'debt_payment'))
-       AND date(transaction_date, 'localtime') BETWEEN date(?) AND date(?)`,
+       AND (
+         source_type = 'invoice'
+         OR (source_type = 'manual' AND category IN ('debt_payment', 'external_revenue'))
+       )
+       AND date(transaction_date) BETWEEN date(?) AND date(?)`,
     [start, end]
   )
   const encaisse = encaisseResult[0]?.total || 0
@@ -127,7 +132,7 @@ export async function getRevenueSummary(period: string = 'month'): Promise<Reven
     `SELECT COALESCE(SUM(remaining_debt), 0) as total
      FROM debt_ledger
      WHERE status IN ('ACTIVE', 'PARTIAL')
-       AND date(created_at, 'localtime') BETWEEN date(?) AND date(?)`,
+       AND date(created_at) BETWEEN date(?) AND date(?)`,
     [start, end]
   )
   const creances = creancesResult[0]?.total || 0
@@ -138,7 +143,7 @@ export async function getRevenueSummary(period: string = 'month'): Promise<Reven
      FROM line_items li
      JOIN products p ON li.product_id = p.id
      JOIN invoices i ON li.invoice_id = i.id
-     WHERE date(i.created_at, 'localtime') BETWEEN date(?) AND date(?)`,
+     WHERE date(i.created_at) BETWEEN date(?) AND date(?)`,
     [start, end]
   )
   const cost = costResult[0]?.cost || 0
@@ -168,7 +173,7 @@ export async function getPaymentMethodDistribution(period: string = 'month'): Pr
      FROM transactions t
      JOIN invoices i ON t.source_id = i.id AND t.source_type = 'invoice'
      WHERE t.type = 'INCOME'
-       AND date(t.transaction_date, 'localtime') BETWEEN date(?) AND date(?)
+       AND date(t.transaction_date) BETWEEN date(?) AND date(?)
      GROUP BY i.payment_method
      ORDER BY total DESC`,
     [start, end]
@@ -201,7 +206,7 @@ export async function getTopProductsByRevenue(period: string = 'month', limit: n
      FROM line_items li
      JOIN products p ON li.product_id = p.id
      JOIN invoices i ON li.invoice_id = i.id
-     WHERE date(i.created_at, 'localtime') BETWEEN date(?) AND date(?)
+     WHERE date(i.created_at) BETWEEN date(?) AND date(?)
        AND i.status IN ('PAID', 'PARTIAL', 'CONFIRMED')
      GROUP BY li.product_id
      ORDER BY revenue DESC
@@ -216,26 +221,27 @@ export async function getTopProductsByRevenue(period: string = 'month', limit: n
   }))
 }
 
-// ─── 4. Transactions détaillées (montants réels payés) ──────────
+// ─── 4. Transactions détaillées (factures + revenus externes) ───
 export async function getTransactions(
   period: string = 'month',
   filters?: { status?: string; paymentMethod?: string }
 ): Promise<Transaction[]> {
   const { start, end } = getLocalDateRange(period)
 
-  let whereClause = `date(t.transaction_date, 'localtime') BETWEEN date(?) AND date(?) AND t.type = 'INCOME' AND t.source_type = 'invoice'`
-  const params: any[] = [start, end]
+  // ─── 4a. Transactions liées aux factures ───────────────────────
+  let invoiceWhere = `date(t.transaction_date) BETWEEN date(?) AND date(?) AND t.type = 'INCOME' AND t.source_type = 'invoice'`
+  const invoiceParams: any[] = [start, end]
 
   if (filters?.status && filters.status !== 'all') {
-    whereClause += ` AND i.status = ?`
-    params.push(filters.status)
+    invoiceWhere += ` AND i.status = ?`
+    invoiceParams.push(filters.status)
   }
   if (filters?.paymentMethod && filters.paymentMethod !== 'all') {
-    whereClause += ` AND i.payment_method = ?`
-    params.push(filters.paymentMethod)
+    invoiceWhere += ` AND i.payment_method = ?`
+    invoiceParams.push(filters.paymentMethod)
   }
 
-  const rows = await dbSelect<{
+  const invoiceRows = await dbSelect<{
     id: string
     date: string
     invoice_number: string
@@ -255,13 +261,13 @@ export async function getTransactions(
      FROM transactions t
      JOIN invoices i ON t.source_id = i.id AND t.source_type = 'invoice'
      LEFT JOIN clients c ON i.client_id = c.id
-     WHERE ${whereClause}
+     WHERE ${invoiceWhere}
      ORDER BY t.transaction_date DESC
      LIMIT 100`,
-    params
+    invoiceParams
   )
 
-  return rows.map((row) => ({
+  const invoiceTransactions: Transaction[] = invoiceRows.map((row) => ({
     id: row.id,
     date: row.date.split('T')[0],
     invoiceNumber: row.invoice_number,
@@ -269,14 +275,57 @@ export async function getTransactions(
     paymentMethod: row.payment_method,
     status: row.status,
     amount: row.amount,
+    isExternal: false,
   }))
+
+  // Le filtre "statut" ne concerne que les factures : un revenu externe
+  // est toujours considéré comme encaissé (PAID). Si on filtre sur un
+  // autre statut que "all" ou "PAID", on n'affiche pas de revenus externes.
+  if (filters?.status && filters.status !== 'all' && filters.status !== 'PAID') {
+    return invoiceTransactions
+  }
+
+  // ─── 4b. Revenus externes (manuels) ────────────────────────────
+  let externalWhere = `date(t.transaction_date) BETWEEN date(?) AND date(?) AND t.type = 'INCOME' AND t.source_type = 'manual' AND t.category = 'external_revenue'`
+  const externalParams: any[] = [start, end]
+
+  if (filters?.paymentMethod && filters.paymentMethod !== 'all') {
+    externalWhere += ` AND t.payment_method = ?`
+    externalParams.push(filters.paymentMethod)
+  }
+
+  const externalRows = await dbSelect<{
+    id: string
+    date: string
+    notes: string | null
+    payment_method: string
+    amount: number
+  }>(
+    `SELECT t.id, t.transaction_date as date, t.notes, COALESCE(t.payment_method, 'cash') as payment_method, t.amount as amount
+     FROM transactions t
+     WHERE ${externalWhere}
+     ORDER BY t.transaction_date DESC
+     LIMIT 100`,
+    externalParams
+  )
+
+  const externalTransactions: Transaction[] = externalRows.map((row) => ({
+    id: row.id,
+    date: row.date.split('T')[0],
+    invoiceNumber: 'Externe',
+    client: row.notes || 'Revenu externe',
+    paymentMethod: row.payment_method,
+    status: 'PAID',
+    amount: row.amount,
+    isExternal: true,
+  }))
+
+  return [...invoiceTransactions, ...externalTransactions].sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+  )
 }
 
 // ─── 5. Balance âgée des créances : basée sur l'échéance ────────
-// Avant : le calcul partait de created_at (date de facturation), ce
-// qui classait une facture à 30 jours créée hier comme "urgente".
-// Maintenant on utilise due_date (date d'échéance), avec repli sur
-// created_at pour les dettes créées avant l'ajout de ce champ.
 const AGED_RANGES = [
   { label: 'Non échue', min: -Infinity, max: -1, color: '#3B82F6' },
   { label: '0-7 jours', min: 0, max: 7, color: '#22C55E' },
@@ -288,13 +337,12 @@ const AGED_RANGES = [
 export async function getAgedReceivables(period: string = 'month'): Promise<AgedReceivable[]> {
   const { start, end } = getLocalDateRange(period)
 
-  // Récupérer les dettes actives/partielles avec l'échéance de leur facture
   const rows = await dbSelect<{ due_date: string | null; created_at: string; remaining_debt: number }>(
     `SELECT dl.created_at, i.due_date, dl.remaining_debt
      FROM debt_ledger dl
      LEFT JOIN invoices i ON i.id = dl.invoice_id
      WHERE dl.status IN ('ACTIVE', 'PARTIAL')
-       AND date(dl.created_at, 'localtime') BETWEEN date(?) AND date(?)`,
+       AND date(dl.created_at) BETWEEN date(?) AND date(?)`,
     [start, end]
   )
 
@@ -320,4 +368,24 @@ export async function getAgedReceivables(period: string = 'month'): Promise<Aged
   }
 
   return result
+}
+
+// ─── 6. Ajouter un revenu externe (manuel) ───────────────────────
+export interface AddExternalRevenueParams {
+  amount: number // en centimes
+  paymentMethod: string
+  description?: string
+  date?: string // ISO string, par défaut maintenant
+}
+
+export async function addExternalRevenue(params: AddExternalRevenueParams): Promise<void> {
+  const id = `tx_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+  const now = new Date().toISOString()
+
+  // ✅ Utilisation de datetime('now', 'localtime') pour la date locale
+  await dbExecute(
+    `INSERT INTO transactions (id, type, amount, source_type, source_id, category, notes, payment_method, transaction_date, created_at)
+     VALUES (?, 'INCOME', ?, 'manual', NULL, 'external_revenue', ?, ?, datetime('now', 'localtime'), ?)`,
+    [id, params.amount, params.description || null, params.paymentMethod, now]
+  )
 }

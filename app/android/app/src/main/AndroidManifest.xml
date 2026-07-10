@@ -35,6 +35,18 @@
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
     </application>
+
     <!-- Permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- Déclare que l'app utilise une caméra, mais ne l'exige pas
+         comme condition d'installation (utile si un jour l'app tourne
+         aussi sur un appareil sans caméra, ex. tablette de bureau) -->
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera.autofocus"
+        android:required="false" />
 </manifest>
