@@ -13,7 +13,6 @@ import {
   isBiometricEnabled,
   getRememberedUser,
   setRememberedUser,
-  getPinLength,
 } from '@/lib/pin-storage'
 import { authenticateWithBiometric } from '@/lib/biometric-auth'
 import { toast } from 'sonner'
@@ -34,22 +33,8 @@ export function PinLockScreen({ onSuccess }: PinLockScreenProps) {
   const [riveKey, setRiveKey] = useState(0)
   const [userName, setUserName] = useState('Utilisateur')
   const [loadingReset, setLoadingReset] = useState(false)
-  const [pinLength, setPinLength] = useState(6)
 
   useEffect(() => {
-    // ✅ FORCER le stockage de la longueur si elle n'existe pas
-    const storedLength = localStorage.getItem('barkahflow_pin_length')
-    if (!storedLength) {
-      // Par défaut, on met 6 (le maximum)
-      localStorage.setItem('barkahflow_pin_length', '6')
-      console.log('🔐 Longueur PIN initialisée à 6 (par défaut)')
-    }
-    
-    // ✅ Récupérer la longueur
-    const length = getPinLength()
-    setPinLength(length)
-    console.log('🔐 Longueur PIN détectée :', length)
-
     const remembered = getRememberedUser()
     if (remembered) {
       setUserName(remembered.name)
@@ -159,43 +144,34 @@ export function PinLockScreen({ onSuccess }: PinLockScreenProps) {
     setRiveKey(prev => prev + 1)
   }
 
+  // ✅ Envoi du Magic Link (OTP) par email
   const handleResetPin = async () => {
     setLoadingReset(true)
     try {
-      const { data: sessionData } = await supabase.auth.getSession()
-      const accessToken = sessionData.session?.access_token
+      // Récupérer l'email de l'utilisateur connecté
+      const { data } = await supabase.auth.getUser()
+      const email = data.user?.email
 
-      if (!accessToken) {
-        toast.error('Vous devez être connecté')
+      if (!email) {
+        toast.error('Email introuvable. Veuillez vous reconnecter.')
         setLoadingReset(false)
         return
       }
 
-      const { data, error } = await supabase.functions.invoke('generate-temp-pin', {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
+      // ✅ Envoyer un Magic Link (OTP) via Supabase
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/reset-pin-confirm`,
         },
       })
 
-      if (error) {
-        console.error('Erreur brute complète:', error)
-        if (error.context) {
-          try {
-            const cloned = error.context.clone ? error.context.clone() : error.context
-            const text = await cloned.text()
-            console.error('Body texte brut:', text)
-          } catch (e) {
-            console.error('Impossible de lire le body:', e)
-          }
-        }
-        throw new Error(error.message || 'Erreur inconnue')
-      }
-      if (data?.error) throw new Error(JSON.stringify(data))
+      if (error) throw error
 
-      toast.success('Un code temporaire a été envoyé par email')
-      router.push('/auth/reset-pin-verify')
+      toast.success('Lien de réinitialisation envoyé !')
+      router.push('/auth/reset-pin-sent')
     } catch (error: any) {
-      console.error('Erreur envoi code:', error)
+      console.error('Erreur envoi email:', error)
       toast.error(error?.message || 'Erreur lors de l\'envoi de l\'email')
     } finally {
       setLoadingReset(false)
@@ -231,7 +207,7 @@ export function PinLockScreen({ onSuccess }: PinLockScreenProps) {
 
       {!locked && (
         <PinPad
-          length={pinLength} // ✅ DYNAMIQUE : s'adapte au PIN stocké
+          length={4}
           onComplete={handlePinComplete}
           error={error}
           disabled={locked}

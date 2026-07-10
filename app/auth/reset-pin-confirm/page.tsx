@@ -1,7 +1,7 @@
 // app/auth/reset-pin-confirm/page.tsx
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/src/lib/supabase'
 import { Button } from '@/components/ui/button'
@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { toast } from 'sonner'
 import { setPinCode } from '@/lib/pin-storage'
-import { Eye, EyeOff } from 'lucide-react'
+import { Eye, EyeOff, Loader2 } from 'lucide-react'
 
 export default function ResetPinConfirmPage() {
   const router = useRouter()
@@ -18,8 +18,58 @@ export default function ResetPinConfirmPage() {
   const [confirmPin, setConfirmPin] = useState('')
   const [loading, setLoading] = useState(false)
   const [showPin, setShowPin] = useState(false)
+  const [valid, setValid] = useState(false)
+  const [checking, setChecking] = useState(true)
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      // ✅ Vérifier si l'utilisateur est authentifié via le Magic Link
+      const hash = window.location.hash
+      if (hash) {
+        try {
+          const params = new URLSearchParams(hash.substring(1))
+          const accessToken = params.get('access_token')
+          const refreshToken = params.get('refresh_token')
+          
+          if (accessToken) {
+            const { data, error } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: refreshToken || '',
+            })
+            if (error) throw error
+            if (data.session) {
+              setValid(true)
+              toast.success('Vérification réussie')
+            }
+          } else {
+            toast.error('Lien invalide')
+            router.push('/auth/reset-pin-sent')
+          }
+        } catch (error) {
+          console.error(error)
+          toast.error('Lien invalide ou expiré')
+          router.push('/auth/reset-pin-sent')
+        }
+      } else {
+        // Essayer de récupérer la session existante
+        const { data } = await supabase.auth.getSession()
+        if (data.session?.user) {
+          setValid(true)
+        } else {
+          toast.error('Vous devez être authentifié')
+          router.push('/auth/reset-pin-sent')
+        }
+      }
+      setChecking(false)
+    }
+    checkAuth()
+  }, [router])
 
   const handleSetPin = async () => {
+    if (!valid) {
+      toast.error('Veuillez valider votre identité d\'abord')
+      return
+    }
     if (!/^\d{4,6}$/.test(newPin)) {
       toast.error('Le PIN doit contenir entre 4 et 6 chiffres')
       return
@@ -31,15 +81,32 @@ export default function ResetPinConfirmPage() {
 
     setLoading(true)
     try {
+      // ✅ 1. Enregistrer le nouveau PIN dans SQLite
       await setPinCode(newPin)
       toast.success('PIN réinitialisé avec succès')
+
+      // ✅ 2. DÉCONNECTER L'UTILISATEUR DE SUPABASE
       await supabase.auth.signOut()
+
+      // ✅ 3. Rediriger vers la page de connexion (pas le dashboard)
       router.replace('/')
     } catch (error: any) {
       toast.error(error?.message || 'Erreur')
     } finally {
       setLoading(false)
     }
+  }
+
+  if (checking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+      </div>
+    )
+  }
+
+  if (!valid) {
+    return null
   }
 
   return (
@@ -76,17 +143,30 @@ export default function ResetPinConfirmPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Confirmer</Label>
-              <Input
-                type={showPin ? 'text' : 'password'}
-                inputMode="numeric"
-                maxLength={6}
-                value={confirmPin}
-                onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ''))}
-                className="rounded-xl text-center text-lg tracking-widest"
-                placeholder="1234"
-              />
+              <div className="relative">
+                <Input
+                  type={showPin ? 'text' : 'password'}
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={confirmPin}
+                  onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ''))}
+                  className="rounded-xl text-center text-lg tracking-widest pr-10"
+                  placeholder="1234"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPin(!showPin)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {showPin ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </div>
-            <Button onClick={handleSetPin} disabled={loading} className="w-full rounded-xl">
+            <Button
+              onClick={handleSetPin}
+              disabled={loading}
+              className="w-full rounded-xl"
+            >
               {loading ? 'Enregistrement...' : 'Enregistrer le nouveau PIN'}
             </Button>
           </div>

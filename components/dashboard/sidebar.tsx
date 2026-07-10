@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 import {
   LayoutDashboard, ShoppingCart, Package, Receipt, Users,
   Wallet, CreditCard, BadgeAlert, BarChart3, Settings, LogOut,
+  UserCog,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSidebarStore } from '@/lib/sidebar-store'
@@ -14,52 +15,98 @@ import {
 } from '@/components/ui/tooltip'
 import { supabase } from '@/src/lib/supabase'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
-import { useEffect, useState } from 'react'
+import { useUserContext } from '@/context/UserContext'
+import { PERMISSIONS } from '@/lib/rbac'
 
 export function Sidebar() {
   const pathname = usePathname()
   const expanded = useSidebarStore((s) => s.expanded)
   const { t } = useTranslation()
-  const [user, setUser] = useState<any>(null)
-
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUser(data.user))
-  }, [])
+  const { currentUser, can, isRole } = useUserContext()
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
+    sessionStorage.clear()
     window.location.href = '/'
   }
 
-  const fullName = user?.user_metadata?.full_name || ''
-  const email = user?.email || ''
-  const avatarUrl = user?.user_metadata?.avatar_url
+  const fullName = currentUser?.name || ''
+  const email = currentUser?.email || ''
+  const avatarUrl = currentUser?.avatarUrl || currentUser?.supabaseUser?.user_metadata?.avatar_url
   const initials = fullName
     ? fullName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
     : email.slice(0, 2).toUpperCase() || 'A'
   const displayName = fullName || email.split('@')[0] || 'Commerçant'
 
-  const navGroups = [
-    {
-      label: t('dashboard.nav.vente'),
-      items: [
-        { label: t('dashboard.nav.dashboard'), href: '/dashboard', icon: LayoutDashboard },
-        { label: t('dashboard.nav.pos'), href: '/dashboard/caisse', icon: ShoppingCart },
-        { label: t('dashboard.nav.products'), href: '/dashboard/produits', icon: Package },
-        { label: t('dashboard.nav.invoices'), href: '/dashboard/factures', icon: Receipt },
-        { label: t('dashboard.nav.clients'), href: '/dashboard/clients', icon: Users },
-      ],
-    },
-    {
-      label: t('dashboard.nav.finances'),
-      items: [
-        { label: t('dashboard.nav.revenue'), href: '/dashboard/revenus', icon: Wallet },
-        { label: t('dashboard.nav.expenses'), href: '/dashboard/depenses', icon: CreditCard },
-        { label: t('dashboard.nav.debts'), href: '/dashboard/dettes', icon: BadgeAlert },
-        { label: t('dashboard.nav.reports'), href: '/dashboard/rapports', icon: BarChart3 },
-      ],
-    },
+  // ─── Nav groups ─────────────────────────────────────────────────────────────
+  // Vente group is always visible; financial group is gated by permissions
+  const venteItems = [
+    { label: t('dashboard.nav.dashboard'), href: '/dashboard', icon: LayoutDashboard },
+    { label: t('dashboard.nav.pos'), href: '/dashboard/caisse', icon: ShoppingCart },
+    { label: t('dashboard.nav.products'), href: '/dashboard/produits', icon: Package },
+    { label: t('dashboard.nav.invoices'), href: '/dashboard/factures', icon: Receipt },
+    { label: t('dashboard.nav.clients'), href: '/dashboard/clients', icon: Users },
   ]
+
+  const financeItems = [
+    can(PERMISSIONS.VIEW_REVENUE) && { label: t('dashboard.nav.revenue'), href: '/dashboard/revenus', icon: Wallet },
+    can(PERMISSIONS.VIEW_REVENUE) && { label: t('dashboard.nav.expenses'), href: '/dashboard/depenses', icon: CreditCard },
+    can(PERMISSIONS.VIEW_DEBTS) && { label: t('dashboard.nav.debts'), href: '/dashboard/dettes', icon: BadgeAlert },
+    can(PERMISSIONS.VIEW_REPORTS) && { label: t('dashboard.nav.reports'), href: '/dashboard/rapports', icon: BarChart3 },
+  ].filter(Boolean) as { label: string; href: string; icon: any }[]
+
+  const navGroups = [
+    { label: t('dashboard.nav.vente'), items: venteItems },
+    ...(financeItems.length > 0
+      ? [{ label: t('dashboard.nav.finances'), items: financeItems }]
+      : []),
+  ]
+
+  const renderLink = (item: { label: string; href: string; icon: any }, key: string) => {
+    const Icon = item.icon
+    const isActive = pathname === item.href
+
+    const linkContent = (
+      <Link
+        href={item.href}
+        className={cn(
+          'relative flex items-center rounded-xl text-[13px] font-medium transition-all duration-150',
+          expanded ? 'gap-3 px-3 py-2.5' : 'justify-center py-2.5 w-10 mx-auto',
+          isActive
+            ? 'text-[#0EA5E9] dark:text-[#38BDF8] bg-[rgba(56,189,248,0.12)] dark:bg-[rgba(56,189,248,0.15)] shadow-[0_0_0_1px_rgba(56,189,248,0.2)] dark:shadow-none'
+            : 'text-[#64748B] dark:text-[#94A3B8] hover:text-[#1E293B] dark:hover:text-[#E2E8F0] hover:bg-[rgba(0,0,0,0.04)] dark:hover:bg-[rgba(255,255,255,0.04)]'
+        )}
+      >
+        {isActive && (
+          <>
+            <span className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 rounded-full bg-[#0EA5E9] dark:bg-[#38BDF8] shadow-[0_0_8px_rgba(56,189,248,0.5)] dark:shadow-[0_0_8px_rgba(56,189,248,0.3)]" />
+            <span className="absolute inset-0 rounded-xl bg-gradient-to-r from-[rgba(56,189,248,0.05)] to-transparent pointer-events-none" />
+          </>
+        )}
+        <Icon
+          size={17}
+          className="shrink-0"
+          style={{
+            color: isActive ? '#0EA5E9' : undefined,
+            filter: isActive ? 'drop-shadow(0 0 4px rgba(56,189,248,0.3))' : undefined,
+          }}
+        />
+        {expanded && <span className="whitespace-nowrap">{item.label}</span>}
+      </Link>
+    )
+
+    if (!expanded) {
+      return (
+        <Tooltip key={key}>
+          <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
+          <TooltipContent side="right" className="bg-gray-800 dark:bg-[#1E293B] text-white border-gray-700 dark:border-[#334155]">
+            {item.label}
+          </TooltipContent>
+        </Tooltip>
+      )
+    }
+    return <div key={key}>{linkContent}</div>
+  }
 
   return (
     <TooltipProvider delayDuration={100}>
@@ -67,7 +114,6 @@ export function Sidebar() {
         className={cn(
           'h-screen sticky top-0 shrink-0 flex flex-col transition-all duration-200 ease-in-out z-20 border-r',
           expanded ? 'w-[220px]' : 'w-[64px]',
-          // Classes pour le dark mode
           'bg-[#F9FAFB] dark:bg-[#1E293B]',
           'border-[#E5E7EB] dark:border-[#334155]'
         )}
@@ -99,107 +145,27 @@ export function Sidebar() {
                   {group.label}
                 </p>
               )}
-              {group.items.map((item) => {
-                const Icon = item.icon
-                const isActive = pathname === item.href
-
-                const linkContent = (
-                  <Link
-                    href={item.href}
-                    className={cn(
-                      'relative flex items-center rounded-xl text-[13px] font-medium transition-all duration-150',
-                      expanded ? 'gap-3 px-3 py-2.5' : 'justify-center py-2.5 w-10 mx-auto',
-                      // État actif avec effet bleu en mode clair
-                      isActive
-                        ? 'text-[#0EA5E9] dark:text-[#38BDF8] bg-[rgba(56,189,248,0.12)] dark:bg-[rgba(56,189,248,0.15)] shadow-[0_0_0_1px_rgba(56,189,248,0.2)] dark:shadow-none'
-                        : 'text-[#64748B] dark:text-[#94A3B8] hover:text-[#1E293B] dark:hover:text-[#E2E8F0] hover:bg-[rgba(0,0,0,0.04)] dark:hover:bg-[rgba(255,255,255,0.04)]'
-                    )}
-                  >
-                    {isActive && (
-                      <>
-                        {/* Barre bleue à gauche */}
-                        <span
-                          className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 rounded-full bg-[#0EA5E9] dark:bg-[#38BDF8] shadow-[0_0_8px_rgba(56,189,248,0.5)] dark:shadow-[0_0_8px_rgba(56,189,248,0.3)]"
-                        />
-                        {/* Effet de brillance */}
-                        <span className="absolute inset-0 rounded-xl bg-gradient-to-r from-[rgba(56,189,248,0.05)] to-transparent pointer-events-none" />
-                      </>
-                    )}
-                    <Icon 
-                      size={17} 
-                      className="shrink-0"
-                      style={{
-                        color: isActive ? '#0EA5E9' : undefined,
-                        filter: isActive ? 'drop-shadow(0 0 4px rgba(56,189,248,0.3))' : undefined
-                      }}
-                    />
-                    {expanded && <span className="whitespace-nowrap">{item.label}</span>}
-                  </Link>
-                )
-
-                if (!expanded) {
-                  return (
-                    <Tooltip key={item.href}>
-                      <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
-                      <TooltipContent side="right" className="bg-gray-800 dark:bg-[#1E293B] text-white border-gray-700 dark:border-[#334155]">
-                        {item.label}
-                      </TooltipContent>
-                    </Tooltip>
-                  )
-                }
-                return <div key={item.href}>{linkContent}</div>
-              })}
+              {group.items.map((item) => renderLink(item, item.href))}
             </div>
           ))}
 
           {/* Paramètres */}
           <div className="mt-4">
-            {(() => {
-              const isActive = pathname === '/dashboard/settings'
-              const content = (
-                <Link
-                  href="/dashboard/settings"
-                  className={cn(
-                    'relative flex items-center rounded-xl text-[13px] font-medium transition-all duration-150',
-                    expanded ? 'gap-3 px-3 py-2.5' : 'justify-center py-2.5 w-10 mx-auto',
-                    // État actif avec effet bleu en mode clair
-                    isActive
-                      ? 'text-[#0EA5E9] dark:text-[#38BDF8] bg-[rgba(56,189,248,0.12)] dark:bg-[rgba(56,189,248,0.15)] shadow-[0_0_0_1px_rgba(56,189,248,0.2)] dark:shadow-none'
-                      : 'text-[#64748B] dark:text-[#94A3B8] hover:text-[#1E293B] dark:hover:text-[#E2E8F0] hover:bg-[rgba(0,0,0,0.04)] dark:hover:bg-[rgba(255,255,255,0.04)]'
-                  )}
-                >
-                  {isActive && (
-                    <>
-                      {/* Barre bleue à gauche */}
-                      <span
-                        className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 rounded-full bg-[#0EA5E9] dark:bg-[#38BDF8] shadow-[0_0_8px_rgba(56,189,248,0.5)] dark:shadow-[0_0_8px_rgba(56,189,248,0.3)]"
-                      />
-                      {/* Effet de brillance */}
-                      <span className="absolute inset-0 rounded-xl bg-gradient-to-r from-[rgba(56,189,248,0.05)] to-transparent pointer-events-none" />
-                    </>
-                  )}
-                  <Settings 
-                    size={17} 
-                    className="shrink-0"
-                    style={{
-                      color: isActive ? '#0EA5E9' : undefined,
-                      filter: isActive ? 'drop-shadow(0 0 4px rgba(56,189,248,0.3))' : undefined
-                    }}
-                  />
-                  {expanded && <span>{t('dashboard.nav.settings', 'Paramètres')}</span>}
-                </Link>
-              )
-              if (!expanded) return (
-                <Tooltip key="settings">
-                  <TooltipTrigger asChild>{content}</TooltipTrigger>
-                  <TooltipContent side="right" className="bg-gray-800 dark:bg-[#1E293B] text-white border-gray-700 dark:border-[#334155]">
-                    {t('dashboard.nav.settings', 'Paramètres')}
-                  </TooltipContent>
-                </Tooltip>
-              )
-              return content
-            })()}
+            {renderLink(
+              { label: t('dashboard.nav.settings', 'Paramètres'), href: '/dashboard/settings', icon: Settings },
+              'settings'
+            )}
           </div>
+
+          {/* Gestion des utilisateurs — admin only */}
+          {isRole('admin') && (
+            <div className="mt-1">
+              {renderLink(
+                { label: 'Utilisateurs', href: '/dashboard/utilisateurs', icon: UserCog },
+                'utilisateurs'
+              )}
+            </div>
+          )}
         </nav>
 
         {/* ── Profil ── */}
@@ -210,10 +176,24 @@ export function Sidebar() {
             'border-t border-[#E5E7EB] dark:border-[#334155]'
           )}
         >
+          {/* Role badge */}
+          {expanded && currentUser && (
+            <div className="px-2 mb-2">
+              <span
+                className={cn(
+                  'text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full',
+                  currentUser.role === 'admin'
+                    ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400'
+                    : 'bg-sky-100 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400'
+                )}
+              >
+                {currentUser.role === 'admin' ? 'Administrateur' : 'Caissier'}
+              </span>
+            </div>
+          )}
+
           {expanded ? (
-            <div
-              className="flex items-center gap-3 px-2 py-2 rounded-xl cursor-pointer group transition-colors hover:bg-[rgba(0,0,0,0.04)] dark:hover:bg-[rgba(255,255,255,0.04)]"
-            >
+            <div className="flex items-center gap-3 px-2 py-2 rounded-xl cursor-pointer group transition-colors hover:bg-[rgba(0,0,0,0.04)] dark:hover:bg-[rgba(255,255,255,0.04)]">
               <Avatar className="h-8 w-8 shrink-0">
                 <AvatarImage src={avatarUrl} referrerPolicy="no-referrer" />
                 <AvatarFallback

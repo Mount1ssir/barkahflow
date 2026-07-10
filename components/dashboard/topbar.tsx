@@ -8,17 +8,21 @@ import i18n, { initI18n } from '@/lib/i18n/config'
 import {
   Menu, Search, Moon, Sun, Settings, LogOut, ChevronDown,
   User, Store, HelpCircle, LayoutDashboard, ShoppingCart, Package,
-  FileText, Users, Wallet, BarChart3,
+  FileText, Users, Wallet, BarChart3, ArrowLeftRight,
 } from 'lucide-react'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Badge } from '@/components/ui/badge'
 import { useSidebarStore } from '@/lib/sidebar-store'
 import { supabase } from '@/src/lib/supabase'
 import { VoiceAssistantButton } from '@/components/voice/VoiceAssistantButton'
 import { Notifications } from '@/components/dashboard/notifications'
+import { useUserContext } from '@/context/UserContext'
+import { UserSwitchScreen } from '@/components/pin/UserSwitchScreen'
+import type { AppUser } from '@/context/UserContext'
 
 const langs = [
   { code: 'fr', label: 'français (French)', flag: 'https://flagcdn.com/w40/fr.png' },
@@ -206,7 +210,7 @@ function GlobalSearch() {
 }
 
 interface TopBarProps {
-  user: any
+  user: AppUser | null
 }
 
 export function TopBar({ user }: TopBarProps) {
@@ -214,7 +218,9 @@ export function TopBar({ user }: TopBarProps) {
   const toggle = useSidebarStore((s) => s.toggle)
   const { theme, setTheme } = useTheme()
   const { t } = useTranslation()
+  const { setCurrentUser, isRole } = useUserContext()
   const [mounted, setMounted] = useState(false)
+  const [switchOpen, setSwitchOpen] = useState(false)
 
   useEffect(() => { setMounted(true) }, [])
 
@@ -222,16 +228,22 @@ export function TopBar({ user }: TopBarProps) {
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
+    sessionStorage.clear()
     window.location.href = '/'
   }
 
-  const avatarUrl = user?.user_metadata?.avatar_url
-  const fullName = user?.user_metadata?.full_name || ''
+  const handleUserSwitched = (switchedUser: AppUser) => {
+    setCurrentUser(switchedUser)
+  }
+
+  const avatarUrl = user?.avatarUrl || user?.supabaseUser?.user_metadata?.avatar_url
+  const fullName = user?.name || ''
   const email = user?.email || ''
   const displayName = fullName || email.split('@')[0] || 'Commerçant'
   const initials = fullName
     ? fullName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
     : email.slice(0, 2).toUpperCase() || 'A'
+  const isAdmin = isRole('admin')
 
   return (
     <header className="h-16 flex items-center justify-between px-5 gap-4 sticky top-0 z-30 bg-white dark:bg-zinc-900 border-b border-[#EAECEF] dark:border-zinc-800">
@@ -246,8 +258,7 @@ export function TopBar({ user }: TopBarProps) {
       <GlobalSearch />
 
       <div className="flex items-center gap-1 shrink-0">
-
-        {/* ✅ Composant Notifications unifié (stock + dettes + échéances) */}
+        {/* Notifications */}
         <Notifications />
 
         <VoiceAssistantButton />
@@ -263,6 +274,17 @@ export function TopBar({ user }: TopBarProps) {
           </button>
         )}
 
+        {/* Switch User button — admin only */}
+        {isAdmin && (
+          <button
+            onClick={() => setSwitchOpen(true)}
+            className="w-9 h-9 flex items-center justify-center rounded-xl text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800 hover:text-gray-700 transition-colors"
+            title="Changer d'utilisateur"
+          >
+            <ArrowLeftRight size={16} />
+          </button>
+        )}
+
         <div className="w-px h-5 bg-gray-200 dark:bg-zinc-700 mx-1" />
 
         <DropdownMenu>
@@ -271,7 +293,7 @@ export function TopBar({ user }: TopBarProps) {
               <Avatar className="h-8 w-8">
                 <AvatarImage src={avatarUrl} referrerPolicy="no-referrer" />
                 <AvatarFallback className="text-[11px] font-bold text-white"
-                                style={{ background: 'linear-gradient(135deg,#f59e0b,#d97706)' }}>
+                                style={{ background: isAdmin ? 'linear-gradient(135deg,#f59e0b,#d97706)' : 'linear-gradient(135deg,#38BDF8,#0EA5E9)' }}>
                   {initials}
                 </AvatarFallback>
               </Avatar>
@@ -289,21 +311,34 @@ export function TopBar({ user }: TopBarProps) {
               <Avatar className="h-10 w-10">
                 <AvatarImage src={avatarUrl} referrerPolicy="no-referrer" />
                 <AvatarFallback className="text-sm font-bold text-white"
-                                style={{ background: 'linear-gradient(135deg,#f59e0b,#d97706)' }}>
+                                style={{ background: isAdmin ? 'linear-gradient(135deg,#f59e0b,#d97706)' : 'linear-gradient(135deg,#38BDF8,#0EA5E9)' }}>
                   {initials}
                 </AvatarFallback>
               </Avatar>
-              <div className="flex flex-col min-w-0">
+              <div className="flex flex-col min-w-0 gap-1">
                 <span className="text-[13px] font-semibold text-gray-900 dark:text-white truncate">{displayName}</span>
-                <span className="text-[11px] text-gray-400 truncate">{email}</span>
+                {email && <span className="text-[11px] text-gray-400 truncate">{email}</span>}
+                <Badge
+                  variant="outline"
+                  className={`text-[9px] w-fit ${
+                    isAdmin
+                      ? 'border-amber-300 text-amber-600 dark:text-amber-400'
+                      : 'border-sky-300 text-sky-600 dark:text-sky-400'
+                  }`}
+                >
+                  {isAdmin ? 'Administrateur' : 'Caissier'}
+                </Badge>
               </div>
             </div>
 
             <DropdownMenuSeparator className="bg-[#EAECEF] dark:bg-zinc-700" />
 
-            <DropdownMenuItem onClick={() => router.push('/dashboard/profil')} className="gap-2.5 py-2.5 px-3 rounded-xl cursor-pointer text-[13px] text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-800 focus:bg-gray-50">
-              <User size={15} className="text-gray-400" /> {t('dashboard.menu.profile', 'Mon profil')}
-            </DropdownMenuItem>
+            {/* Profile — admin only */}
+            {isAdmin && (
+              <DropdownMenuItem onClick={() => router.push('/dashboard/profil')} className="gap-2.5 py-2.5 px-3 rounded-xl cursor-pointer text-[13px] text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-800 focus:bg-gray-50">
+                <User size={15} className="text-gray-400" /> {t('dashboard.menu.profile', 'Mon profil')}
+              </DropdownMenuItem>
+            )}
 
             <DropdownMenuSeparator className="bg-[#EAECEF] dark:bg-zinc-700" />
 
@@ -323,6 +358,13 @@ export function TopBar({ user }: TopBarProps) {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      {/* User switch screen */}
+      <UserSwitchScreen
+        open={switchOpen}
+        onOpenChange={setSwitchOpen}
+        onSuccess={handleUserSwitched}
+      />
     </header>
   )
 }

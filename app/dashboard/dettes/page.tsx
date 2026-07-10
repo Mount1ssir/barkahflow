@@ -1,5 +1,7 @@
 'use client'
 
+import { Guard } from '@/components/rbac/Guard'
+import { PERMISSIONS } from '@/lib/rbac'
 import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { open } from '@tauri-apps/plugin-shell'
@@ -726,8 +728,10 @@ function DebtManagementContent() {
 // ─── Export default avec Suspense (obligatoire pour useSearchParams) ─
 export default function DebtManagementPage() {
   return (
-    <Suspense fallback={<div className="flex items-center justify-center h-96"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" /></div>}>
-      <DebtManagementContent />
-    </Suspense>
+    <Guard permission={PERMISSIONS.VIEW_DEBTS} redirectTo="/dashboard">
+      <Suspense fallback={<div className="flex items-center justify-center h-96"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" /></div>}>
+        <DebtManagementContent />
+      </Suspense>
+    </Guard>
   )
 }

@@ -251,7 +251,14 @@ export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId
   sql += 'COMMIT;'
 
   return await withRetry(async () => {
-    await dbExecute(sql)
+    const statements = sql
+      .split(';')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0 && s !== 'BEGIN' && s !== 'COMMIT')
+    
+    for (const statement of statements) {
+      await dbExecute(statement)
+    }
     return { invoiceId, invoiceNumber }
   })
 }

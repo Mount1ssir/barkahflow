@@ -51,6 +51,8 @@ interface CheckoutModalProps {
   total: number
   subtotal: number
   tax: number
+  canApplyDiscount: boolean
+  cashierId?: string
   onSuccess: (invoiceId: string, invoiceNumber: string) => void
 }
 
@@ -71,6 +73,8 @@ export function CheckoutModal({
   total,
   subtotal,
   tax,
+  canApplyDiscount,
+  cashierId,
   onSuccess,
 }: CheckoutModalProps) {
   const { t } = useTranslation()
@@ -205,7 +209,11 @@ export function CheckoutModal({
       }
     }
 
-    const discountPercent = parseFloat(discount) || 0
+    // Sécurité supplémentaire : si l'utilisateur n'a pas la permission de
+    // remise, on ignore toute valeur de remise même si le champ a été
+    // manipulé côté client.
+    const effectiveDiscount = canApplyDiscount ? discount : '0'
+    const discountPercent = parseFloat(effectiveDiscount) || 0
     const discountFactor = 1 - discountPercent / 100
     const newTotal = (total / 100) * discountFactor
     let finalPaidAmount = newTotal
@@ -235,7 +243,7 @@ export function CheckoutModal({
         paymentMethod,
         paidAmount: finalPaidAmount,
         poNumber: poNumber.trim() || null,
-        userId: null,
+        userId: cashierId ?? null,
         ipAddress: '0.0.0.0',
         userAgent: navigator.userAgent,
       })
@@ -257,7 +265,7 @@ export function CheckoutModal({
   }
 
   const isWalkin = customerId === WALKIN_CLIENT_ID
-  const discountPercent = parseFloat(discount) || 0
+  const discountPercent = canApplyDiscount ? (parseFloat(discount) || 0) : 0
   const discountFactor = 1 - discountPercent / 100
   const displaySubtotal = (subtotal / 100) * discountFactor
   const displayTax = (tax / 100) * discountFactor
@@ -348,20 +356,22 @@ export function CheckoutModal({
             />
           </div>
 
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              {t('pos.discount', 'Remise (%)')}
-            </Label>
-            <Input
-              type="number"
-              step="0.1"
-              min="0"
-              max="100"
-              value={discount}
-              onChange={(e) => setDiscount(e.target.value)}
-              className="rounded-xl border-gray-200 dark:border-gray-700 h-11"
-            />
-          </div>
+          {canApplyDiscount && (
+            <div className="space-y-1.5">
+              <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                {t('pos.discount', 'Remise (%)')}
+              </Label>
+              <Input
+                type="number"
+                step="0.1"
+                min="0"
+                max="100"
+                value={discount}
+                onChange={(e) => setDiscount(e.target.value)}
+                className="rounded-xl border-gray-200 dark:border-gray-700 h-11"
+              />
+            </div>
+          )}
 
           <div className="space-y-2 pos-checkout-radio">
             <style jsx global>{`
