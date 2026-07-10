@@ -1,6 +1,8 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
+import { usePermission } from '@/components/rbac/usePermission'
+import { PERMISSIONS } from '@/lib/rbac'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Plus,
@@ -224,6 +226,9 @@ export default function ProduitsPage() {
     lowStock: number
     outOfStock: number
   }>({ total: 0, inStock: 0, lowStock: 0, outOfStock: 0 })
+
+  // RBAC
+  const canEditProducts = usePermission(PERMISSIONS.CAN_EDIT_PRODUCTS)
 
   const computeStats = useCallback((products: Product[]) => {
     let total = 0, inStock = 0, lowStock = 0, outOfStock = 0
@@ -594,24 +599,30 @@ export default function ProduitsPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full"><MoreHorizontal size={16} /></Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="rounded-xl w-48">
-                            <DropdownMenuItem onClick={() => handleEditProduct(product)} className="gap-2"><Edit size={14} /> Modifier</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setReplenishProduct(product)} className="gap-2"><RefreshCw size={14} /> Réapprovisionner</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setHistoryProduct(product)} className="gap-2"><History size={14} /> Historique</DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => handleToggle(product)} className="gap-2">
-                              {product.isActive ? <ToggleLeft size={14} /> : <ToggleRight size={14} />}
-                              {product.isActive ? 'Désactiver' : 'Activer'}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setDeleteTarget(product)} className="gap-2 text-red-500 hover:text-red-600">
-                              <Trash2 size={14} /> Supprimer
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        {canEditProducts ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full"><MoreHorizontal size={16} /></Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="rounded-xl w-48">
+                              <DropdownMenuItem onClick={() => handleEditProduct(product)} className="gap-2"><Edit size={14} /> Modifier</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setReplenishProduct(product)} className="gap-2"><RefreshCw size={14} /> Réapprovisionner</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setHistoryProduct(product)} className="gap-2"><History size={14} /> Historique</DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => handleToggle(product)} className="gap-2">
+                                {product.isActive ? <ToggleLeft size={14} /> : <ToggleRight size={14} />}
+                                {product.isActive ? 'Désactiver' : 'Activer'}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => setDeleteTarget(product)} className="gap-2 text-red-500 hover:text-red-600">
+                                <Trash2 size={14} /> Supprimer
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : (
+                          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => setHistoryProduct(product)} title="Historique">
+                            <History size={16} />
+                          </Button>
+                        )}
                       </TableCell>
                     </TableRow>
                   )
@@ -708,9 +719,11 @@ export default function ProduitsPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Produits</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Gérez vos produits, votre inventaire et vos tarifs.</p>
         </div>
-        <Button className="gap-2 rounded-xl text-white font-medium shadow-sm hover:shadow-md transition-all" style={{ backgroundColor: PRIMARY }} onClick={handleAddProduct}>
-          <Plus size={16} /> Ajouter un produit
-        </Button>
+        {canEditProducts && (
+          <Button className="gap-2 rounded-xl text-white font-medium shadow-sm hover:shadow-md transition-all" style={{ backgroundColor: PRIMARY }} onClick={handleAddProduct}>
+            <Plus size={16} /> Ajouter un produit
+          </Button>
+        )}
       </div>
 
       {/* Bandeau filtre produit unique (venant d'une notification stock) */}

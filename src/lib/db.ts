@@ -107,11 +107,14 @@ CREATE TABLE IF NOT EXISTS reminders_queue (
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  pin_hash TEXT NOT NULL,
+  pin_hash TEXT,
   role TEXT CHECK(role IN ('admin', 'cashier')) DEFAULT 'cashier',
   active INTEGER NOT NULL DEFAULT 1,
   permissions TEXT DEFAULT '[]',
   avatar_url TEXT,
+  supabase_uid TEXT,
+  email TEXT,
+  phone TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -233,6 +236,30 @@ const MIGRATIONS = [
   `CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);`,
   `CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON stock_movements(product_id);`,
   `CREATE INDEX IF NOT EXISTS idx_stock_movements_created ON stock_movements(created_at);`,
+
+  // RBAC columns on users (2026-07 migration)
+  `ALTER TABLE users ADD COLUMN supabase_uid TEXT;`,
+  `ALTER TABLE users ADD COLUMN email TEXT;`,
+  `ALTER TABLE users ADD COLUMN phone TEXT;`,
+
+  // Make pin_hash nullable for admin (Supabase auth, no PIN)
+  // SQLite doesn't support DROP NOT NULL — handled by new schema above.
+  // The migration below re-creates nothing; just a no-op guard:
+  `CREATE INDEX IF NOT EXISTS idx_users_supabase_uid ON users(supabase_uid);`,
+
+  // Audit logs table
+  `CREATE TABLE IF NOT EXISTS audit_logs (
+    id TEXT PRIMARY KEY,
+    user_id TEXT REFERENCES users(id),
+    action TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT,
+    before_state TEXT,
+    after_state TEXT,
+    ip_address TEXT,
+    user_agent TEXT,
+    created_at TEXT NOT NULL
+  );`,
 ]
 
 async function runMigrations(db: any) {

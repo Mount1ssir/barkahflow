@@ -1,5 +1,7 @@
 'use client'
 
+import { Guard } from '@/components/rbac/Guard'
+import { PERMISSIONS } from '@/lib/rbac'
 import { useState, useMemo, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { 
@@ -42,7 +44,7 @@ interface Expense {
   status: 'PENDING' | 'SETTLED'
 }
 
-export default function ExpensesPage() {
+function ExpensesContent() {
   const { t } = useTranslation()
 
   // State
@@ -732,5 +734,13 @@ export default function ExpensesPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function ExpensesPage() {
+  return (
+    <Guard permission={PERMISSIONS.VIEW_REVENUE} redirectTo="/dashboard">
+      <ExpensesContent />
+    </Guard>
   )
 }

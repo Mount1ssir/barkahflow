@@ -1,5 +1,7 @@
 'use client'
 
+import { Guard } from '@/components/rbac/Guard'
+import { PERMISSIONS } from '@/lib/rbac'
 import { useTranslation } from 'react-i18next'
 import Link from 'next/link'
 import { 
@@ -12,7 +14,7 @@ import {
   DollarSign
 } from 'lucide-react'
 
-export default function ReportsPage() {
+function ReportsContent() {
   const { t } = useTranslation()
 
   const reportCategories = [
@@ -126,5 +128,13 @@ export default function ReportsPage() {
         })}
       </div>
     </div>
+  )
+}
+
+export default function ReportsPage() {
+  return (
+    <Guard permission={PERMISSIONS.VIEW_REPORTS} redirectTo="/dashboard">
+      <ReportsContent />
+    </Guard>
   )
 }

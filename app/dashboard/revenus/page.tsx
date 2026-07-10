@@ -1,5 +1,7 @@
 'use client'
 
+import { Guard } from '@/components/rbac/Guard'
+import { PERMISSIONS } from '@/lib/rbac'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useRouter } from 'next/navigation'
@@ -207,7 +209,7 @@ function Pagination({ currentPage, totalPages, totalItems, pageSize, onPageChang
 
 // ─── Page principale ──────────────────────────────────────────────
 
-export default function RevenusPage() {
+function RevenusContent() {
   const { t } = useTranslation()
   const router = useRouter()
   const [period, setPeriod] = useState('month')
@@ -888,5 +890,13 @@ export default function RevenusPage() {
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+export default function RevenusPage() {
+  return (
+    <Guard permission={PERMISSIONS.VIEW_REVENUE} redirectTo="/dashboard">
+      <RevenusContent />
+    </Guard>
   )
 }
