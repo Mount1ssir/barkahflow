@@ -1,6 +1,9 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
+import { usePermission } from '@/components/rbac/usePermission'
+import { PERMISSIONS } from '@/lib/rbac'
+import { useUserContext } from '@/context/UserContext'
 import { useTranslation } from 'react-i18next'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
@@ -189,6 +192,11 @@ export default function InvoicesPage() {
   const [deleteTarget, setDeleteTarget] = useState<Invoice | null>(null)
   const [isLoaded, setIsLoaded] = useState(false)
   const pageSize = 5
+
+  // RBAC
+  const canVoidInvoices = usePermission(PERMISSIONS.CAN_VOID_INVOICES)
+  const canViewAll = usePermission(PERMISSIONS.VIEW_ALL_INVOICES)
+  const { currentUser } = useUserContext()
 
   const urlStatus = searchParams.get('status') || ''
   const urlDateFrom = searchParams.get('dateFrom') || ''

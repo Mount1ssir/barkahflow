@@ -12,10 +12,17 @@ import { getAllProducts, type Product } from '@/lib/products-data'
 import { getAllCategories, type Category } from '@/lib/categories-data'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { useCart } from '@/lib/store/cart-store'
+import { usePermission } from '@/components/rbac/usePermission'
+import { PERMISSIONS } from '@/lib/rbac'
+import { useUserContext } from '@/context/UserContext'
 
 export default function CaissePage() {
   const { t } = useTranslation()
   const router = useRouter()
+  const { currentUser } = useUserContext()
+
+  // RBAC
+  const canApplyDiscount = usePermission(PERMISSIONS.CAN_APPLY_DISCOUNT)
 
   // ✅ Le panier vient maintenant du store partagé (accessible aussi depuis l'assistant vocal)
   const { items: cart, addToCart, removeFromCart, updateQuantity, clearCart } = useCart()
@@ -151,6 +158,8 @@ export default function CaissePage() {
         total={total}
         subtotal={subtotal}
         tax={tax}
+        canApplyDiscount={canApplyDiscount}
+        cashierId={currentUser?.id}
         onSuccess={(invoiceId, invoiceNumber) => {
           clearCart()
           toast.success(`Facture ${invoiceNumber} créée`)

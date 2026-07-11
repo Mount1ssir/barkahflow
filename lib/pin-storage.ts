@@ -4,7 +4,6 @@ const PIN_ATTEMPTS_KEY = 'barkahflow_pin_attempts'
 const PIN_LOCKED_UNTIL_KEY = 'barkahflow_pin_locked_until'
 const BIOMETRIC_ENABLED_KEY = 'barkahflow_biometric_enabled'
 const REMEMBERED_USER_KEY = 'barkahflow_remembered_user'
-const PIN_LENGTH_KEY = 'barkahflow_pin_length' // ✅ Ajouté
 
 const MAX_ATTEMPTS = 5
 const LOCKOUT_WARNING_MS = 30 * 1000      // 30 secondes
@@ -31,15 +30,12 @@ export async function setPinCode(pin: string): Promise<void> {
   }
   const hash = await hashPin(pin)
   localStorage.setItem(PIN_HASH_KEY, hash)
-  // ✅ Stocker la longueur du PIN
-  localStorage.setItem(PIN_LENGTH_KEY, String(pin.length))
   resetAttempts()
 }
 
 export function disablePin(): void {
   localStorage.removeItem(PIN_HASH_KEY)
   localStorage.removeItem(BIOMETRIC_ENABLED_KEY)
-  localStorage.removeItem(PIN_LENGTH_KEY)
   resetAttempts()
 }
 
@@ -59,18 +55,6 @@ export async function verifyPinCode(pin: string): Promise<boolean> {
   }
 
   return isCorrect
-}
-
-// ✅ NOUVEAU : Récupérer la longueur du PIN stocké
-export function getPinLength(): number {
-  if (typeof window === 'undefined') return 6
-  const length = localStorage.getItem(PIN_LENGTH_KEY)
-  if (length) {
-    const parsed = parseInt(length, 10)
-    if (parsed >= 4 && parsed <= 6) return parsed
-  }
-  // Par défaut, retourner 6 (compatible avec le nouveau système)
-  return 6
 }
 
 // ─── Gestion des tentatives ──────────────────────────────────────
