@@ -1,67 +1,64 @@
 'use client'
 
-/**
- * components/rbac/Guard.tsx
- * ─────────────────────────────────────────────────────────────────────────────
- * Conditional rendering guard for role and/or permission checks.
- *
- * Usage examples:
- *
- *   // Only visible to admins
- *   <Guard role="admin">
- *     <DeleteButton />
- *   </Guard>
- *
- *   // Only visible if user has the permission
- *   <Guard permission="can_apply_discount">
- *     <DiscountField />
- *   </Guard>
- *
- *   // Page-level redirect (redirectTo prop)
- *   <Guard role="admin" redirectTo="/dashboard">
- *     <ReportsPage />
- *   </Guard>
- *
- *   // Render a fallback instead of nothing
- *   <Guard permission="can_edit_products" fallback={<ReadOnlyBadge />}>
- *     <EditButton />
- *   </Guard>
- */
-
-import { useEffect, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
+import { useEffect } from 'react'
 import { useUserContext } from '@/context/UserContext'
-import type { Permission } from '@/lib/rbac'
+import { type Permission } from '@/lib/rbac'
 
 interface GuardProps {
-  /** Required role. Admin always passes. */
-  role?: 'admin' | 'cashier'
-  /** Required permission key. Admin always passes. */
+  children: React.ReactNode
   permission?: Permission
-  /** If access is denied and redirectTo is set, the router will push there. */
+  role?: 'admin' | 'cashier'
   redirectTo?: string
-  /** Rendered when access is denied (and no redirect). Default: null. */
-  fallback?: ReactNode
-  children: ReactNode
 }
 
-export function Guard({ role, permission, redirectTo, fallback = null, children }: GuardProps) {
-  const { currentUser, can, isRole } = useUserContext()
+export function Guard({ children, permission, role, redirectTo = '/dashboard' }: GuardProps) {
   const router = useRouter()
-
-  // Check access
-  let allowed = true
-  if (role && !isRole(role)) allowed = false
-  if (permission && !can(permission)) allowed = false
-  // Admin override: if no currentUser yet, deny by default
-  if (!currentUser) allowed = false
+  const { currentUser, isLoading, can, isRole } = useUserContext()
 
   useEffect(() => {
-    if (!allowed && redirectTo) {
-      router.replace(redirectTo)
-    }
-  }, [allowed, redirectTo, router])
+    if (isLoading) return
 
-  if (!allowed) return <>{fallback}</>
+    if (!currentUser) {
+      router.push('/')
+      return
+    }
+
+    // Vérifier le rôle
+    if (role && !isRole(role)) {
+      router.push(redirectTo)
+      return
+    }
+
+    // Vérifier la permission
+    if (permission && !can(permission)) {
+      router.push(redirectTo)
+      return
+    }
+  }, [currentUser, isLoading, can, isRole, role, permission, redirectTo, router])
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div
+          className="w-8 h-8 rounded-full border-2 animate-spin"
+          style={{ borderColor: '#c9a84c', borderTopColor: 'transparent' }}
+        />
+      </div>
+    )
+  }
+
+  if (!currentUser) {
+    return null
+  }
+
+  if (role && !isRole(role)) {
+    return null
+  }
+
+  if (permission && !can(permission)) {
+    return null
+  }
+
   return <>{children}</>
 }

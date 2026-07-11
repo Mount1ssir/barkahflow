@@ -21,7 +21,8 @@ import { supabase } from '@/src/lib/supabase'
 import { VoiceAssistantButton } from '@/components/voice/VoiceAssistantButton'
 import { Notifications } from '@/components/dashboard/notifications'
 import { useUserContext } from '@/context/UserContext'
-import { UserSwitchScreen } from '@/components/pin/UserSwitchScreen'
+import UserSwitchScreen from '@/components/pin/UserSwitchScreen'
+import { PERMISSIONS } from '@/lib/rbac'
 import type { AppUser } from '@/context/UserContext'
 
 const langs = [
@@ -218,7 +219,7 @@ export function TopBar({ user }: TopBarProps) {
   const toggle = useSidebarStore((s) => s.toggle)
   const { theme, setTheme } = useTheme()
   const { t } = useTranslation()
-  const { setCurrentUser, isRole } = useUserContext()
+  const { setCurrentUser, isRole, can } = useUserContext()
   const [mounted, setMounted] = useState(false)
   const [switchOpen, setSwitchOpen] = useState(false)
 
@@ -226,10 +227,25 @@ export function TopBar({ user }: TopBarProps) {
 
   const isDark = theme === 'dark'
 
+  // ─── Vérification des permissions IA et Notifications ────────────
+  const canUseAI = can(PERMISSIONS.AI_ASSISTANT)
+  const canUseNotifications = can(PERMISSIONS.NOTIFICATIONS)
+
   const handleLogout = async () => {
+    const isAdmin = isRole('admin')
+    const isCashier = isRole('cashier')
+
     await supabase.auth.signOut()
     sessionStorage.clear()
-    window.location.href = '/'
+
+    if (isCashier) {
+      // Caissier → retour à la sélection des caissiers avec paramètre
+      setCurrentUser(null)
+      router.push('/dashboard?showSwitch=true')
+    } else {
+      // Admin → page de login
+      window.location.href = '/'
+    }
   }
 
   const handleUserSwitched = (switchedUser: AppUser) => {
@@ -258,10 +274,11 @@ export function TopBar({ user }: TopBarProps) {
       <GlobalSearch />
 
       <div className="flex items-center gap-1 shrink-0">
-        {/* Notifications */}
-        <Notifications />
+        {/* ─── Notifications ─────────────────────────────────────────── */}
+        {canUseNotifications && <Notifications />}
 
-        <VoiceAssistantButton />
+        {/* ─── Assistant IA ──────────────────────────────────────────── */}
+        {canUseAI && <VoiceAssistantButton />}
 
         <LanguageDropdown />
 
@@ -333,12 +350,13 @@ export function TopBar({ user }: TopBarProps) {
 
             <DropdownMenuSeparator className="bg-[#EAECEF] dark:bg-zinc-700" />
 
-            {/* Profile — admin only */}
-            {isAdmin && (
-              <DropdownMenuItem onClick={() => router.push('/dashboard/profil')} className="gap-2.5 py-2.5 px-3 rounded-xl cursor-pointer text-[13px] text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-800 focus:bg-gray-50">
-                <User size={15} className="text-gray-400" /> {t('dashboard.menu.profile', 'Mon profil')}
-              </DropdownMenuItem>
-            )}
+            {/* ─── Profile — admin ou caissier, chacun vers sa propre page ─── */}
+            <DropdownMenuItem
+              onClick={() => router.push(isAdmin ? '/dashboard/profil' : '/dashboard/profil-caissier')}
+              className="gap-2.5 py-2.5 px-3 rounded-xl cursor-pointer text-[13px] text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-zinc-800 focus:bg-gray-50"
+            >
+              <User size={15} className="text-gray-400" /> {t('dashboard.menu.profile', 'Mon profil')}
+            </DropdownMenuItem>
 
             <DropdownMenuSeparator className="bg-[#EAECEF] dark:bg-zinc-700" />
 
@@ -352,18 +370,27 @@ export function TopBar({ user }: TopBarProps) {
 
             <DropdownMenuSeparator className="bg-[#EAECEF] dark:bg-zinc-700" />
 
-            <DropdownMenuItem onSelect={async (e) => { e.preventDefault(); await handleLogout() }} className="gap-2.5 py-2.5 px-3 rounded-xl cursor-pointer text-[13px] text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 focus:bg-red-50 focus:text-red-500">
-              <LogOut size={15} /> {t('dashboard.menu.logout', 'Déconnexion')}
+            <DropdownMenuItem 
+              onSelect={async (e) => { 
+                e.preventDefault() 
+                await handleLogout() 
+              }} 
+              className="gap-2.5 py-2.5 px-3 rounded-xl cursor-pointer text-[13px] text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 focus:bg-red-50 focus:text-red-500"
+            >
+              <LogOut size={15} /> Déconnexion
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
 
-      {/* User switch screen */}
+      {/* ─── User Switch Screen — une seule fenêtre ─────────────────── */}
       <UserSwitchScreen
         open={switchOpen}
         onOpenChange={setSwitchOpen}
-        onSuccess={handleUserSwitched}
+        onSuccess={(switchedUser) => {
+          handleUserSwitched(switchedUser)
+          setSwitchOpen(false)
+        }}
       />
     </header>
   )

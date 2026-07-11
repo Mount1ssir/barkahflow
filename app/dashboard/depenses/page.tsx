@@ -4,6 +4,7 @@ import { Guard } from '@/components/rbac/Guard'
 import { PERMISSIONS } from '@/lib/rbac'
 import { useState, useMemo, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useUserContext } from '@/context/UserContext'
 import { 
   Plus, 
   Download, 
@@ -46,6 +47,28 @@ interface Expense {
 
 function ExpensesContent() {
   const { t } = useTranslation()
+  const { can } = useUserContext()
+  
+  // ─── Vérification des permissions ──────────────────────────────
+  const canView = can(PERMISSIONS.FINANCE_EXPENSES)
+  const canExport = can(PERMISSIONS.INVOICES_EXPORT)
+  
+  // ─── Si l'utilisateur n'a pas la permission ─────────────────────
+  if (!canView) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center max-w-7xl mx-auto">
+        <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-zinc-800 flex items-center justify-center mb-4">
+          <TrendingUp className="w-8 h-8 text-gray-300 dark:text-zinc-600" />
+        </div>
+        <p className="font-semibold text-gray-700 dark:text-gray-300">
+          Accès limité aux dépenses
+        </p>
+        <p className="text-sm text-gray-400 mt-1 max-w-md">
+          Vous n'avez pas la permission de voir les dépenses.
+        </p>
+      </div>
+    )
+  }
 
   // State
   const [searchQuery, setSearchQuery] = useState('')
@@ -231,7 +254,10 @@ function ExpensesContent() {
   }
 
   const handleExport = () => {
-    // Implement actual CSV export logic for expenses
+    if (!canExport) {
+      triggerToast('Vous n\'avez pas la permission d\'exporter')
+      return
+    }
     const csvContent = [
       ['Date', 'Categorie', 'Fournisseur/Source', 'Notes', 'Statut', 'Montant (MAD)'],
       ...filteredExpenses.map(item => [
@@ -282,16 +308,16 @@ function ExpensesContent() {
         </div>
         
         <div className="flex items-center gap-3">
-          {/* Secondary Outline Export Button */}
-          <button 
-            onClick={handleExport}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 dark:text-zinc-300 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-lg hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors duration-150 shadow-sm cursor-pointer"
-          >
-            <Download size={15} />
-            <span>{t('expenses.export', 'Exporter')}</span>
-          </button>
+          {canExport && (
+            <button 
+              onClick={handleExport}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 dark:text-zinc-300 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-lg hover:bg-slate-50 dark:hover:bg-zinc-800 transition-colors duration-150 shadow-sm cursor-pointer"
+            >
+              <Download size={15} />
+              <span>{t('expenses.export', 'Exporter')}</span>
+            </button>
+          )}
 
-          {/* Primary Blue Add Button */}
           <button 
             onClick={() => setShowAddModal(true)}
             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg transition-colors duration-150 shadow-sm shadow-blue-600/10 cursor-pointer"
@@ -333,7 +359,6 @@ function ExpensesContent() {
 
         {/* KPI Summaries */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {/* Net Revenue KPI */}
           <div className="bg-slate-50/50 dark:bg-zinc-950/40 border border-slate-100 dark:border-zinc-850 rounded-xl p-4 flex flex-col gap-1">
             <span className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
               {t('expenses.chart.summary.net', 'Chiffre d\'affaires net')}
@@ -356,7 +381,6 @@ function ExpensesContent() {
             </div>
           </div>
 
-          {/* Total Income KPI */}
           <div className="bg-slate-50/50 dark:bg-zinc-950/40 border border-slate-100 dark:border-zinc-850 rounded-xl p-4 flex flex-col gap-1">
             <span className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
               {t('expenses.chart.summary.income', 'Revenu total')}
@@ -369,7 +393,6 @@ function ExpensesContent() {
             </span>
           </div>
 
-          {/* Total Expenses KPI */}
           <div className="bg-slate-50/50 dark:bg-zinc-950/40 border border-slate-100 dark:border-zinc-850 rounded-xl p-4 flex flex-col gap-1">
             <span className="text-[10px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-wider">
               {t('expenses.chart.summary.expenses', 'Total des dépenses')}
@@ -393,7 +416,7 @@ function ExpensesContent() {
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData} margin={{ left: 20, right: 20, top: 10, bottom: 0 }}>
                 <defs>
-                  <linearGradient id="fillNetRevenue" x1="0" y1="0" x2="0" y2="1">
+                  <linearGradient id="fillNetRevenueExpenses" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#2563EB" stopOpacity={0.15} />
                     <stop offset="95%" stopColor="#2563EB" stopOpacity={0} />
                   </linearGradient>
@@ -418,7 +441,7 @@ function ExpensesContent() {
                 <Area
                   dataKey="netRevenue"
                   type="monotone"
-                  fill="url(#fillNetRevenue)"
+                  fill="url(#fillNetRevenueExpenses)"
                   stroke="#2563EB"
                   strokeWidth={2}
                 />
@@ -739,7 +762,7 @@ function ExpensesContent() {
 
 export default function ExpensesPage() {
   return (
-    <Guard permission={PERMISSIONS.VIEW_REVENUE} redirectTo="/dashboard">
+    <Guard permission={PERMISSIONS.FINANCE_EXPENSES} redirectTo="/dashboard">
       <ExpensesContent />
     </Guard>
   )

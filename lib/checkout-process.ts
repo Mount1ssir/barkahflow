@@ -17,7 +17,7 @@ export interface CheckoutInput {
   paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID'
   paymentMethod?: string
   paidAmount: number
-  poNumber?: string | null       // ajout : référence commande client
+  poNumber?: string | null
   userId?: string | null
   cashierId?: string | null
   ipAddress?: string
@@ -41,13 +41,6 @@ async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, delay = 300): 
     }
   }
   throw lastError
-}
-
-// Échappe les apostrophes pour l'injection directe dans le SQL brut
-// (nécessaire car ce fichier construit une transaction SQL sous forme
-// de chaîne concaténée plutôt que des requêtes paramétrées)
-function sqlEscape(value: string): string {
-  return value.replace(/'/g, "''")
 }
 
 export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId: string; invoiceNumber: string }> {
@@ -77,6 +70,7 @@ export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId
     }
   }
 
+  // Réserver le stock
   for (const item of input.cart) {
     await dbExecute(
       `UPDATE products SET reserved_stock = COALESCE(reserved_stock, 0) + ? WHERE id = ?`,
@@ -84,6 +78,7 @@ export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId
     )
   }
 
+  // Calcul des totaux
   let subtotal = 0
   let totalTax = 0
   let totalDiscount = 0
@@ -121,144 +116,144 @@ export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId
   const now = new Date().toISOString()
   const paymentMethod = input.paymentMethod || 'cash'
 
-  // ── Calcul de l'échéance ────────────────────────────────────────
-  // Basée sur le délai de paiement par défaut configuré dans les
-  // paramètres de l'entreprise (30 jours si non configuré).
   const companySettings = await getCompanySettings()
   const dueDate = calculateDueDate(now, companySettings.defaultPaymentTermsDays || 30)
-  const poNumber = input.poNumber ? sqlEscape(input.poNumber) : null
+  const poNumber = input.poNumber || null
 
-  let sql = 'BEGIN;\n'
+  // ─── ✅ CORRECTION : Ajout de user_id dans l'INSERT ───
 
-  sql += `
-    INSERT INTO invoices (
+  // 1. Insérer la facture avec des paramètres liés
+  await dbExecute(
+    `INSERT INTO invoices (
       id, invoice_number, client_id, subtotal, tax, discount, total,
-      status, payment_method, due_date, po_number, created_at, updated_at
-    ) VALUES (
-      '${invoiceId}',
-      '${invoiceNumber}',
-      ${input.customerId ? `'${input.customerId}'` : 'NULL'},
-      ${Math.round(subtotal * 100)},
-      ${Math.round(totalTax * 100)},
-      ${Math.round(totalDiscount * 100)},
-      ${Math.round(total * 100)},
-      '${input.paymentStatus}',
-      '${paymentMethod}',
-      '${dueDate}',
-      ${poNumber ? `'${poNumber}'` : 'NULL'},
-      '${now}',
-      '${now}'
-    );
-  `
+      status, payment_method, due_date, po_number, user_id, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      invoiceId,
+      invoiceNumber,
+      input.customerId || null,
+      Math.round(subtotal * 100),
+      Math.round(totalTax * 100),
+      Math.round(totalDiscount * 100),
+      Math.round(total * 100),
+      input.paymentStatus,
+      paymentMethod,
+      dueDate,
+      poNumber,
+      input.userId || null,  // ✅ AJOUTÉ : l'ID du caissier
+      now,
+      now,
+    ]
+  )
 
+  // 2. Insérer les lignes de facture
   for (const item of lineItems) {
     const lineId = `line_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
-    sql += `
-      INSERT INTO line_items (
+    await dbExecute(
+      `INSERT INTO line_items (
         id, invoice_id, product_id, qty, unit_price, discount, subtotal
-      ) VALUES (
-        '${lineId}',
-        '${invoiceId}',
-        '${item.productId}',
-        ${item.quantity},
-        ${Math.round(item.unitPrice * 100)},
-        ${item.discount},
-        ${Math.round(item.subtotal * 100)}
-      );
-    `
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        lineId,
+        invoiceId,
+        item.productId,
+        item.quantity,
+        Math.round(item.unitPrice * 100),
+        item.discount,
+        Math.round(item.subtotal * 100),
+      ]
+    )
   }
 
+  // 3. Mettre à jour le stock
   for (const item of input.cart) {
-    sql += `
-      UPDATE products SET
-        stock_qty = stock_qty - ${item.quantity},
-        reserved_stock = COALESCE(reserved_stock, 0) - ${item.quantity}
-      WHERE id = '${item.productId}';
-    `
+    await dbExecute(
+      `UPDATE products SET
+        stock_qty = stock_qty - ?,
+        reserved_stock = COALESCE(reserved_stock, 0) - ?
+      WHERE id = ?`,
+      [item.quantity, item.quantity, item.productId]
+    )
   }
 
+  // 4. Gérer le paiement
   if (input.paymentStatus === 'PAID') {
     const txId = `tx_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
-    sql += `
-      INSERT INTO transactions (
+    await dbExecute(
+      `INSERT INTO transactions (
         id, type, amount, source_type, source_id, transaction_date, created_at
-      ) VALUES (
-        '${txId}',
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        txId,
         'INCOME',
-        ${Math.round(total * 100)},
+        Math.round(total * 100),
         'invoice',
-        '${invoiceId}',
-        '${now}',
-        '${now}'
-      );
-    `
-    sql += `
-      UPDATE invoices SET status = 'PAID' WHERE id = '${invoiceId}';
-    `
+        invoiceId,
+        now,
+        now,
+      ]
+    )
+    await dbExecute(
+      `UPDATE invoices SET status = 'PAID' WHERE id = ?`,
+      [invoiceId]
+    )
   } else if (input.paymentStatus === 'PARTIAL' || input.paymentStatus === 'UNPAID') {
     const debtId = `debt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
     const remaining = input.paymentStatus === 'UNPAID' ? total : total - input.paidAmount
-    sql += `
-      INSERT INTO debt_ledger (
+    await dbExecute(
+      `INSERT INTO debt_ledger (
         id, type, contact_id, total_debt, remaining_debt, status, invoice_id, created_at, updated_at
-      ) VALUES (
-        '${debtId}',
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        debtId,
         'RECEIVABLE',
-        ${input.customerId ? `'${input.customerId}'` : 'NULL'},
-        ${Math.round(total * 100)},
-        ${Math.round(remaining * 100)},
+        input.customerId || null,
+        Math.round(total * 100),
+        Math.round(remaining * 100),
         'ACTIVE',
-        '${invoiceId}',
-        '${now}',
-        '${now}'
-      );
-    `
+        invoiceId,
+        now,
+        now,
+      ]
+    )
     if (input.paymentStatus === 'PARTIAL' && input.paidAmount > 0) {
       const txId = `tx_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
-      sql += `
-        INSERT INTO transactions (
+      await dbExecute(
+        `INSERT INTO transactions (
           id, type, amount, source_type, source_id, transaction_date, created_at
-        ) VALUES (
-          '${txId}',
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          txId,
           'INCOME',
-          ${Math.round(input.paidAmount * 100)},
+          Math.round(input.paidAmount * 100),
           'invoice',
-          '${invoiceId}',
-          '${now}',
-          '${now}'
-        );
-      `
+          invoiceId,
+          now,
+          now,
+        ]
+      )
     }
   }
 
-  sql += `
-    INSERT INTO audit_logs (
+  // 5. Audit log avec paramètres liés
+  const auditId = `audit_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+  await dbExecute(
+    `INSERT INTO audit_logs (
       id, user_id, action, entity_type, entity_id, before_state, after_state, ip_address, user_agent, created_at
-    ) VALUES (
-      'audit_${Date.now()}_${Math.random().toString(36).slice(2, 7)}',
-      ${input.userId ? `'${input.userId}'` : 'NULL'},
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      auditId,
+      input.userId || null,
       'checkout_completed',
       'invoice',
-      '${invoiceId}',
-      NULL,
-      '{"invoiceNumber":"${invoiceNumber}","total":${total}}',
-      '${input.ipAddress || '0.0.0.0'}',
-      '${input.userAgent || ''}',
-      '${now}'
-    );
-  `
+      invoiceId,
+      null,
+      JSON.stringify({ invoiceNumber, total }),
+      input.ipAddress || '0.0.0.0',
+      input.userAgent || '',
+      now,
+    ]
+  )
 
-  sql += 'COMMIT;'
-
-  return await withRetry(async () => {
-    const statements = sql
-      .split(';')
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0 && s !== 'BEGIN' && s !== 'COMMIT')
-    
-    for (const statement of statements) {
-      await dbExecute(statement)
-    }
-    return { invoiceId, invoiceNumber }
-  })
+  return { invoiceId, invoiceNumber }
 }

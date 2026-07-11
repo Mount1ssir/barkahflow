@@ -1,4 +1,4 @@
-// lib.ts
+// lib/db.ts
 import { Capacitor } from '@capacitor/core'
 
 export interface DbDriver {
@@ -117,6 +117,7 @@ CREATE TABLE IF NOT EXISTS users (
   phone TEXT,
   failed_pin_attempts INTEGER NOT NULL DEFAULT 0,
   locked_until TEXT,
+  last_login TEXT,  -- ← AJOUTÉ
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -185,7 +186,7 @@ const MIGRATIONS = [
   // Transactions user_id
   `ALTER TABLE transactions ADD COLUMN user_id TEXT REFERENCES users(id);`,
 
-  // Users
+  // Users - version initiale
   `CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -228,7 +229,7 @@ const MIGRATIONS = [
     created_at TEXT NOT NULL
   );`,
 
-  // ✅ AJOUT DES COLONNES MANQUANTES SUR stock_movements
+  // AJOUT DES COLONNES MANQUANTES SUR stock_movements
   `ALTER TABLE stock_movements ADD COLUMN previous_qty INTEGER DEFAULT 0;`,
   `ALTER TABLE stock_movements ADD COLUMN new_qty INTEGER DEFAULT 0;`,
   `ALTER TABLE stock_movements ADD COLUMN user_id TEXT REFERENCES users(id);`,
@@ -239,14 +240,12 @@ const MIGRATIONS = [
   `CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON stock_movements(product_id);`,
   `CREATE INDEX IF NOT EXISTS idx_stock_movements_created ON stock_movements(created_at);`,
 
-  // RBAC columns on users (2026-07 migration)
+  // RBAC columns on users
   `ALTER TABLE users ADD COLUMN supabase_uid TEXT;`,
   `ALTER TABLE users ADD COLUMN email TEXT;`,
   `ALTER TABLE users ADD COLUMN phone TEXT;`,
 
   // Make pin_hash nullable for admin (Supabase auth, no PIN)
-  // SQLite doesn't support DROP NOT NULL — handled by new schema above.
-  // The migration below re-creates nothing; just a no-op guard:
   `CREATE INDEX IF NOT EXISTS idx_users_supabase_uid ON users(supabase_uid);`,
 
   // Audit logs table
@@ -263,9 +262,12 @@ const MIGRATIONS = [
     created_at TEXT NOT NULL
   );`,
 
-  // Cashier PIN lockout columns (2026-07 migration)
+  // Cashier PIN lockout columns
   `ALTER TABLE users ADD COLUMN failed_pin_attempts INTEGER NOT NULL DEFAULT 0;`,
   `ALTER TABLE users ADD COLUMN locked_until TEXT;`,
+
+  // ✅ AJOUT DE last_login SUR users
+  `ALTER TABLE users ADD COLUMN last_login TEXT;`,
 ]
 
 async function runMigrations(db: any) {

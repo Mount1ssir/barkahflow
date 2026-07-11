@@ -84,9 +84,10 @@ import {
   type AgedReceivable,
 } from '@/lib/revenue-data'
 import { formatMAD } from '@/lib/stats-data'
+import { useUserContext } from '@/context/UserContext'
 
 // ─── Couleurs ──────────────────────────────────────────────────────
-const BLUE_SOFT = '#93C5FD' // Bleu très doux pour les bordures
+const BLUE_SOFT = '#93C5FD'
 const BLUE = '#3B82F6'
 const BLUE_DARK = '#1D4ED8'
 const ORANGE = '#F59E0B'
@@ -212,6 +213,30 @@ function Pagination({ currentPage, totalPages, totalItems, pageSize, onPageChang
 function RevenusContent() {
   const { t } = useTranslation()
   const router = useRouter()
+  const { can } = useUserContext()
+  
+  // ─── Vérification des permissions ──────────────────────────────
+  const canView = can(PERMISSIONS.FINANCE_REVENUE)
+  const canExport = can(PERMISSIONS.INVOICES_EXPORT)
+  const canAddRevenue = can(PERMISSIONS.FINANCE_REVENUE) // Même permission pour ajouter
+  
+  // ─── Si l'utilisateur n'a pas la permission ─────────────────────
+  if (!canView) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center max-w-7xl mx-auto">
+        <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-zinc-800 flex items-center justify-center mb-4">
+          <DollarSign className="w-8 h-8 text-gray-300 dark:text-zinc-600" />
+        </div>
+        <p className="font-semibold text-gray-700 dark:text-gray-300">
+          Accès limité aux revenus
+        </p>
+        <p className="text-sm text-gray-400 mt-1 max-w-md">
+          Vous n'avez pas la permission de voir les revenus.
+        </p>
+      </div>
+    )
+  }
+
   const [period, setPeriod] = useState('month')
   const [loading, setLoading] = useState(true)
 
@@ -232,7 +257,6 @@ function RevenusContent() {
   const [newAmount, setNewAmount] = useState('')
   const [newPaymentMethod, setNewPaymentMethod] = useState('cash')
   const [newDescription, setNewDescription] = useState('')
-  const [newDate, setNewDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
@@ -279,14 +303,12 @@ function RevenusContent() {
         amount: Math.round(amountValue * 100),
         paymentMethod: newPaymentMethod,
         description: newDescription.trim() || undefined,
-        date: newDate ? new Date(newDate).toISOString() : undefined,
       })
       toast.success('Revenu externe ajouté')
       setAddRevenueOpen(false)
       setNewAmount('')
       setNewDescription('')
       setNewPaymentMethod('cash')
-      setNewDate(new Date().toISOString().slice(0, 10))
       loadData()
     } catch (error) {
       console.error(error)
@@ -311,6 +333,10 @@ function RevenusContent() {
 
   // ─── EXPORT CSV ──────────────────────────────────────────────────
   const handleExport = () => {
+    if (!canExport) {
+      toast.warning('Vous n\'avez pas la permission d\'exporter')
+      return
+    }
     if (transactions.length === 0) {
       toast.info('Aucune transaction à exporter pour cette période.')
       return
@@ -389,7 +415,7 @@ function RevenusContent() {
       case '+60 jours':
         dateTo = new Date(now)
         dateTo.setDate(dateTo.getDate() - 61)
-        dateFrom = new Date(0) // début des temps
+        dateFrom = new Date(0)
         break
       default:
         return
@@ -428,19 +454,24 @@ function RevenusContent() {
               ))}
             </SelectContent>
           </Select>
-          <Button
-            variant="outline"
-            className="gap-2 rounded-xl h-10 border-gray-200 dark:border-gray-700"
-            onClick={handleExport}
-          >
-            <Download className="h-4 w-4" /> Exporter
-          </Button>
-          <Button
-            className="gap-2 rounded-xl h-10 bg-blue-600 hover:bg-blue-700 text-white"
-            onClick={() => setAddRevenueOpen(true)}
-          >
-            <Plus className="h-4 w-4" /> Ajouter un revenu externe
-          </Button>
+          {canAddRevenue && (
+            <Button
+              className="gap-2 rounded-xl h-10 text-white"
+              style={{ backgroundColor: BLUE }}
+              onClick={() => setAddRevenueOpen(true)}
+            >
+              <Plus className="h-4 w-4" /> Ajouter un revenu
+            </Button>
+          )}
+          {canExport && (
+            <Button
+              variant="outline"
+              className="gap-2 rounded-xl h-10 border-gray-200 dark:border-gray-700"
+              onClick={handleExport}
+            >
+              <Download className="h-4 w-4" /> Exporter
+            </Button>
+          )}
         </div>
       </div>
 
@@ -819,6 +850,7 @@ function RevenusContent() {
             <DialogTitle>Ajouter un revenu externe</DialogTitle>
             <DialogDescription>
               Enregistre un encaissement qui ne provient pas d'une facture (vente occasionnelle, remboursement, autre revenu...).
+              Ce montant sera ajouté à l'<strong>encaissé</strong> (pas au chiffre d'affaires).
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
@@ -849,23 +881,12 @@ function RevenusContent() {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="description">Description / motif</Label>
+              <Label htmlFor="description">Description / motif (optionnel)</Label>
               <Input
                 id="description"
                 placeholder="Ex: Vente occasionnelle, remboursement..."
                 value={newDescription}
                 onChange={(e) => setNewDescription(e.target.value)}
-                className="rounded-xl"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="date">Date</Label>
-              <Input
-                id="date"
-                type="date"
-                value={newDate}
-                max={new Date().toISOString().slice(0, 10)}
-                onChange={(e) => setNewDate(e.target.value)}
                 className="rounded-xl"
               />
             </div>
@@ -880,7 +901,8 @@ function RevenusContent() {
               Annuler
             </Button>
             <Button
-              className="rounded-xl bg-blue-600 hover:bg-blue-700 text-white"
+              className="rounded-xl text-white"
+              style={{ backgroundColor: BLUE }}
               onClick={handleAddExternalRevenue}
               disabled={submitting}
             >
@@ -895,7 +917,7 @@ function RevenusContent() {
 
 export default function RevenusPage() {
   return (
-    <Guard permission={PERMISSIONS.VIEW_REVENUE} redirectTo="/dashboard">
+    <Guard permission={PERMISSIONS.FINANCE_REVENUE} redirectTo="/dashboard">
       <RevenusContent />
     </Guard>
   )

@@ -1,383 +1,118 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
-import { useTranslation } from 'react-i18next'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { useRouter } from 'next/navigation'
+import { ArrowLeft, Building2, Users, Settings as SettingsIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
-import { toast } from 'sonner'
-import { getCompanySettings, updateCompanySettings, type CompanySettings } from '@/lib/company-settings'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Building2, MapPin, Phone, Mail, Globe, CreditCard, FileText, Upload, Calendar, AlertTriangle } from 'lucide-react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Guard } from '@/components/rbac/Guard'
+import { PERMISSIONS } from '@/lib/rbac'
 
 const BLUE = '#3B82F6'
 
-export default function SettingsPage() {
-  const { t } = useTranslation()
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [settings, setSettings] = useState<CompanySettings | null>(null)
-  const [logoPreview, setLogoPreview] = useState<string>('')
-  const fileInputRef = useRef<HTMLInputElement>(null)
+function SettingsContent() {
+  const router = useRouter()
 
-  useEffect(() => {
-    loadSettings()
-  }, [])
-
-  const loadSettings = async () => {
-    try {
-      const data = await getCompanySettings()
-      setSettings(data)
-      if (data.logoUrl) {
-        setLogoPreview(data.logoUrl)
-      }
-    } catch (error) {
-      console.error('Erreur chargement paramètres:', error)
-      toast.error('Erreur chargement paramètres')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleChange = (field: keyof CompanySettings, value: string | number) => {
-    if (!settings) return
-    setSettings({ ...settings, [field]: value })
-  }
-
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    if (!file.type.startsWith('image/')) {
-      toast.error('Veuillez sélectionner une image')
-      return
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('L\'image ne doit pas dépasser 5 Mo')
-      return
-    }
-    const reader = new FileReader()
-    reader.onload = () => {
-      const base64 = reader.result as string
-      setLogoPreview(base64)
-      if (settings) {
-        setSettings({ ...settings, logoUrl: base64 })
-      }
-    }
-    reader.readAsDataURL(file)
-  }
-
-  const handleSave = async () => {
-    if (!settings) return
-    setSaving(true)
-    try {
-      const updated = await updateCompanySettings(settings)
-      setSettings(updated)
-      if (updated.logoUrl) {
-        setLogoPreview(updated.logoUrl)
-      }
-      toast.success('Paramètres enregistrés avec succès')
-    } catch (error: any) {
-      console.error(error)
-      toast.error('Erreur lors de l\'enregistrement : ' + (error?.message || 'inconnue'))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  if (loading) {
-    return (
-      <div className="max-w-4xl mx-auto p-6 space-y-6">
-        <Skeleton className="h-12 w-48" />
-        <Skeleton className="h-96 w-full rounded-2xl" />
-      </div>
-    )
-  }
-
-  if (!settings) {
-    return (
-      <div className="max-w-4xl mx-auto p-6 text-center">
-        <h2 className="text-xl font-bold text-red-500">Impossible de charger les paramètres</h2>
-      </div>
-    )
-  }
+  const settingsOptions = [
+    {
+      id: 'entreprise',
+      title: 'Informations entreprise',
+      description: 'Gérez les informations de votre boutique, logo, coordonnées bancaires et mentions légales',
+      icon: Building2,
+      href: '/dashboard/settings/entreprise',
+      color: 'bg-blue-50 dark:bg-blue-950/20',
+      iconColor: 'text-blue-500',
+      // ✅ Permission requise pour voir cette option
+      permission: PERMISSIONS.SETTINGS_COMPANY,
+    },
+    {
+      id: 'utilisateurs',
+      title: 'Gestion des utilisateurs',
+      description: 'Créez, modifiez et gérez les comptes caissiers de votre boutique',
+      icon: Users,
+      href: '/dashboard/settings/utilisateurs',
+      color: 'bg-purple-50 dark:bg-purple-950/20',
+      iconColor: 'text-purple-500',
+      // ✅ Permission requise pour voir cette option
+      permission: PERMISSIONS.SETTINGS_USERS,
+    },
+  ]
 
   return (
     <div className="max-w-4xl mx-auto p-6">
-      <div className="flex items-center gap-3 mb-6">
-        <Building2 className="h-8 w-8" style={{ color: BLUE }} />
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Paramètres de l'entreprise</h1>
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-8">
+        <Button variant="ghost" onClick={() => router.back()} className="gap-2 rounded-xl">
+          <ArrowLeft className="h-4 w-4" />
+          Retour
+        </Button>
+        <div className="flex-1">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <SettingsIcon className="h-6 w-6" style={{ color: BLUE }} />
+            Paramètres
+          </h1>
+          <p className="text-sm text-gray-400 mt-0.5">
+            Gérez les paramètres de votre boutique et les comptes utilisateurs
+          </p>
+        </div>
       </div>
 
-      <Card className="rounded-2xl border shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <FileText className="h-5 w-5 text-gray-500" />
-            Informations générales
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label className="text-sm font-medium">Nom de l'entreprise</Label>
-              <Input
-                value={settings.companyName}
-                onChange={(e) => handleChange('companyName', e.target.value)}
-                className="rounded-xl h-11"
-                placeholder=""
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-sm font-medium">Ville</Label>
-              <Input
-                value={settings.city}
-                onChange={(e) => handleChange('city', e.target.value)}
-                className="rounded-xl h-11"
-                placeholder=""
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium flex items-center gap-2">
-              <MapPin className="h-4 w-4 text-gray-400" />
-              Adresse
-            </Label>
-            <Input
-              value={settings.address}
-              onChange={(e) => handleChange('address', e.target.value)}
-              className="rounded-xl h-11"
-              placeholder=""
-            />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label className="text-sm font-medium flex items-center gap-2">
-                <Phone className="h-4 w-4 text-gray-400" />
-                Téléphone
-              </Label>
-              <Input
-                value={settings.phone}
-                onChange={(e) => handleChange('phone', e.target.value)}
-                className="rounded-xl h-11"
-                placeholder=""
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-sm font-medium flex items-center gap-2">
-                <Mail className="h-4 w-4 text-gray-400" />
-                Email
-              </Label>
-              <Input
-                value={settings.email}
-                onChange={(e) => handleChange('email', e.target.value)}
-                className="rounded-xl h-11"
-                placeholder=""
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium flex items-center gap-2">
-              <Globe className="h-4 w-4 text-gray-400" />
-              Site web
-            </Label>
-            <Input
-              value={settings.website}
-              onChange={(e) => handleChange('website', e.target.value)}
-              className="rounded-xl h-11"
-              placeholder=""
-            />
-          </div>
-
-          {/* Upload du logo */}
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium">Logo de l'entreprise</Label>
-            <div className="flex items-center gap-4">
-              <div className="relative w-24 h-24 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center overflow-hidden bg-gray-50 dark:bg-gray-800">
-                {logoPreview ? (
-                  <img src={logoPreview} alt="Logo" className="w-full h-full object-contain" />
-                ) : (
-                  <div className="text-center text-gray-400">
-                    <Upload className="h-8 w-8 mx-auto mb-1" />
-                    <span className="text-xs">Aucun logo</span>
+      {/* Grille des options - filtrées par permissions */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {settingsOptions.map((option) => {
+          // ✅ Filtrer les options selon les permissions de l'utilisateur
+          // Pour les admins, on affiche tout
+          // Pour les caissiers, on vérifie la permission
+          const Icon = option.icon
+          return (
+            <Card
+              key={option.id}
+              className="group cursor-pointer transition-all hover:shadow-lg hover:scale-[1.02] active:scale-[0.98] border-2 hover:border-blue-400 dark:hover:border-blue-500"
+              onClick={() => router.push(option.href)}
+            >
+              <CardHeader className="pb-2">
+                <div className="flex items-start justify-between">
+                  <div className={`p-3 rounded-xl ${option.color} ${option.iconColor}`}>
+                    <Icon className="h-6 w-6" />
                   </div>
-                )}
-              </div>
-              <div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handleLogoUpload}
-                />
-                <Button variant="outline" className="rounded-xl" onClick={() => fileInputRef.current?.click()}>
-                  Choisir une image
-                </Button>
-                {logoPreview && (
-                  <Button
-                    variant="ghost"
-                    className="text-red-500 hover:text-red-600 ml-2"
-                    onClick={() => {
-                      setLogoPreview('')
-                      if (settings) setSettings({ ...settings, logoUrl: '' })
-                    }}
-                  >
-                    Supprimer
-                  </Button>
-                )}
-                <p className="text-xs text-gray-400 mt-1">PNG, JPG, WEBP - Max 5 Mo</p>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+                  <span className="text-sm text-gray-400 group-hover:text-blue-500 transition-colors">
+                    Cliquer →
+                  </span>
+                </div>
+                <CardTitle className="text-lg mt-2 text-gray-900 dark:text-white">
+                  {option.title}
+                </CardTitle>
+                <CardDescription className="text-sm text-gray-500 dark:text-gray-400">
+                  {option.description}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="h-1 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                  <div 
+                    className={`h-full w-0 group-hover:w-full transition-all duration-500`}
+                    style={{ backgroundColor: option.id === 'entreprise' ? '#3B82F6' : '#8B5CF6' }}
+                  />
+                </div>
+              </CardContent>
+            </Card>
+          )
+        })}
+      </div>
 
-      {/* Coordonnées bancaires */}
-      <Card className="rounded-2xl border shadow-sm mt-6">
-        <CardHeader>
-          <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <CreditCard className="h-5 w-5 text-gray-500" />
-            Coordonnées bancaires
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label className="text-sm font-medium">Banque</Label>
-              <Input
-                value={settings.bankName}
-                onChange={(e) => handleChange('bankName', e.target.value)}
-                className="rounded-xl h-11"
-                placeholder=""
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-sm font-medium">RIB</Label>
-              <Input
-                value={settings.rib}
-                onChange={(e) => handleChange('rib', e.target.value)}
-                className="rounded-xl h-11"
-                placeholder=""
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* ── Ajout : Conditions de paiement ── */}
-      <Card className="rounded-2xl border shadow-sm mt-6">
-        <CardHeader>
-          <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-gray-500" />
-            Conditions de paiement
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium">Délai de paiement par défaut (jours)</Label>
-            <Input
-              type="number"
-              min="0"
-              value={settings.defaultPaymentTermsDays}
-              onChange={(e) => handleChange('defaultPaymentTermsDays', parseInt(e.target.value) || 0)}
-              className="rounded-xl h-11 max-w-[200px]"
-            />
-            <p className="text-xs text-gray-400">
-              Utilisé pour calculer automatiquement la date d'échéance de chaque nouvelle facture.
-            </p>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-gray-400" />
-              Mention légale — pénalités de retard
-            </Label>
-            <Textarea
-              value={settings.latePaymentPenaltyText}
-              onChange={(e) => handleChange('latePaymentPenaltyText', e.target.value)}
-              rows={2}
-              className="rounded-xl resize-none"
-              placeholder="Tout retard de paiement entraîne l'application de pénalités au taux légal en vigueur..."
-            />
-            <p className="text-xs text-gray-400">
-              Ce texte apparaît en bas de chaque facture non entièrement payée.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Mentions légales */}
-      <Card className="rounded-2xl border shadow-sm mt-6">
-        <CardHeader>
-          <CardTitle className="text-base font-semibold">Mentions légales et facturation</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label className="text-sm font-medium">ICE</Label>
-              <Input
-                value={settings.ice}
-                onChange={(e) => handleChange('ice', e.target.value)}
-                className="rounded-xl h-11"
-                placeholder=""
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-sm font-medium">RC</Label>
-              <Input
-                value={settings.rc}
-                onChange={(e) => handleChange('rc', e.target.value)}
-                className="rounded-xl h-11"
-                placeholder=""
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-sm font-medium">Identifiant Fiscal (IF)</Label>
-              <Input
-                value={settings.ifNumber}
-                onChange={(e) => handleChange('ifNumber', e.target.value)}
-                className="rounded-xl h-11"
-                placeholder=""
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-sm font-medium">CNSS</Label>
-              <Input
-                value={settings.cnss}
-                onChange={(e) => handleChange('cnss', e.target.value)}
-                className="rounded-xl h-11"
-                placeholder=""
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="text-sm font-medium">Pied de page de la facture</Label>
-            <Textarea
-              value={settings.invoiceFooter}
-              onChange={(e) => handleChange('invoiceFooter', e.target.value)}
-              rows={3}
-              className="rounded-xl resize-none"
-              placeholder=""
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="flex justify-end mt-6">
-        <Button
-          onClick={handleSave}
-          disabled={saving}
-          className="rounded-xl text-white px-8 h-11"
-          style={{ backgroundColor: BLUE }}
-        >
-          {saving ? 'Enregistrement...' : 'Enregistrer les paramètres'}
-        </Button>
+      {/* Infos supplémentaires */}
+      <div className="mt-8 p-4 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
+        <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
+          Seuls les administrateurs ont accès à ces paramètres
+        </p>
       </div>
     </div>
+  )
+}
+
+export default function SettingsPage() {
+  return (
+    // ✅ Protection avec SETTINGS_ACCESS au lieu de role="admin"
+    <Guard permission={PERMISSIONS.SETTINGS_ACCESS} redirectTo="/dashboard">
+      <SettingsContent />
+    </Guard>
   )
 }

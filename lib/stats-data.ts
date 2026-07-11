@@ -1,4 +1,3 @@
-// lib/stats-data.ts
 import { dbSelect } from '@/src/lib/db'
 
 export interface DashboardStats {
@@ -25,7 +24,7 @@ function computeChangePct(today: number, yesterday: number): number {
 
 export async function getDashboardStats(): Promise<DashboardStats> {
   // ── Encaissé d'aujourd'hui (heure LOCALE) ──────────────────────
-  // ✅ Utilisation de date(transaction_date) car la date est déjà locale
+  // ✅ Inclut : factures + paiements de dette + revenus externes
   const todayRevenueRows = await dbSelect<{ total: number }>(
     `SELECT COALESCE(SUM(amount), 0) as total
      FROM transactions

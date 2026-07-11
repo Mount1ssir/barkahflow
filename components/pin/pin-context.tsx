@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
 import { usePathname } from 'next/navigation'
-import { isPinEnabled } from '@/lib/pin-storage'
+import { isPinEnabled, getInactivityTimeoutSeconds } from '@/lib/pin-storage'
 
 interface PinContextType {
   isLocked: boolean
@@ -13,15 +13,22 @@ interface PinContextType {
 
 const PinContext = createContext<PinContextType | undefined>(undefined)
 
-const INACTIVITY_TIMEOUT =30*1000
-
 export function PinProvider({ children }: { children: ReactNode }) {
   const [isLocked, setIsLocked] = useState(false)
+  const [timeoutSeconds, setTimeoutSeconds] = useState(30)
   const pathname = usePathname()
 
-  // Timer d’inactivité
+  // Charge la durée configurée et écoute les changements en direct (depuis Sécurité)
   useEffect(() => {
-    // Ne pas verrouiller sur la page de login ou si le PIN n’est pas activé
+    setTimeoutSeconds(getInactivityTimeoutSeconds())
+    const handleChange = () => setTimeoutSeconds(getInactivityTimeoutSeconds())
+    window.addEventListener('barkahflow:inactivity-timeout-changed', handleChange)
+    return () => window.removeEventListener('barkahflow:inactivity-timeout-changed', handleChange)
+  }, [])
+
+  // Timer d'inactivité
+  useEffect(() => {
+    // Ne pas verrouiller sur la page de login ou si le PIN n'est pas activé
     if (pathname === '/' || !isPinEnabled()) return
 
     let timeoutId: NodeJS.Timeout
@@ -31,11 +38,11 @@ export function PinProvider({ children }: { children: ReactNode }) {
       if (!isLocked) {
         timeoutId = setTimeout(() => {
           lockApp()
-        }, INACTIVITY_TIMEOUT)
+        }, timeoutSeconds * 1000)
       }
     }
 
-    // Écouter les événements d’interaction
+    // Écouter les événements d'interaction
     const events = ['mousedown', 'keydown', 'touchstart', 'scroll']
     events.forEach(event => document.addEventListener(event, resetTimer))
 
@@ -46,7 +53,7 @@ export function PinProvider({ children }: { children: ReactNode }) {
       clearTimeout(timeoutId)
       events.forEach(event => document.removeEventListener(event, resetTimer))
     }
-  }, [pathname, isLocked])
+  }, [pathname, isLocked, timeoutSeconds])
 
   const lockApp = () => {
     if (isPinEnabled()) {
@@ -57,7 +64,7 @@ export function PinProvider({ children }: { children: ReactNode }) {
   const unlockApp = () => {
     setIsLocked(false)
     // Réinitialiser le timer après déverrouillage
-    // Le useEffect s’en chargera via resetTimer
+    // Le useEffect s'en chargera via resetTimer
   }
 
   const resetInactivityTimer = () => {

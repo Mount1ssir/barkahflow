@@ -21,8 +21,8 @@ export default function CaissePage() {
   const router = useRouter()
   const { currentUser } = useUserContext()
 
-  // RBAC
-  const canApplyDiscount = usePermission(PERMISSIONS.CAN_APPLY_DISCOUNT)
+  // RBAC - ✅ Correction : utiliser POS_APPLY_DISCOUNT au lieu de CAN_APPLY_DISCOUNT
+  const canApplyDiscount = usePermission(PERMISSIONS.POS_APPLY_DISCOUNT)
 
   // ✅ Le panier vient maintenant du store partagé (accessible aussi depuis l'assistant vocal)
   const { items: cart, addToCart, removeFromCart, updateQuantity, clearCart } = useCart()

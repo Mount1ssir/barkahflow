@@ -10,7 +10,7 @@
  *  - A cashier wants to switch to their own profile.
  *
  * Flow:
- *  1. Display list of active cashiers.
+ *  1. Display a dropdown (Select) of active cashiers.
  *  2. User selects their profile.
  *  3. User enters their 4-6 digit PIN.
  *     - 3 wrong attempts  → soft lock, 30s countdown, retry automatically.
@@ -22,6 +22,13 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -30,8 +37,9 @@ import {
   type AppUserRow,
 } from '@/lib/user-data'
 import type { AppUser } from '@/context/UserContext'
-import { ArrowLeft, Loader2, Mail, Lock } from 'lucide-react'
+import { ArrowLeft, Loader2, Mail, Lock, User } from 'lucide-react'
 import { toast } from 'sonner'
+import Rive from '@rive-app/react-canvas'
 
 interface UserSwitchScreenProps {
   open: boolean
@@ -43,7 +51,7 @@ type Step = 'select' | 'pin' | 'locked' | 'unlock-email'
 
 const BLUE = '#38BDF8'
 
-export function UserSwitchScreen({ open, onOpenChange, onSuccess }: UserSwitchScreenProps) {
+export default function UserSwitchScreen({ open, onOpenChange, onSuccess }: UserSwitchScreenProps) {
   const [step, setStep] = useState<Step>('select')
   const [cashiers, setCashiers] = useState<AppUserRow[]>([])
   const [selected, setSelected] = useState<AppUserRow | null>(null)
@@ -52,6 +60,7 @@ export function UserSwitchScreen({ open, onOpenChange, onSuccess }: UserSwitchSc
   const [loadingCashiers, setLoadingCashiers] = useState(true)
   const [error, setError] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+  const [riveKey, setRiveKey] = useState(0)
 
   // Lockout state
   const [lockType, setLockType] = useState<'soft' | 'hard'>('soft')
@@ -110,11 +119,14 @@ export function UserSwitchScreen({ open, onOpenChange, onSuccess }: UserSwitchSc
     }
   }
 
-  const handleSelectCashier = (cashier: AppUserRow) => {
-    setSelected(cashier)
-    setPin('')
-    setError('')
-    setStep('pin')
+  const handleSelectCashier = (cashierId: string) => {
+    const cashier = cashiers.find(c => c.id === cashierId)
+    if (cashier) {
+      setSelected(cashier)
+      setPin('')
+      setError('')
+      setStep('pin')
+    }
   }
 
   const handlePinInput = (digit: string) => {
@@ -144,6 +156,7 @@ export function UserSwitchScreen({ open, onOpenChange, onSuccess }: UserSwitchSc
           avatarUrl: result.user.avatarUrl,
           role: result.user.role,
           permissions: result.user.permissions,
+          active: result.user.active,
         }
         onSuccess(appUser)
         onOpenChange(false)
@@ -204,21 +217,32 @@ export function UserSwitchScreen({ open, onOpenChange, onSuccess }: UserSwitchSc
     return m > 0 ? `${m}:${sec.toString().padStart(2, '0')}` : `${sec}s`
   }
 
+  const handleRiveError = () => setRiveKey((k) => k + 1)
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-sm rounded-2xl p-0 overflow-hidden">
+      <DialogContent className="sm:max-w-md rounded-2xl p-0 overflow-hidden">
 
-        {/* ─── Étape 1 : sélection du profil ─────────────────────────── */}
+        {/* ─── Animation Rive ───────────────────────────────────── */}
+        <div className="w-48 h-48 mx-auto -mb-4 -mt-2">
+          <Rive
+            key={riveKey}
+            src="/animations/pin-animation.riv"
+            onError={handleRiveError}
+          />
+        </div>
+
+        {/* ─── Étape 1 : sélection du profil (Select) ─────────────────── */}
         {step === 'select' && (
           <>
-            <DialogHeader className="px-6 pt-6 pb-4">
-              <DialogTitle className="text-lg font-bold">Changer d'utilisateur</DialogTitle>
-              <DialogDescription className="text-sm text-gray-500">
+            <DialogHeader className="px-6 pt-2 pb-4">
+              <DialogTitle className="text-lg font-bold text-center">Qui êtes-vous ?</DialogTitle>
+              <DialogDescription className="text-sm text-gray-500 text-center">
                 Sélectionnez votre profil pour continuer.
               </DialogDescription>
             </DialogHeader>
 
-            <div className="px-6 pb-6 space-y-2 max-h-80 overflow-y-auto">
+            <div className="px-6 pb-6">
               {loadingCashiers ? (
                 <div className="flex justify-center py-8">
                   <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
@@ -229,64 +253,73 @@ export function UserSwitchScreen({ open, onOpenChange, onSuccess }: UserSwitchSc
                   L'administrateur doit d'abord créer des profils caissiers.
                 </p>
               ) : (
-                cashiers.map((cashier) => (
-                  <button
-                    key={cashier.id}
-                    onClick={() => handleSelectCashier(cashier)}
-                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-zinc-800 transition-colors text-left border border-transparent hover:border-gray-100 dark:hover:border-zinc-700"
-                  >
-                    <Avatar className="h-10 w-10 shrink-0">
-                      {cashier.avatarUrl && <AvatarImage src={cashier.avatarUrl} />}
-                      <AvatarFallback
-                        className="text-sm font-bold text-white"
-                        style={{ background: 'linear-gradient(135deg, #38BDF8, #0EA5E9)' }}
-                      >
-                        {initials(cashier.name)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm text-gray-800 dark:text-gray-100 truncate">
-                        {cashier.name}
-                      </p>
-                      {cashier.phone && (
-                        <p className="text-xs text-gray-400 truncate">{cashier.phone}</p>
-                      )}
-                    </div>
-                  </button>
-                ))
+                <Select onValueChange={handleSelectCashier}>
+                  <SelectTrigger className="rounded-xl h-12 px-4 border-gray-200 dark:border-zinc-700">
+                    <SelectValue placeholder="Choisissez votre profil" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-xl">
+                    {cashiers.map((cashier) => (
+                      <SelectItem key={cashier.id} value={cashier.id} className="py-2.5">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-7 w-7 shrink-0">
+                            {cashier.avatarUrl && <AvatarImage src={cashier.avatarUrl} />}
+                            <AvatarFallback
+                              className="text-xs font-bold text-white"
+                              style={{ background: 'linear-gradient(135deg, #38BDF8, #0EA5E9)' }}
+                            >
+                              {initials(cashier.name)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="text-sm font-medium">{cashier.name}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
             </div>
           </>
         )}
 
         {/* ─── Étape 2 : pavé PIN ─────────────────────────────────────── */}
-        {step === 'pin' && (
+        {step === 'pin' && selected && (
           <>
-            <DialogHeader className="px-6 pt-6 pb-2">
-              <div className="flex items-center gap-2 mb-1">
+            <DialogHeader className="px-6 pt-2 pb-2">
+              <div className="flex items-center justify-between gap-2 mb-1">
                 <button
                   onClick={() => { setStep('select'); setPin(''); setError('') }}
                   className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
                 >
                   <ArrowLeft className="w-4 h-4 text-gray-500" />
                 </button>
-                <DialogTitle className="text-lg font-bold">Entrez votre PIN</DialogTitle>
+                <DialogTitle className="text-lg font-bold">
+                  Bonjour, {selected.name.split(' ')[0]} !
+                </DialogTitle>
+                <div className="w-8" />
               </div>
-              {selected && (
-                <div className="flex items-center gap-2 mt-2">
-                  <Avatar className="h-8 w-8 shrink-0">
-                    {selected.avatarUrl && <AvatarImage src={selected.avatarUrl} />}
-                    <AvatarFallback
-                      className="text-xs font-bold text-white"
-                      style={{ background: 'linear-gradient(135deg, #38BDF8, #0EA5E9)' }}
-                    >
-                      {initials(selected.name)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <span className="font-semibold text-sm">{selected.name}</span>
-                </div>
-              )}
+              <DialogDescription className="text-sm text-gray-500 text-center">
+                Entrez votre code PIN
+              </DialogDescription>
             </DialogHeader>
+
+            {/* ─── Select affiché en lecture seule ─────────────────────── */}
+            <div className="px-6 pb-2">
+              <div className="flex items-center gap-3 px-4 py-2 rounded-xl border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800/50">
+                <Avatar className="h-8 w-8 shrink-0">
+                  {selected.avatarUrl && <AvatarImage src={selected.avatarUrl} />}
+                  <AvatarFallback
+                    className="text-xs font-bold text-white"
+                    style={{ background: 'linear-gradient(135deg, #38BDF8, #0EA5E9)' }}
+                  >
+                    {initials(selected.name)}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="font-medium text-sm text-gray-700 dark:text-gray-300 flex-1">
+                  {selected.name}
+                </span>
+                <User className="w-4 h-4 text-gray-400" />
+              </div>
+            </div>
 
             <div className="px-6 pb-6">
               <div className="flex justify-center gap-3 my-6">
@@ -352,12 +385,21 @@ export function UserSwitchScreen({ open, onOpenChange, onSuccess }: UserSwitchSc
                   {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'OK'}
                 </Button>
               </div>
+
+              <button
+                onClick={() => {
+                  toast.info('Demandez à l\'administrateur de réinitialiser votre PIN')
+                }}
+                className="w-full text-center text-xs text-gray-400 hover:text-gray-600 mt-4 underline"
+              >
+                PIN oublié ?
+              </button>
             </div>
           </>
         )}
 
-        {/* ─── Étape 3 : compte bloqué (soft ou hard lock) ───────────── */}
-        {step === 'locked' && (
+        {/* ─── Étape 3 : compte bloqué ───────────────────────────────── */}
+        {step === 'locked' && selected && (
           <>
             <DialogHeader className="px-6 pt-6 pb-2">
               <DialogTitle className="text-lg font-bold flex items-center gap-2">
@@ -367,20 +409,18 @@ export function UserSwitchScreen({ open, onOpenChange, onSuccess }: UserSwitchSc
             </DialogHeader>
 
             <div className="px-6 pb-6 flex flex-col items-center text-center gap-3">
-              {selected && (
-                <div className="flex items-center gap-2 mb-1">
-                  <Avatar className="h-8 w-8 shrink-0">
-                    {selected.avatarUrl && <AvatarImage src={selected.avatarUrl} />}
-                    <AvatarFallback
-                      className="text-xs font-bold text-white"
-                      style={{ background: 'linear-gradient(135deg, #38BDF8, #0EA5E9)' }}
-                    >
-                      {initials(selected.name)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <span className="font-semibold text-sm">{selected.name}</span>
-                </div>
-              )}
+              <div className="flex items-center gap-2 mb-1">
+                <Avatar className="h-8 w-8 shrink-0">
+                  {selected.avatarUrl && <AvatarImage src={selected.avatarUrl} />}
+                  <AvatarFallback
+                    className="text-xs font-bold text-white"
+                    style={{ background: 'linear-gradient(135deg, #38BDF8, #0EA5E9)' }}
+                  >
+                    {initials(selected.name)}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="font-semibold text-sm">{selected.name}</span>
+              </div>
 
               <p className="text-sm text-gray-500">
                 Trop de tentatives incorrectes. Réessayez dans{' '}
@@ -418,8 +458,8 @@ export function UserSwitchScreen({ open, onOpenChange, onSuccess }: UserSwitchSc
           </>
         )}
 
-        {/* ─── Étape 4 : déblocage via code reçu par email ───────────── */}
-        {step === 'unlock-email' && (
+        {/* ─── Étape 4 : déblocage via code email ─────────────────────── */}
+        {step === 'unlock-email' && selected && (
           <>
             <DialogHeader className="px-6 pt-6 pb-2">
               <div className="flex items-center gap-2 mb-1">

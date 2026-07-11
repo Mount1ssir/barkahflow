@@ -4,6 +4,7 @@ import { Guard } from '@/components/rbac/Guard'
 import { PERMISSIONS } from '@/lib/rbac'
 import { useTranslation } from 'react-i18next'
 import Link from 'next/link'
+import { useUserContext } from '@/context/UserContext'
 import { 
   ChevronRight, 
   TrendingUp, 
@@ -16,6 +17,27 @@ import {
 
 function ReportsContent() {
   const { t } = useTranslation()
+  const { can } = useUserContext()
+  
+  // ─── Vérification des permissions ──────────────────────────────
+  const canView = can(PERMISSIONS.FINANCE_REPORTS)
+  
+  // ─── Si l'utilisateur n'a pas la permission ─────────────────────
+  if (!canView) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center max-w-7xl mx-auto">
+        <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-zinc-800 flex items-center justify-center mb-4">
+          <TrendingUp className="w-8 h-8 text-gray-300 dark:text-zinc-600" />
+        </div>
+        <p className="font-semibold text-gray-700 dark:text-gray-300">
+          Accès limité aux rapports
+        </p>
+        <p className="text-sm text-gray-400 mt-1 max-w-md">
+          Vous n'avez pas la permission de voir les rapports.
+        </p>
+      </div>
+    )
+  }
 
   const reportCategories = [
     {
@@ -133,7 +155,7 @@ function ReportsContent() {
 
 export default function ReportsPage() {
   return (
-    <Guard permission={PERMISSIONS.VIEW_REPORTS} redirectTo="/dashboard">
+    <Guard permission={PERMISSIONS.FINANCE_REPORTS} redirectTo="/dashboard">
       <ReportsContent />
     </Guard>
   )

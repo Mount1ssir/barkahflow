@@ -7,6 +7,7 @@ import { ShimmerButton } from "@/components/ui/shimmer-button";
 import { useTranslation } from "react-i18next";
 import { initI18n } from "@/lib/i18n/config";
 import "@/lib/i18n/config";
+import ShapeGrid from "@/components/ShapeGrid"; // ✅ Import du composant installé
 
 const slides = [
   {
@@ -34,9 +35,8 @@ const langs = [
 ];
 
 // ─── Couleurs ──────────────────────────────────────────────────────
-const BLUE = "#38BDF8"; // Bleu ciel principal
-const BLUE_LIGHT = "#E0F2FE"; // Fond très clair
-const BLUE_DARK = "#0284C7"; // Pour les hover / accents
+const BLUE = "#38BDF8";
+const BLUE_SOFT = "#7DD3FC";
 
 type AuthState = "checking" | "needs-login";
 
@@ -130,7 +130,6 @@ export default function LoginPage() {
       return;
     }
 
-    // Session valide : on va directement au dashboard, plus d'étape PIN/biométrie
     window.location.href = "/dashboard";
   };
 
@@ -210,14 +209,28 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* RIGHT — Auth Panel */}
-      <div className="w-full md:w-[480px] flex flex-col relative bg-background">
+      {/* RIGHT — Auth Panel avec ShapeGrid en fond */}
+      <div className="w-full md:w-[480px] flex flex-col relative bg-white/60 backdrop-blur-sm overflow-hidden">
+        {/* ─── ShapeGrid Background ────────────────────────────────── */}
+        <div className="absolute inset-0 z-0">
+          <ShapeGrid
+            speed={0.42}
+            squareSize={28}
+            direction="diagonal"
+            borderColor="#32587b"
+            hoverFillColor="#0e363c"
+            shape="hexagon"
+            hoverTrailAmount={0}
+            className="w-full h-full"
+          />
+        </div>
+
         {/* Lang button */}
         <div className="absolute top-5 right-5 z-10">
           <button
             onClick={cycleLang}
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold
-                       transition-all duration-200 hover:bg-muted border border-border bg-background"
+                       transition-all duration-200 hover:bg-muted border border-gray-200 bg-white/80"
           >
             <img
               src={lang.flag}
@@ -228,7 +241,7 @@ export default function LoginPage() {
           </button>
         </div>
 
-        <div className="flex-1 flex flex-col items-center justify-center px-12 gap-6">
+        <div className="flex-1 flex flex-col items-center justify-center px-12 gap-6 relative z-10">
           {/* Logo */}
           <div
             className={`flex flex-col items-center gap-4 transition-all duration-700 ease-out ${isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}
@@ -304,7 +317,7 @@ export default function LoginPage() {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-center gap-2 pb-6">
+        <div className="flex items-center justify-center gap-2 pb-6 relative z-10">
           <p className="text-xs text-muted-foreground">© BarkahFlow 2026</p>
           <span className="text-border">•</span>
           <p className="text-xs text-muted-foreground">

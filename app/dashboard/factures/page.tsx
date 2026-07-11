@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { usePermission } from '@/components/rbac/usePermission'
 import { PERMISSIONS } from '@/lib/rbac'
+import { Guard } from '@/components/rbac/Guard'
 import { useUserContext } from '@/context/UserContext'
 import { useTranslation } from 'react-i18next'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -178,10 +179,35 @@ function Pagination({ currentPage, totalPages, totalItems, pageSize, onPageChang
 }
 
 // ─── Page principale ─────────────────────────────────────────────
-export default function InvoicesPage() {
+function InvoicesContent() {
   const { t } = useTranslation()
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { can } = useUserContext()
+
+  // ─── Vérification des permissions Factures ──────────────────────
+  const canView = can(PERMISSIONS.INVOICES_VIEW)
+  const canAdd = can(PERMISSIONS.INVOICES_ADD)
+  const canEdit = can(PERMISSIONS.INVOICES_EDIT)
+  const canDelete = can(PERMISSIONS.INVOICES_DELETE)
+  const canExport = can(PERMISSIONS.INVOICES_EXPORT)
+
+  // ─── Si l'utilisateur n'a ni "Voir" ni "Ajouter" ────────────────
+  if (!canView && !canAdd) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center max-w-7xl mx-auto">
+        <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-zinc-800 flex items-center justify-center mb-4">
+          <FileText className="w-8 h-8 text-gray-300 dark:text-zinc-600" />
+        </div>
+        <p className="font-semibold text-gray-700 dark:text-gray-300">
+          Accès limité aux factures
+        </p>
+        <p className="text-sm text-gray-400 mt-1 max-w-md">
+          Vous n'avez pas les permissions nécessaires pour accéder aux factures.
+        </p>
+      </div>
+    )
+  }
 
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [pendingDebt, setPendingDebt] = useState(0)
@@ -192,11 +218,6 @@ export default function InvoicesPage() {
   const [deleteTarget, setDeleteTarget] = useState<Invoice | null>(null)
   const [isLoaded, setIsLoaded] = useState(false)
   const pageSize = 5
-
-  // RBAC
-  const canVoidInvoices = usePermission(PERMISSIONS.CAN_VOID_INVOICES)
-  const canViewAll = usePermission(PERMISSIONS.VIEW_ALL_INVOICES)
-  const { currentUser } = useUserContext()
 
   const urlStatus = searchParams.get('status') || ''
   const urlDateFrom = searchParams.get('dateFrom') || ''
@@ -234,11 +255,15 @@ export default function InvoicesPage() {
   // ✅ Export CSV
   useEffect(() => {
     const handleExport = () => {
-      exportAllCSV()
+      if (canExport) {
+        exportAllCSV()
+      } else {
+        toast.warning('Vous n\'avez pas la permission d\'exporter')
+      }
     }
     window.addEventListener('barkahflow:export', handleExport)
     return () => window.removeEventListener('barkahflow:export', handleExport)
-  }, [])
+  }, [canExport])
 
   // ✅ Rafraîchissement après suppression
   useEffect(() => {
@@ -264,7 +289,6 @@ export default function InvoicesPage() {
 
   const filteredData = useMemo(() => {
     let data = invoices
-    // ✅ La recherche conserve les tirets – le terme vient directement de l'événement
     if (search.trim()) {
       const q = search.toLowerCase()
       data = data.filter(
@@ -330,10 +354,22 @@ export default function InvoicesPage() {
   const isAllSelected = paginatedData.length > 0 && paginatedData.every((inv) => selectedIds.includes(inv.id))
 
   // ─── Actions ──────────────────────────────────────────────────
-  const handleView = (invoice: Invoice) => router.push(`/dashboard/factures/${invoice.id}`)
-  const handleEdit = (id: string) => router.push(`/dashboard/factures/${id}/edit`)
+  const handleView = (invoice: Invoice) => {
+    if (canView) {
+      router.push(`/dashboard/factures/${invoice.id}`)
+    }
+  }
+  const handleEdit = (id: string) => {
+    if (canEdit) {
+      router.push(`/dashboard/factures/${id}/edit`)
+    }
+  }
 
   const handleDeleteSelected = async () => {
+    if (!canDelete) {
+      toast.warning('Vous n\'avez pas la permission de supprimer')
+      return
+    }
     if (selectedIds.length === 0) return
     try {
       await Promise.all(selectedIds.map((id) => deleteInvoice(id)))
@@ -346,7 +382,7 @@ export default function InvoicesPage() {
   }
 
   const handleDelete = async () => {
-    if (!deleteTarget) return
+    if (!deleteTarget || !canDelete) return
     try {
       await deleteInvoice(deleteTarget.id)
       toast.success(`Facture ${deleteTarget.invoiceNumber} supprimée`)
@@ -358,6 +394,10 @@ export default function InvoicesPage() {
   }
 
   const exportAllCSV = () => {
+    if (!canExport) {
+      toast.warning('Vous n\'avez pas la permission d\'exporter')
+      return
+    }
     const headers = ['N° facture', 'Client', 'Date', 'Échéance', 'Statut', 'Total HT', 'Total TTC']
     const rows = filteredData.map((inv) => [
       inv.invoiceNumber,
@@ -375,9 +415,14 @@ export default function InvoicesPage() {
     link.download = `factures_${new Date().toISOString().slice(0, 10)}.csv`
     link.click()
     URL.revokeObjectURL(link.href)
+    toast.success('Export terminé')
   }
 
   const exportSelected = () => {
+    if (!canExport) {
+      toast.warning('Vous n\'avez pas la permission d\'exporter')
+      return
+    }
     const selectedInvoices = invoices.filter((inv) => selectedIds.includes(inv.id))
     if (selectedInvoices.length === 0) return
     const headers = ['N° facture', 'Client', 'Date', 'Échéance', 'Statut', 'Total HT', 'Total TTC']
@@ -397,6 +442,7 @@ export default function InvoicesPage() {
     link.download = `factures_selection_${new Date().toISOString().slice(0, 10)}.csv`
     link.click()
     URL.revokeObjectURL(link.href)
+    toast.success('Export terminé')
   }
 
   const isWalkInClient = (clientName: string | null, clientId: string | null): boolean => {
@@ -441,57 +487,86 @@ export default function InvoicesPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {kpiData.map((kpi, index) => (
-          <KpiCard key={kpi.label} label={kpi.label} value={kpi.value} icon={kpi.icon} iconBg={kpi.iconBg} iconColor={kpi.iconColor} progress={kpi.progress} barColor={kpi.barColor} delay={index * 100} isLoaded={isLoaded} />
-        ))}
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-gray-900 p-4 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
-        <div className="flex flex-wrap items-center gap-3 flex-1">
-          <div className="relative flex-1 min-w-[180px] max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input placeholder={t('invoices.search', 'Rechercher...')} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 rounded-xl bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 h-10" />
-          </div>
-          <div className="relative">
-            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="pl-9 rounded-xl bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 h-10 w-48" />
-          </div>
-          {dateFilter && (
-            <Button variant="ghost" size="sm" onClick={() => setDateFilter('')} className="text-gray-400 hover:text-gray-600">
-              ✕ Effacer
-            </Button>
-          )}
+      {/* ─── KPI ────────────────────────────────────────────────────── */}
+      {/* Les KPI sont visibles uniquement si l'utilisateur a "Voir" */}
+      {canView && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {kpiData.map((kpi, index) => (
+            <KpiCard key={kpi.label} label={kpi.label} value={kpi.value} icon={kpi.icon} iconBg={kpi.iconBg} iconColor={kpi.iconColor} progress={kpi.progress} barColor={kpi.barColor} delay={index * 100} isLoaded={isLoaded} />
+          ))}
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full">{totalItems}</span>
-          {selectedIds.length > 0 && (
-            <>
+      )}
+
+      {/* ─── Toolbar ────────────────────────────────────────────────── */}
+      {/* La toolbar est visible uniquement si l'utilisateur a "Voir" */}
+      {canView && (
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-gray-900 p-4 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
+          <div className="flex flex-wrap items-center gap-3 flex-1">
+            <div className="relative flex-1 min-w-[180px] max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input placeholder={t('invoices.search', 'Rechercher...')} value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 rounded-xl bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 h-10" />
+            </div>
+            <div className="relative">
+              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input type="date" value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="pl-9 rounded-xl bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 h-10 w-48" />
+            </div>
+            {dateFilter && (
+              <Button variant="ghost" size="sm" onClick={() => setDateFilter('')} className="text-gray-400 hover:text-gray-600">
+                ✕ Effacer
+              </Button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full">{totalItems}</span>
+            {selectedIds.length > 0 && canDelete && (
               <Button variant="outline" size="sm" className="gap-2 rounded-xl h-9 border-red-200 text-red-600 hover:bg-red-50" onClick={handleDeleteSelected}>
                 <Trash2 className="h-4 w-4" /> Supprimer ({selectedIds.length})
               </Button>
+            )}
+            {selectedIds.length > 0 && canExport && (
               <Button variant="outline" size="sm" className="gap-2 rounded-xl h-9 border-gray-200" onClick={exportSelected}>
                 <Download className="h-4 w-4" /> Exporter sélection
               </Button>
-            </>
-          )}
-          <Button variant="outline" className="gap-2 rounded-xl h-10 border-gray-200" onClick={exportAllCSV}>
-            <Download className="h-4 w-4" /> {t('invoices.export', 'Exporter')}
-          </Button>
-          <Button className="gap-2 rounded-xl h-10 text-white font-semibold shadow-sm hover:shadow-md transition-all" style={{ backgroundColor: PRIMARY }} onClick={() => router.push('/dashboard/caisse')}>
-            <Plus className="h-4 w-4" /> {t('invoices.new', 'Nouvelle facture')}
-          </Button>
+            )}
+            {canExport && (
+              <Button variant="outline" className="gap-2 rounded-xl h-10 border-gray-200" onClick={exportAllCSV}>
+                <Download className="h-4 w-4" /> {t('invoices.export', 'Exporter')}
+              </Button>
+            )}
+            {canAdd && (
+              <Button className="gap-2 rounded-xl h-10 text-white font-semibold shadow-sm hover:shadow-md transition-all" style={{ backgroundColor: PRIMARY }} onClick={() => router.push('/dashboard/caisse')}>
+                <Plus className="h-4 w-4" /> {t('invoices.new', 'Nouvelle facture')}
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
+      {/* ─── Table ───────────────────────────────────────────────────── */}
       <Card className="rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
         <CardContent className="p-0">
           {loading ? (
             <div className="p-4 space-y-2">{Array(3).fill(0).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
+          ) : !canView ? (
+            // Si l'utilisateur n'a pas "Voir" mais a "Ajouter"
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <FileText className="h-12 w-12 text-gray-300 mb-2" />
+              <p className="text-sm text-gray-500">Vous n'avez pas la permission de voir les factures.</p>
+              {canAdd && (
+                <Button className="gap-2 rounded-xl h-10 text-white font-semibold mt-4" style={{ backgroundColor: PRIMARY }} onClick={() => router.push('/dashboard/caisse')}>
+                  <Plus className="h-4 w-4" /> Nouvelle facture
+                </Button>
+              )}
+            </div>
           ) : paginatedData.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <FileText className="h-12 w-12 text-gray-300 mb-2" />
               <p className="text-sm text-gray-500">{t('invoices.no_data', 'Aucune facture')}</p>
+              {canAdd && (
+                <Button className="gap-2 rounded-xl h-10 text-white font-semibold mt-4" style={{ backgroundColor: PRIMARY }} onClick={() => router.push('/dashboard/caisse')}>
+                  <Plus className="h-4 w-4" /> Nouvelle facture
+                </Button>
+              )}
             </div>
           ) : (
             <>
@@ -554,10 +629,24 @@ export default function InvoicesPage() {
                               <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full"><MoreHorizontal className="h-4 w-4" /></Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" className="rounded-xl">
-                              <DropdownMenuItem onClick={() => handleView(inv)} className="gap-2"><Eye className="h-4 w-4" /> {t('common.view', 'Voir')}</DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleEdit(inv.id)} className="gap-2"><Pencil className="h-4 w-4" /> {t('common.edit', 'Modifier')}</DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => setDeleteTarget(inv)} className="gap-2 text-red-500"><Trash2 className="h-4 w-4" /> {t('common.delete', 'Supprimer')}</DropdownMenuItem>
+                              {canView && (
+                                <DropdownMenuItem onClick={() => handleView(inv)} className="gap-2">
+                                  <Eye className="h-4 w-4" /> {t('common.view', 'Voir')}
+                                </DropdownMenuItem>
+                              )}
+                              {canEdit && (
+                                <DropdownMenuItem onClick={() => handleEdit(inv.id)} className="gap-2">
+                                  <Pencil className="h-4 w-4" /> {t('common.edit', 'Modifier')}
+                                </DropdownMenuItem>
+                              )}
+                              {canDelete && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem onClick={() => setDeleteTarget(inv)} className="gap-2 text-red-500">
+                                    <Trash2 className="h-4 w-4" /> {t('common.delete', 'Supprimer')}
+                                  </DropdownMenuItem>
+                                </>
+                              )}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
@@ -589,5 +678,13 @@ export default function InvoicesPage() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  )
+}
+
+export default function InvoicesPage() {
+  return (
+    <Guard permission={PERMISSIONS.INVOICES_ACCESS} redirectTo="/dashboard">
+      <InvoicesContent />
+    </Guard>
   )
 }

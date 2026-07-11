@@ -71,6 +71,7 @@ import {
 import { formatMAD } from '@/lib/stats-data'
 import { recordPaymentForClient } from '@/lib/client-data'
 import { getActiveDebtsByClient, type DebtWithInvoice } from '@/lib/debt-ledger'
+import { useUserContext } from '@/context/UserContext'
 
 import {
   ResponsiveContainer,
@@ -177,6 +178,27 @@ function Pagination({ currentPage, totalPages, totalItems, pageSize, onPageChang
 function DebtManagementContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { can } = useUserContext()
+  
+  // ─── Vérification des permissions ──────────────────────────────
+  const canView = can(PERMISSIONS.FINANCE_DEBTS)
+  
+  // ─── Si l'utilisateur n'a pas la permission ─────────────────────
+  if (!canView) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center max-w-7xl mx-auto">
+        <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-zinc-800 flex items-center justify-center mb-4">
+          <DollarSign className="w-8 h-8 text-gray-300 dark:text-zinc-600" />
+        </div>
+        <p className="font-semibold text-gray-700 dark:text-gray-300">
+          Accès limité aux dettes
+        </p>
+        <p className="text-sm text-gray-400 mt-1 max-w-md">
+          Vous n'avez pas la permission de voir les dettes.
+        </p>
+      </div>
+    )
+  }
 
   const [loading, setLoading] = useState(true)
   const [summary, setSummary] = useState<DebtSummary | null>(null)
@@ -201,7 +223,6 @@ function DebtManagementContent() {
   const [debtsList, setDebtsList] = useState<DebtWithInvoice[]>([])
 
   useEffect(() => {
-    // Lire le filtre client depuis l'URL (?client=ID)
     const clientFilter = searchParams.get('client')
     if (clientFilter) {
       setClientIdFilter(clientFilter)
@@ -209,7 +230,6 @@ function DebtManagementContent() {
     loadData()
   }, [])
 
-  // Mettre à jour le nom du client filtré une fois les clients chargés
   useEffect(() => {
     if (clientIdFilter && clients.length > 0) {
       const found = clients.find(c => c.clientId === clientIdFilter)
@@ -725,10 +745,10 @@ function DebtManagementContent() {
   )
 }
 
-// ─── Export default avec Suspense (obligatoire pour useSearchParams) ─
+// ─── Export default avec Suspense ──────────────────────────────────
 export default function DebtManagementPage() {
   return (
-    <Guard permission={PERMISSIONS.VIEW_DEBTS} redirectTo="/dashboard">
+    <Guard permission={PERMISSIONS.FINANCE_DEBTS} redirectTo="/dashboard">
       <Suspense fallback={<div className="flex items-center justify-center h-96"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" /></div>}>
         <DebtManagementContent />
       </Suspense>

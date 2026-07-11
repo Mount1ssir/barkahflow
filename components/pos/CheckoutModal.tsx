@@ -236,6 +236,7 @@ export function CheckoutModal({
         unitPrice: item.product.retailPrice / 100,
       }))
 
+      // ✅ On passe le userAgent directement - checkout-process.ts utilise maintenant des paramètres liés
       const result = await processCheckout({
         cart: cartForCheckout,
         customerId: customerId === WALKIN_CLIENT_ID ? null : customerId,
@@ -245,7 +246,7 @@ export function CheckoutModal({
         poNumber: poNumber.trim() || null,
         userId: cashierId ?? null,
         ipAddress: '0.0.0.0',
-        userAgent: navigator.userAgent,
+        userAgent: navigator.userAgent, // ✅ Plus besoin d'échappement
       })
 
       onSuccess(result.invoiceId, result.invoiceNumber)

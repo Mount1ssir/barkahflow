@@ -15,10 +15,11 @@ export interface Invoice {
   total: number
   status: string
   paymentMethod: string
-  dueDate: string | null      // ajout : date limite de paiement
-  poNumber: string | null     // ajout : référence commande client
+  dueDate: string | null
+  poNumber: string | null
   createdAt: string
   updatedAt: string
+  userId: string | null // ← AJOUTÉ : l'utilisateur (caissier) qui a créé la facture
 }
 
 export interface InvoiceLine {
@@ -40,7 +41,6 @@ export interface Client {
   address: string | null
 }
 
-// Nouvelle interface pour le statut de paiement d'une facture
 export interface InvoicePaymentInfo {
   paidAmount: number
   remainingAmount: number
@@ -64,6 +64,7 @@ function mapInvoice(row: any): Invoice {
     paymentMethod: row.payment_method || 'cash',
     dueDate: row.due_date || null,
     poNumber: row.po_number || null,
+    userId: row.user_id || null, // ← AJOUTÉ
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -125,11 +126,27 @@ export async function getInvoicesByClient(clientId: string): Promise<Invoice[]> 
   return rows.map(mapInvoice)
 }
 
+// ─── NOUVELLE FONCTION : Factures par utilisateur (caissier) ────
+export async function getInvoicesByUser(userId: string, limit: number = 10): Promise<Invoice[]> {
+  const rows = await dbSelect<any>(
+    `SELECT i.*, c.full_name as client_name, c.phone as client_phone, c.email as client_email, c.address as client_address
+     FROM invoices i
+     LEFT JOIN clients c ON c.id = i.client_id
+     WHERE i.user_id = ?
+     ORDER BY i.created_at DESC
+     LIMIT ?`,
+    [userId, limit]
+  )
+  return rows.map(mapInvoice)
+}
+
+// ─── Suppression ──────────────────────────────────────────────────
 export async function deleteInvoice(invoiceId: string): Promise<void> {
   await dbExecute('DELETE FROM line_items WHERE invoice_id = ?', [invoiceId])
   await dbExecute('DELETE FROM invoices WHERE id = ?', [invoiceId])
 }
 
+// ─── Dettes ───────────────────────────────────────────────────────
 export async function getPendingDebtTotal(): Promise<number> {
   const rows = await dbSelect<{ total: number }>(
     `SELECT COALESCE(SUM(remaining_debt), 0) as total
@@ -182,7 +199,7 @@ export async function getAllClients(): Promise<Client[]> {
 // ─── Mise à jour facture ──────────────────────────────────────────
 export async function updateInvoice(
   id: string,
-  data: { clientId?: string | null; status?: string; date?: string; dueDate?: string | null; poNumber?: string | null }
+  data: { clientId?: string | null; status?: string; date?: string; dueDate?: string | null; poNumber?: string | null; userId?: string | null }
 ): Promise<void> {
   const updates: string[] = []
   const values: any[] = []
@@ -207,6 +224,10 @@ export async function updateInvoice(
     updates.push('po_number = ?')
     values.push(data.poNumber)
   }
+  if (data.userId !== undefined) {
+    updates.push('user_id = ?')
+    values.push(data.userId)
+  }
 
   if (updates.length === 0) return
 
@@ -217,8 +238,6 @@ export async function updateInvoice(
 }
 
 // ─── Calcul automatique de l'échéance ────────────────────────────
-// À utiliser à la création d'une facture : renvoie la date ISO
-// obtenue en ajoutant `days` jours à la date de création.
 export function calculateDueDate(createdAtIso: string, days: number): string {
   const date = new Date(createdAtIso)
   date.setDate(date.getDate() + days)
@@ -251,7 +270,6 @@ function convertGroupUnder1000(n: number): string {
       const dizaine = Math.floor(reste / 10)
       const unite = reste % 10
       if (dizaine === 7 || dizaine === 9) {
-        // soixante-dix, quatre-vingt-dix
         result += DIZAINES[dizaine] + '-' + DIX_A_DIX_NEUF[unite]
       } else {
         result += DIZAINES[dizaine] + (unite > 0 ? '-' + UNITES[unite] : (dizaine === 8 ? 's' : ''))
@@ -262,10 +280,6 @@ function convertGroupUnder1000(n: number): string {
   return result
 }
 
-/**
- * Convertit un montant en centimes vers son écriture en toutes lettres,
- * en dirhams marocains. Ex: 3600 (= 36.00 MAD) -> "trente-six dirhams"
- */
 export function amountToFrenchWords(amountInCentimes: number): string {
   const dirhams = Math.floor(amountInCentimes / 100)
   const centimes = amountInCentimes % 100

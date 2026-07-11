@@ -42,6 +42,7 @@ export interface AppUserRow {
   pinHash: string | null
   failedPinAttempts: number
   lockedUntil: string | null
+  lastLogin: string | null
   createdAt: string
   updatedAt: string
 }
@@ -85,6 +86,7 @@ function mapRow(row: any): AppUserRow {
     pinHash: row.pin_hash ?? null,
     failedPinAttempts: row.failed_pin_attempts ?? 0,
     lockedUntil: row.locked_until ?? null,
+    lastLogin: row.last_login ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -169,15 +171,21 @@ export async function upsertAdminFromSupabase(supabaseUser: {
 
   const id = generateId()
   const now = new Date().toISOString()
+  
+  // ✅ Pour l'admin, on met une valeur fictive dans pin_hash
+  // car la colonne a une contrainte NOT NULL dans le schéma actuel
+  const adminPinPlaceholder = 'admin_placeholder'
+  
   await dbExecute(
-    `INSERT INTO users (id, name, email, phone, role, active, permissions, avatar_url, supabase_uid, pin_hash, failed_pin_attempts, locked_until, created_at, updated_at)
-     VALUES (?, ?, ?, NULL, 'admin', 1, '[]', ?, ?, NULL, 0, NULL, ?, ?)`,
+    `INSERT INTO users (id, name, email, phone, role, active, permissions, avatar_url, supabase_uid, pin_hash, failed_pin_attempts, locked_until, last_login, created_at, updated_at)
+     VALUES (?, ?, ?, NULL, 'admin', 1, '[]', ?, ?, ?, 0, NULL, NULL, ?, ?)`,
     [
       id,
       supabaseUser.user_metadata?.full_name || supabaseUser.email || 'Admin',
       supabaseUser.email || null,
       supabaseUser.user_metadata?.avatar_url || null,
       supabaseUser.id,
+      adminPinPlaceholder,
       now,
       now,
     ]
@@ -190,6 +198,7 @@ export async function upsertAdminFromSupabase(supabaseUser: {
 export interface CreateCashierInput {
   name: string
   pin: string                        // plain-text, will be hashed
+  email?: string | null
   phone?: string | null
   avatarUrl?: string | null
   permissions?: Permission[]
@@ -209,11 +218,12 @@ export async function createCashier(input: CreateCashierInput): Promise<AppUserR
   const permissions = input.permissions ?? DEFAULT_CASHIER_PERMISSIONS
 
   await dbExecute(
-    `INSERT INTO users (id, name, email, phone, role, active, permissions, avatar_url, supabase_uid, pin_hash, failed_pin_attempts, locked_until, created_at, updated_at)
-     VALUES (?, ?, NULL, ?, 'cashier', 1, ?, ?, NULL, ?, 0, NULL, ?, ?)`,
+    `INSERT INTO users (id, name, email, phone, role, active, permissions, avatar_url, supabase_uid, pin_hash, failed_pin_attempts, locked_until, last_login, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'cashier', 1, ?, ?, NULL, ?, 0, NULL, NULL, ?, ?)`,
     [
       id,
       input.name.trim(),
+      input.email || null,
       input.phone || null,
       JSON.stringify(permissions),
       input.avatarUrl || null,
@@ -228,6 +238,7 @@ export async function createCashier(input: CreateCashierInput): Promise<AppUserR
 
 export interface UpdateCashierInput {
   name?: string
+  email?: string | null
   pin?: string | null                // if provided, update the PIN
   phone?: string | null
   avatarUrl?: string | null
@@ -247,6 +258,10 @@ export async function updateCashier(id: string, input: UpdateCashierInput): Prom
     if (!input.name.trim()) throw new Error('Le nom est requis')
     fields.push('name = ?')
     values.push(input.name.trim())
+  }
+  if (input.email !== undefined) {
+    fields.push('email = ?')
+    values.push(input.email || null)
   }
   if (input.phone !== undefined) {
     fields.push('phone = ?')
@@ -297,6 +312,28 @@ export async function deactivateCashier(id: string): Promise<void> {
   )
 }
 
+// ─── NOUVELLE FONCTION: Supprimer un caissier ──────────────────────────────
+
+export async function deleteCashier(id: string): Promise<void> {
+  const current = await getUserById(id)
+  if (!current) throw new Error('Utilisateur introuvable')
+  if (current.role === 'admin') throw new Error('Impossible de supprimer le compte admin')
+
+  await dbExecute(
+    `DELETE FROM users WHERE id = ?`,
+    [id]
+  )
+}
+
+// ─── NOUVELLE FONCTION: Mettre à jour lastLogin ─────────────────────────────
+
+export async function updateLastLogin(id: string): Promise<void> {
+  await dbExecute(
+    `UPDATE users SET last_login = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
+    [id]
+  )
+}
+
 // ─── PIN verification + lockout (per-user, DB-backed) ─────────────────────────
 
 /**
@@ -329,7 +366,7 @@ export async function verifyCashierPin(userId: string, pin: string): Promise<Ver
 
   if (inputHash === user.pinHash) {
     await dbExecute(
-      `UPDATE users SET failed_pin_attempts = 0, locked_until = NULL, updated_at = datetime('now') WHERE id = ?`,
+      `UPDATE users SET failed_pin_attempts = 0, locked_until = NULL, last_login = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
       [userId]
     )
     return { status: 'success', user }
@@ -417,4 +454,81 @@ export async function getActiveCashiers(): Promise<AppUserRow[]> {
     `SELECT * FROM users WHERE role = 'cashier' AND active = 1 ORDER BY name ASC`
   )
   return rows.map(mapRow)
+}
+
+// ─── NOUVEAU : Flux "PIN oublié" volontaire (pas seulement après hard-lock) ──
+
+/**
+ * Déclenche volontairement l'envoi du code de réinitialisation à l'admin,
+ * via le lien "PIN oublié ?" (indépendamment d'un hard-lock automatique).
+ * Réutilise le même mécanisme que sendCashierUnlockEmail.
+ */
+export async function requestCashierPinResetEmail(): Promise<boolean> {
+  return sendCashierUnlockEmail()
+}
+
+/**
+ * Vérifie le code reçu par l'admin, sans toucher au verrouillage ni au PIN.
+ * Première étape du flux "PIN oublié" volontaire — si valide, l'appelant
+ * doit ensuite proposer au caissier de définir un nouveau PIN via updateCashier.
+ */
+export async function verifyCashierResetCode(
+  code: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { data: sessionData } = await supabase.auth.getSession()
+    const accessToken = sessionData.session?.access_token
+    if (!accessToken) {
+      return { success: false, error: 'Session administrateur expirée' }
+    }
+
+    const { data, error } = await supabase.functions.invoke('verify-temp-pin', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: { pin: code },
+    })
+
+    if (error || !data?.valid) {
+      return { success: false, error: data?.error || 'Code incorrect' }
+    }
+
+    return { success: true }
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Erreur lors de la vérification' }
+  }
+}
+
+// ─── NOUVELLE FONCTION: Changer son propre PIN (self-service) ──────────────
+
+/**
+ * Permet à un caissier de changer lui-même son PIN, à condition de
+ * connaître l'ancien. Contrairement à updateCashier (réservé à l'admin,
+ * pas de vérification de l'ancien PIN), cette fonction est destinée à
+ * être appelée depuis la page "Mon profil" du caissier lui-même.
+ */
+export async function changeCashierOwnPin(
+  userId: string,
+  oldPin: string,
+  newPin: string
+): Promise<{ success: boolean; error?: string }> {
+  const user = await getUserById(userId)
+  if (!user || user.role !== 'cashier' || !user.pinHash) {
+    return { success: false, error: 'Utilisateur introuvable' }
+  }
+
+  const oldHash = await sha256(oldPin)
+  if (oldHash !== user.pinHash) {
+    return { success: false, error: 'Ancien PIN incorrect' }
+  }
+
+  if (!/^\d{4,6}$/.test(newPin)) {
+    return { success: false, error: 'Le PIN doit contenir entre 4 et 6 chiffres' }
+  }
+
+  const newHash = await sha256(newPin)
+  await dbExecute(
+    `UPDATE users SET pin_hash = ?, failed_pin_attempts = 0, locked_until = NULL, updated_at = datetime('now') WHERE id = ?`,
+    [newHash, userId]
+  )
+
+  return { success: true }
 }

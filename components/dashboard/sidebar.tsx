@@ -6,7 +6,6 @@ import { useTranslation } from 'react-i18next'
 import {
   LayoutDashboard, ShoppingCart, Package, Receipt, Users,
   Wallet, CreditCard, BadgeAlert, BarChart3, Settings, LogOut,
-  UserCog,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSidebarStore } from '@/lib/sidebar-store'
@@ -16,7 +15,7 @@ import {
 import { supabase } from '@/src/lib/supabase'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { useUserContext } from '@/context/UserContext'
-import { PERMISSIONS } from '@/lib/rbac'
+import { PERMISSIONS, hasFinanceGroupAccess } from '@/lib/rbac'
 
 export function Sidebar() {
   const pathname = usePathname()
@@ -39,24 +38,62 @@ export function Sidebar() {
   const displayName = fullName || email.split('@')[0] || 'Commerçant'
 
   // ─── Nav groups ─────────────────────────────────────────────────────────────
-  // Vente group is always visible; financial group is gated by permissions
   const venteItems = [
-    { label: t('dashboard.nav.dashboard'), href: '/dashboard', icon: LayoutDashboard },
-    { label: t('dashboard.nav.pos'), href: '/dashboard/caisse', icon: ShoppingCart },
-    { label: t('dashboard.nav.products'), href: '/dashboard/produits', icon: Package },
-    { label: t('dashboard.nav.invoices'), href: '/dashboard/factures', icon: Receipt },
-    { label: t('dashboard.nav.clients'), href: '/dashboard/clients', icon: Users },
-  ]
-
-  const financeItems = [
-    can(PERMISSIONS.VIEW_REVENUE) && { label: t('dashboard.nav.revenue'), href: '/dashboard/revenus', icon: Wallet },
-    can(PERMISSIONS.VIEW_REVENUE) && { label: t('dashboard.nav.expenses'), href: '/dashboard/depenses', icon: CreditCard },
-    can(PERMISSIONS.VIEW_DEBTS) && { label: t('dashboard.nav.debts'), href: '/dashboard/dettes', icon: BadgeAlert },
-    can(PERMISSIONS.VIEW_REPORTS) && { label: t('dashboard.nav.reports'), href: '/dashboard/rapports', icon: BarChart3 },
+    // ✅ Tableau de bord - Accessible uniquement avec DASHBOARD_ACCESS
+    can(PERMISSIONS.DASHBOARD_ACCESS) && { 
+      label: t('dashboard.nav.dashboard'), 
+      href: '/dashboard', 
+      icon: LayoutDashboard 
+    },
+    // Caisse - Accessible avec POS_ACCESS
+    can(PERMISSIONS.POS_ACCESS) && { 
+      label: t('dashboard.nav.pos'), 
+      href: '/dashboard/caisse', 
+      icon: ShoppingCart 
+    },
+    // Produits - Accessible avec PRODUCTS_ACCESS
+    can(PERMISSIONS.PRODUCTS_ACCESS) && { 
+      label: t('dashboard.nav.products'), 
+      href: '/dashboard/produits', 
+      icon: Package 
+    },
+    // Factures - Accessible avec INVOICES_ACCESS
+    can(PERMISSIONS.INVOICES_ACCESS) && { 
+      label: t('dashboard.nav.invoices'), 
+      href: '/dashboard/factures', 
+      icon: Receipt 
+    },
+    // Clients - Accessible avec CLIENTS_ACCESS
+    can(PERMISSIONS.CLIENTS_ACCESS) && { 
+      label: t('dashboard.nav.clients'), 
+      href: '/dashboard/clients', 
+      icon: Users 
+    },
   ].filter(Boolean) as { label: string; href: string; icon: any }[]
 
+  // ✅ Finances - Afficher si au moins une permission finance est accordée
+  const hasFinanceAccess = currentUser?.role === 'admin' || 
+    (currentUser?.permissions?.some(p => 
+      p === PERMISSIONS.FINANCE_REVENUE ||
+      p === PERMISSIONS.FINANCE_EXPENSES ||
+      p === PERMISSIONS.FINANCE_DEBTS ||
+      p === PERMISSIONS.FINANCE_REPORTS
+    ))
+
+  const financeItems = [
+    can(PERMISSIONS.FINANCE_REVENUE) && { label: t('dashboard.nav.revenue'), href: '/dashboard/revenus', icon: Wallet },
+    can(PERMISSIONS.FINANCE_EXPENSES) && { label: t('dashboard.nav.expenses'), href: '/dashboard/depenses', icon: CreditCard },
+    can(PERMISSIONS.FINANCE_DEBTS) && { label: t('dashboard.nav.debts'), href: '/dashboard/dettes', icon: BadgeAlert },
+    can(PERMISSIONS.FINANCE_REPORTS) && { label: t('dashboard.nav.reports'), href: '/dashboard/rapports', icon: BarChart3 },
+  ].filter(Boolean) as { label: string; href: string; icon: any }[]
+
+  // Filtrer le groupe Vente si aucun élément n'est visible
+  const filteredVenteItems = venteItems.length > 0 ? venteItems : []
+
   const navGroups = [
-    { label: t('dashboard.nav.vente'), items: venteItems },
+    ...(filteredVenteItems.length > 0
+      ? [{ label: t('dashboard.nav.vente'), items: filteredVenteItems }]
+      : []),
     ...(financeItems.length > 0
       ? [{ label: t('dashboard.nav.finances'), items: financeItems }]
       : []),
@@ -149,20 +186,12 @@ export function Sidebar() {
             </div>
           ))}
 
-          {/* Paramètres */}
-          <div className="mt-4">
-            {renderLink(
-              { label: t('dashboard.nav.settings', 'Paramètres'), href: '/dashboard/settings', icon: Settings },
-              'settings'
-            )}
-          </div>
-
-          {/* Gestion des utilisateurs — admin only */}
-          {isRole('admin') && (
-            <div className="mt-1">
+          {/* Paramètres - accessible uniquement aux admins ou avec SETTINGS_ACCESS */}
+          {(isRole('admin') || can(PERMISSIONS.SETTINGS_ACCESS)) && (
+            <div className="mt-4">
               {renderLink(
-                { label: 'Utilisateurs', href: '/dashboard/utilisateurs', icon: UserCog },
-                'utilisateurs'
+                { label: 'Paramètres', href: '/dashboard/settings', icon: Settings },
+                'settings'
               )}
             </div>
           )}

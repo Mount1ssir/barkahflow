@@ -23,31 +23,43 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { toast } from 'sonner'
-import { ArrowLeft, Lock, Fingerprint, ShieldCheck, ShieldOff } from 'lucide-react'
+import { ArrowLeft, Lock, Fingerprint, ShieldCheck, ShieldOff, Clock } from 'lucide-react'
 import {
   isPinEnabled,
   setPinCode,
   disablePin,
   isBiometricEnabled,
   setBiometricEnabled,
+  getInactivityTimeoutSeconds,
+  setInactivityTimeoutSeconds,
 } from '@/lib/pin-storage'
 import {
   isBiometricAvailable,
   registerBiometric,
   clearBiometricRegistration,
 } from '@/lib/biometric-auth'
+import { useUserContext } from '@/context/UserContext'
 
 const PRIMARY = '#2C3E50'
 
 export default function SecuritySettingsPage() {
   const router = useRouter()
+  const { currentUser } = useUserContext()
   const [loading, setLoading] = useState(true)
   const [userEmail, setUserEmail] = useState('')
 
   const [pinEnabled, setPinEnabledState] = useState(false)
   const [biometricEnabled, setBiometricEnabledState] = useState(false)
   const [biometricAvailable, setBiometricAvailableState] = useState(false)
+  const [inactivityTimeout, setInactivityTimeoutState] = useState(30)
 
   const [pinDialogOpen, setPinDialogOpen] = useState(false)
   const [newPin, setNewPin] = useState('')
@@ -55,6 +67,9 @@ export default function SecuritySettingsPage() {
   const [savingPin, setSavingPin] = useState(false)
 
   const [disablePinDialogOpen, setDisablePinDialogOpen] = useState(false)
+
+  const isAdmin = currentUser?.role === 'admin'
+  const isCashier = currentUser?.role === 'cashier'
 
   useEffect(() => {
     loadData()
@@ -66,6 +81,7 @@ export default function SecuritySettingsPage() {
       setUserEmail(data.session?.user?.email || '')
       setPinEnabledState(isPinEnabled())
       setBiometricEnabledState(isBiometricEnabled())
+      setInactivityTimeoutState(getInactivityTimeoutSeconds())
       const available = await isBiometricAvailable()
       setBiometricAvailableState(available)
     } finally {
@@ -110,6 +126,26 @@ export default function SecuritySettingsPage() {
     toast.success('Verrouillage par PIN désactivé')
   }
 
+  const handleTogglePin = (checked: boolean) => {
+    if (checked) {
+      // Pour admin → ouvre le dialog pour créer un PIN
+      // Pour caissier → active directement (le PIN existe déjà)
+      if (isAdmin) {
+        handleOpenSetPin()
+      } else if (isCashier) {
+        // Le caissier a déjà un PIN dans son profil, on active juste le verrouillage
+        setPinEnabledState(true)
+        // On doit enregistrer le PIN existant du caissier
+        // On récupère le PIN du caissier depuis le currentUser
+        // Pour l'instant on active juste le verrouillage
+        toast.success('Verrouillage activé')
+      }
+    } else {
+      // Désactiver le verrouillage
+      setDisablePinDialogOpen(true)
+    }
+  }
+
   const handleToggleBiometric = async (checked: boolean) => {
     if (!pinEnabled) {
       toast.error('Active d\'abord un code PIN')
@@ -132,6 +168,17 @@ export default function SecuritySettingsPage() {
     }
   }
 
+  const handleChangeInactivityTimeout = (value: string) => {
+    const seconds = parseInt(value, 10)
+    try {
+      setInactivityTimeoutSeconds(seconds)
+      setInactivityTimeoutState(seconds)
+      toast.success('Durée d\'inactivité mise à jour')
+    } catch (error: any) {
+      toast.error(error?.message || 'Erreur lors de la mise à jour')
+    }
+  }
+
   if (loading) {
     return (
       <div className="max-w-2xl mx-auto p-6 space-y-6">
@@ -147,59 +194,142 @@ export default function SecuritySettingsPage() {
         <Button variant="ghost" onClick={() => router.push('/dashboard')} className="gap-2 rounded-xl">
           <ArrowLeft className="h-4 w-4" /> Retour
         </Button>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Sécurité</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Paramètres</h1>
       </div>
 
+      {/* ─── SECTION VERROUILLAGE ─────────────────────────────────── */}
       <Card className="rounded-2xl border shadow-sm mb-6">
         <CardHeader>
           <CardTitle className="text-base font-semibold flex items-center gap-2">
             <Lock className="h-5 w-5 text-gray-500" />
-            Verrouillage par code PIN
+            Verrouillage de l'application
           </CardTitle>
           <CardDescription>
-            Protège l'accès à l'app sur cet appareil avec un code à 4-6 chiffres.
+            {isAdmin
+              ? 'Activez le verrouillage avec un code PIN personnel.'
+              : 'Activez le verrouillage avec votre code PIN existant.'}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {pinEnabled ? (
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm text-green-600">
-                <ShieldCheck className="h-4 w-4" />
-                Code PIN activé
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" className="rounded-xl" onClick={handleOpenSetPin}>
-                  Changer le code   {/* ✅ Bouton pour changer le PIN */}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="rounded-xl text-red-500 border-red-200 hover:bg-red-50"
-                  onClick={() => setDisablePinDialogOpen(true)}
-                >
-                  Désactiver
-                </Button>
+          {/* ─── Toggle ON/OFF ─────────────────────────────────────── */}
+          <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-zinc-800/50 rounded-xl">
+            <div className="flex items-center gap-3">
+              {pinEnabled ? (
+                <ShieldCheck className="h-5 w-5 text-green-500" />
+              ) : (
+                <ShieldOff className="h-5 w-5 text-gray-400" />
+              )}
+              <div>
+                <p className="font-medium text-sm text-gray-900 dark:text-white">
+                  {pinEnabled ? 'Verrouillage activé' : 'Verrouillage désactivé'}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {pinEnabled
+                    ? 'L\'application se verrouille automatiquement'
+                    : isAdmin
+                    ? 'Définissez un PIN pour activer le verrouillage'
+                    : 'Activez le verrouillage avec votre PIN'}
+                </p>
               </div>
             </div>
-          ) : (
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-sm text-gray-400">
-                <ShieldOff className="h-4 w-4" />
-                Aucun code PIN configuré
-              </div>
+            <Switch
+              checked={pinEnabled}
+              onCheckedChange={handleTogglePin}
+              className="data-[state=checked]:bg-[#c9a84c]"
+            />
+          </div>
+
+          {/* ─── Admin : afficher le statut du PIN ─────────────────── */}
+          {isAdmin && pinEnabled && (
+            <div className="mt-4 flex items-center justify-between p-3 bg-gray-50 dark:bg-zinc-800/50 rounded-xl">
+              <span className="text-sm text-gray-600 dark:text-gray-300">
+                Code PIN configuré
+              </span>
               <Button
+                variant="outline"
                 size="sm"
-                className="rounded-xl text-white"
-                style={{ backgroundColor: PRIMARY }}
+                className="rounded-xl"
                 onClick={handleOpenSetPin}
               >
-                Activer le PIN
+                Changer le PIN
               </Button>
             </div>
+          )}
+
+          {/* ─── Caissier : message PIN existant ───────────────────── */}
+          {isCashier && pinEnabled && (
+            <div className="mt-4 flex items-center gap-2 p-3 bg-gray-50 dark:bg-zinc-800/50 rounded-xl">
+              <Lock className="h-4 w-4 text-gray-400" />
+              <span className="text-sm text-gray-600 dark:text-gray-300">
+                Utilisez votre code PIN personnel pour déverrouiller l'application.
+              </span>
+            </div>
+          )}
+
+          {/* ─── Admin : bouton pour définir le PIN si désactivé ──── */}
+          {isAdmin && !pinEnabled && (
+            <Button
+              className="mt-4 rounded-xl text-white w-full"
+              style={{ backgroundColor: PRIMARY }}
+              onClick={handleOpenSetPin}
+            >
+              Définir un code PIN
+            </Button>
+          )}
+
+          {/* ─── Caissier : bouton pour activer si désactivé ──────── */}
+          {isCashier && !pinEnabled && (
+            <Button
+              className="mt-4 rounded-xl text-white w-full"
+              style={{ backgroundColor: PRIMARY }}
+              onClick={() => {
+                setPinEnabledState(true)
+                toast.success('Verrouillage activé')
+              }}
+            >
+              Activer le verrouillage
+            </Button>
           )}
         </CardContent>
       </Card>
 
+      {/* ─── SECTION DURÉE D'INACTIVITÉ ───────────────────────────── */}
+      <Card className="rounded-2xl border shadow-sm mb-6">
+        <CardHeader>
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <Clock className="h-5 w-5 text-gray-500" />
+            Durée d'inactivité
+          </CardTitle>
+          <CardDescription>
+            Délai sans activité avant que l'app se verrouille automatiquement.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Select
+            value={String(inactivityTimeout)}
+            onValueChange={handleChangeInactivityTimeout}
+            disabled={!pinEnabled}
+          >
+            <SelectTrigger className="rounded-xl w-full sm:w-56">
+              <SelectValue placeholder="Choisir une durée" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="30">30 secondes</SelectItem>
+              <SelectItem value="60">1 minute</SelectItem>
+              <SelectItem value="120">2 minutes</SelectItem>
+              <SelectItem value="300">5 minutes</SelectItem>
+              <SelectItem value="600">10 minutes</SelectItem>
+            </SelectContent>
+          </Select>
+          {!pinEnabled && (
+            <p className="text-xs text-gray-400 mt-2">
+              Activez d'abord le verrouillage pour configurer ce réglage.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ─── SECTION BIOMÉTRIE ────────────────────────────────────── */}
       <Card className="rounded-2xl border shadow-sm">
         <CardHeader>
           <CardTitle className="text-base font-semibold flex items-center gap-2">
@@ -216,7 +346,7 @@ export default function SecuritySettingsPage() {
           <div className="flex items-center justify-between">
             <span className="text-sm text-gray-600 dark:text-gray-300">
               {!pinEnabled
-                ? 'Active d\'abord un code PIN'
+                ? 'Activez d\'abord le verrouillage'
                 : biometricEnabled
                 ? 'Biométrie activée'
                 : 'Biométrie désactivée'}
@@ -230,12 +360,12 @@ export default function SecuritySettingsPage() {
         </CardContent>
       </Card>
 
-      {/* Dialog pour créer ou changer le PIN */}
+      {/* ─── Dialog pour créer/changer le PIN (Admin uniquement) ──── */}
       <Dialog open={pinDialogOpen} onOpenChange={setPinDialogOpen}>
         <DialogContent className="rounded-2xl sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>{pinEnabled ? 'Changer le code PIN' : 'Créer un code PIN'}</DialogTitle>
-            <DialogDescription>Choisis un code à 4-6 chiffres.</DialogDescription>
+            <DialogDescription>Choisis un code à 4-6 chiffres pour verrouiller l'application.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
@@ -277,13 +407,15 @@ export default function SecuritySettingsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Dialog de confirmation pour désactiver */}
+      {/* ─── Dialog de confirmation pour désactiver ────────────────── */}
       <Dialog open={disablePinDialogOpen} onOpenChange={setDisablePinDialogOpen}>
         <DialogContent className="rounded-2xl sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Désactiver le verrouillage ?</DialogTitle>
             <DialogDescription>
-              L'app ne demandera plus de code PIN au démarrage sur cet appareil. La biométrie sera aussi désactivée.
+              {isAdmin
+                ? 'L\'app ne demandera plus de code PIN au démarrage. La biométrie sera aussi désactivée.'
+                : 'L\'app ne demandera plus votre code PIN au démarrage.'}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

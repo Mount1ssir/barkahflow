@@ -4,11 +4,13 @@ const PIN_ATTEMPTS_KEY = 'barkahflow_pin_attempts'
 const PIN_LOCKED_UNTIL_KEY = 'barkahflow_pin_locked_until'
 const BIOMETRIC_ENABLED_KEY = 'barkahflow_biometric_enabled'
 const REMEMBERED_USER_KEY = 'barkahflow_remembered_user'
-const PIN_LENGTH_KEY = 'barkahflow_pin_length' // ✅ Ajouté
+const PIN_LENGTH_KEY = 'barkahflow_pin_length'
+const INACTIVITY_TIMEOUT_KEY = 'barkahflow_inactivity_timeout'
 
 const MAX_ATTEMPTS = 5
 const LOCKOUT_WARNING_MS = 30 * 1000      // 30 secondes
 const LOCKOUT_FINAL_MS = 5 * 60 * 1000    // 5 minutes
+const DEFAULT_INACTIVITY_SECONDS = 30
 
 // ─── Hash SHA-256 ──────────────────────────────────────────────────
 async function hashPin(pin: string): Promise<string> {
@@ -31,7 +33,6 @@ export async function setPinCode(pin: string): Promise<void> {
   }
   const hash = await hashPin(pin)
   localStorage.setItem(PIN_HASH_KEY, hash)
-  // ✅ Stocker la longueur du PIN
   localStorage.setItem(PIN_LENGTH_KEY, String(pin.length))
   resetAttempts()
 }
@@ -61,7 +62,6 @@ export async function verifyPinCode(pin: string): Promise<boolean> {
   return isCorrect
 }
 
-// ✅ NOUVEAU : Récupérer la longueur du PIN stocké
 export function getPinLength(): number {
   if (typeof window === 'undefined') return 6
   const length = localStorage.getItem(PIN_LENGTH_KEY)
@@ -69,7 +69,6 @@ export function getPinLength(): number {
     const parsed = parseInt(length, 10)
     if (parsed >= 4 && parsed <= 6) return parsed
   }
-  // Par défaut, retourner 6 (compatible avec le nouveau système)
   return 6
 }
 
@@ -154,4 +153,21 @@ export function getRememberedUser(): { name: string; avatarUrl?: string } | null
 
 export function clearRememberedUser(): void {
   localStorage.removeItem(REMEMBERED_USER_KEY)
+}
+
+// ─── Durée d'inactivité (configurable) ─────────────────────────────
+export function getInactivityTimeoutSeconds(): number {
+  if (typeof window === 'undefined') return DEFAULT_INACTIVITY_SECONDS
+  const stored = localStorage.getItem(INACTIVITY_TIMEOUT_KEY)
+  if (!stored) return DEFAULT_INACTIVITY_SECONDS
+  const parsed = parseInt(stored, 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_INACTIVITY_SECONDS
+}
+
+export function setInactivityTimeoutSeconds(seconds: number): void {
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    throw new Error('La durée doit être un nombre de secondes positif')
+  }
+  localStorage.setItem(INACTIVITY_TIMEOUT_KEY, String(seconds))
+  window.dispatchEvent(new CustomEvent('barkahflow:inactivity-timeout-changed'))
 }

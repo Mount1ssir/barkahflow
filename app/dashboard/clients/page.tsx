@@ -3,6 +3,9 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useRouter } from 'next/navigation'
+import { useUserContext } from '@/context/UserContext'
+import { PERMISSIONS } from '@/lib/rbac'
+import { Guard } from '@/components/rbac/Guard'
 import {
   Table,
   TableBody,
@@ -209,9 +212,36 @@ function Pagination({ currentPage, totalPages, totalItems, pageSize, onPageChang
 }
 
 // ─── Page principale ─────────────────────────────────────────────
-export default function ClientsPage() {
+function ClientsContent() {
   const { t }    = useTranslation()
   const router   = useRouter()
+  const { can }  = useUserContext()
+
+  // ─── Vérification des permissions Clients ──────────────────────
+  const canView = can(PERMISSIONS.CLIENTS_VIEW)
+  const canAdd = can(PERMISSIONS.CLIENTS_ADD)
+  const canEdit = can(PERMISSIONS.CLIENTS_EDIT)
+  const canDelete = can(PERMISSIONS.CLIENTS_DELETE)
+  const canExport = can(PERMISSIONS.CLIENTS_EXPORT)
+
+  // ─── Si l'utilisateur n'a ni "Voir" ni "Ajouter" ────────────────
+  if (!canView && !canAdd) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center max-w-7xl mx-auto">
+        <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-zinc-800 flex items-center justify-center mb-4">
+          <Users className="w-8 h-8 text-gray-300 dark:text-zinc-600" />
+        </div>
+        <p className="font-semibold text-gray-700 dark:text-gray-300">
+          Accès limité aux clients
+        </p>
+        <p className="text-sm text-gray-400 mt-1 max-w-md">
+          Vous n'avez pas les permissions nécessaires pour accéder aux clients.
+        </p>
+      </div>
+    )
+  }
+
+  // ─── Reste du code ──────────────────────────────────────────────
   const [clients, setClients]           = useState<Client[]>([])
   const [loading, setLoading]           = useState(true)
   const [search, setSearch]             = useState('')
@@ -254,11 +284,15 @@ export default function ClientsPage() {
   // ── Export ──
   useEffect(() => {
     const handleExport = () => {
-      exportCSV()
+      if (canExport) {
+        exportCSV()
+      } else {
+        toast.warning('Vous n\'avez pas la permission d\'exporter')
+      }
     }
     window.addEventListener('barkahflow:export', handleExport)
     return () => window.removeEventListener('barkahflow:export', handleExport)
-  }, [])
+  }, [canExport])
 
   // ── Rafraîchissement ──
   useEffect(() => {
@@ -341,11 +375,21 @@ export default function ClientsPage() {
 
   // ─── Actions ──────────────────────────────────────────────────
   const handleView = (client: Client) => {
-    router.push(`/dashboard/clients/${client.id}`)
+    if (canView) {
+      router.push(`/dashboard/clients/${client.id}`)
+    }
   }
-  const handleEdit = (id: string) => router.push(`/dashboard/clients/${id}/edit`)
+  const handleEdit = (id: string) => {
+    if (canEdit) {
+      router.push(`/dashboard/clients/${id}/edit`)
+    }
+  }
 
   const handleDeleteSelected = async () => {
+    if (!canDelete) {
+      toast.warning('Vous n\'avez pas la permission de supprimer')
+      return
+    }
     if (selectedIds.length === 0) return
     try {
       await Promise.all(selectedIds.map((id) => deleteClient(id)))
@@ -358,7 +402,7 @@ export default function ClientsPage() {
   }
 
   const handleDelete = async () => {
-    if (!deleteTarget) return
+    if (!deleteTarget || !canDelete) return
     try {
       await deleteClient(deleteTarget.id)
       toast.success(`Client ${deleteTarget.fullName} supprimé`)
@@ -371,6 +415,10 @@ export default function ClientsPage() {
 
   // ─── Export CSV ──────────────────────────────────────────────
   const exportCSV = () => {
+    if (!canExport) {
+      toast.warning('Vous n\'avez pas la permission d\'exporter')
+      return
+    }
     const headers = ['Nom', 'Téléphone', 'Email', 'Adresse', 'Dette', 'Factures', 'Score', 'Date création']
     const rows = filteredData.map((c) => [
       c.fullName,
@@ -389,6 +437,7 @@ export default function ClientsPage() {
     link.download = `clients_${new Date().toISOString().slice(0, 10)}.csv`
     link.click()
     URL.revokeObjectURL(link.href)
+    toast.success('Export terminé')
   }
 
   return (
@@ -404,90 +453,118 @@ export default function ClientsPage() {
         </p>
       </div>
 
-      {/* ─── KPI ─── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {kpiData.map((kpi, index) => (
-          <KpiCard
-            key={kpi.label}
-            label={kpi.label}
-            value={kpi.value}
-            icon={kpi.icon}
-            iconBg={kpi.iconBg}
-            iconColor={kpi.iconColor}
-            progress={kpiProgress[index].progress}
-            barColor={kpiProgress[index].barColor}
-            delay={index * 100}
-            isLoaded={isLoaded}
-          />
-        ))}
-      </div>
-
-      {/* ─── Toolbar ─── */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-gray-900 p-4 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
-        <div className="flex flex-wrap items-center gap-3 flex-1">
-          <div className="relative flex-1 min-w-[180px] max-w-sm">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input
-              placeholder={t('clients.search', 'Rechercher...')}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 rounded-xl bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 h-10"
+      {/* ─── KPI ────────────────────────────────────────────────────── */}
+      {/* Les KPI sont visibles uniquement si l'utilisateur a "Voir" */}
+      {canView && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {kpiData.map((kpi, index) => (
+            <KpiCard
+              key={kpi.label}
+              label={kpi.label}
+              value={kpi.value}
+              icon={kpi.icon}
+              iconBg={kpi.iconBg}
+              iconColor={kpi.iconColor}
+              progress={kpiProgress[index].progress}
+              barColor={kpiProgress[index].barColor}
+              delay={index * 100}
+              isLoaded={isLoaded}
             />
+          ))}
+        </div>
+      )}
+
+      {/* ─── Toolbar ────────────────────────────────────────────────── */}
+      {/* La toolbar est visible uniquement si l'utilisateur a "Voir" */}
+      {canView && (
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-gray-900 p-4 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
+          <div className="flex flex-wrap items-center gap-3 flex-1">
+            <div className="relative flex-1 min-w-[180px] max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder={t('clients.search', 'Rechercher...')}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 rounded-xl bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 h-10"
+              />
+            </div>
+
+            <Select value={debtFilter} onValueChange={setDebtFilter}>
+              <SelectTrigger className="w-40 rounded-xl h-10 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                <SelectValue placeholder="Filtre dette" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tous</SelectItem>
+                <SelectItem value="with_debt">Avec dette</SelectItem>
+                <SelectItem value="without_debt">Sans dette</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={scoreFilter} onValueChange={setScoreFilter}>
+              <SelectTrigger className="w-40 rounded-xl h-10 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                <SelectValue placeholder="Score fidélité" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Tous les scores</SelectItem>
+                <SelectItem value="vip">VIP</SelectItem>
+                <SelectItem value="fidele">Fidèle</SelectItem>
+                <SelectItem value="nouveau">Nouveau</SelectItem>
+                <SelectItem value="inactif">Inactif</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
-          <Select value={debtFilter} onValueChange={setDebtFilter}>
-            <SelectTrigger className="w-40 rounded-xl h-10 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-              <SelectValue placeholder="Filtre dette" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tous</SelectItem>
-              <SelectItem value="with_debt">Avec dette</SelectItem>
-              <SelectItem value="without_debt">Sans dette</SelectItem>
-            </SelectContent>
-          </Select>
-
-          <Select value={scoreFilter} onValueChange={setScoreFilter}>
-            <SelectTrigger className="w-40 rounded-xl h-10 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-              <SelectValue placeholder="Score fidélité" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Tous les scores</SelectItem>
-              <SelectItem value="vip">VIP</SelectItem>
-              <SelectItem value="fidele">Fidèle</SelectItem>
-              <SelectItem value="nouveau">Nouveau</SelectItem>
-              <SelectItem value="inactif">Inactif</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full">{totalItems}</span>
+            {selectedIds.length > 0 && canDelete && (
+              <Button variant="outline" size="sm"
+                className="gap-2 rounded-xl h-9 border-red-200 text-red-600 hover:bg-red-50"
+                onClick={handleDeleteSelected}>
+                <Trash2 className="h-4 w-4" /> Supprimer ({selectedIds.length})
+              </Button>
+            )}
+            {canExport && (
+              <Button variant="outline" className="gap-2 rounded-xl h-10 border-gray-200" onClick={exportCSV}>
+                <Download className="h-4 w-4" /> {t('clients.export', 'Exporter')}
+              </Button>
+            )}
+            {canAdd && (
+              <Button className="gap-2 rounded-xl h-10 text-white font-medium shadow-sm hover:shadow-md transition-all" style={{ backgroundColor: PRIMARY }}
+                onClick={() => router.push('/dashboard/clients/nouveau')}>
+                <Plus className="h-4 w-4" /> {t('clients.add', 'Ajouter client')}
+              </Button>
+            )}
+          </div>
         </div>
+      )}
 
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full">{totalItems}</span>
-          {selectedIds.length > 0 && (
-            <Button variant="outline" size="sm"
-              className="gap-2 rounded-xl h-9 border-red-200 text-red-600 hover:bg-red-50"
-              onClick={handleDeleteSelected}>
-              <Trash2 className="h-4 w-4" /> Supprimer ({selectedIds.length})
-            </Button>
-          )}
-          <Button variant="outline" className="gap-2 rounded-xl h-10 border-gray-200" onClick={exportCSV}>
-            <Download className="h-4 w-4" /> {t('clients.export', 'Exporter')}
-          </Button>
-          <Button className="gap-2 rounded-xl h-10 text-white font-medium shadow-sm hover:shadow-md transition-all" style={{ backgroundColor: PRIMARY }}
-            onClick={() => router.push('/dashboard/clients/nouveau')}>
-            <Plus className="h-4 w-4" /> {t('clients.add', 'Ajouter client')}
-          </Button>
-        </div>
-      </div>
-
-      {/* ─── Table ─── */}
+      {/* ─── Table ───────────────────────────────────────────────────── */}
       <Card className="rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm overflow-hidden">
         <CardContent className="p-0">
           {loading ? (
             <div className="p-4 space-y-2">{Array(3).fill(0).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}</div>
+          ) : !canView ? (
+            // Si l'utilisateur n'a pas "Voir" mais a "Ajouter"
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <Users className="h-12 w-12 text-gray-300 dark:text-gray-600 mb-2" />
+              <p className="text-sm text-gray-500">Vous n'avez pas la permission de voir les clients.</p>
+              {canAdd && (
+                <Button className="gap-2 rounded-xl h-10 text-white font-medium mt-4" style={{ backgroundColor: PRIMARY }}
+                  onClick={() => router.push('/dashboard/clients/nouveau')}>
+                  <Plus className="h-4 w-4" /> Ajouter un client
+                </Button>
+              )}
+            </div>
           ) : paginatedData.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <Users className="h-12 w-12 text-gray-300 dark:text-gray-600 mb-2" />
               <p className="text-sm text-gray-500">{t('clients.no_data', 'Aucun client')}</p>
+              {canAdd && (
+                <Button className="gap-2 rounded-xl h-10 text-white font-medium mt-4" style={{ backgroundColor: PRIMARY }}
+                  onClick={() => router.push('/dashboard/clients/nouveau')}>
+                  <Plus className="h-4 w-4" /> Ajouter un client
+                </Button>
+              )}
             </div>
           ) : (
             <>
@@ -542,33 +619,66 @@ export default function ClientsPage() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
-                            <button
-                              onClick={() => handleView(client)}
-                              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-                              title="Voir le client"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => handleEdit(client.id)}
-                              className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-                              title="Modifier le client"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </button>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <button className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="rounded-xl">
-                                <DropdownMenuItem onClick={() => setDeleteTarget(client)}
-                                  className="gap-2 text-red-500 focus:text-red-500">
-                                  <Trash2 className="h-4 w-4" /> Supprimer
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                            {canView && (
+                              <button
+                                onClick={() => handleView(client)}
+                                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                                title="Voir le client"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </button>
+                            )}
+                            {canEdit && (
+                              <button
+                                onClick={() => handleEdit(client.id)}
+                                className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                                title="Modifier le client"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                            )}
+                            {(canDelete || canExport) && (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <button className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="rounded-xl">
+                                  {canDelete && (
+                                    <DropdownMenuItem onClick={() => setDeleteTarget(client)}
+                                      className="gap-2 text-red-500 focus:text-red-500">
+                                      <Trash2 className="h-4 w-4" /> Supprimer
+                                    </DropdownMenuItem>
+                                  )}
+                                  {canExport && (
+                                    <DropdownMenuItem onClick={() => {
+                                      // Exporter un seul client en CSV
+                                      const headers = ['Nom', 'Téléphone', 'Email', 'Adresse', 'Dette', 'Factures', 'Score']
+                                      const row = [
+                                        client.fullName,
+                                        client.phone || '',
+                                        client.email || '',
+                                        client.address || '',
+                                        (client.debt / 100).toFixed(2),
+                                        client.invoiceCount || 0,
+                                        computeScore(client),
+                                      ]
+                                      const csv = [headers.join(','), row.join(',')].join('\n')
+                                      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+                                      const link = document.createElement('a')
+                                      link.href = URL.createObjectURL(blob)
+                                      link.download = `client_${client.fullName}_${new Date().toISOString().slice(0, 10)}.csv`
+                                      link.click()
+                                      URL.revokeObjectURL(link.href)
+                                      toast.success('Client exporté')
+                                    }} className="gap-2">
+                                      <Download className="h-4 w-4" /> Exporter
+                                    </DropdownMenuItem>
+                                  )}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -604,5 +714,13 @@ export default function ClientsPage() {
       </AlertDialog>
 
     </div>
+  )
+}
+
+export default function ClientsPage() {
+  return (
+    <Guard permission={PERMISSIONS.CLIENTS_ACCESS} redirectTo="/dashboard">
+      <ClientsContent />
+    </Guard>
   )
 }

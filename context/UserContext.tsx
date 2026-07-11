@@ -35,6 +35,7 @@ export interface AppUser {
   avatarUrl: string | null
   role: 'admin' | 'cashier'
   permissions: Permission[]
+  active: boolean  // ← AJOUTÉ
   supabaseUser?: any   // populated for admin only
 }
 
@@ -95,6 +96,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
             avatarUrl: row.avatarUrl,
             role: row.role,
             permissions: row.permissions,
+            active: row.active,  // ← AJOUTÉ
           })
         } else {
           sessionStorage.removeItem('barkahflow_active_user_id')
