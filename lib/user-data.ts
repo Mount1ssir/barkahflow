@@ -6,10 +6,26 @@
  * Roles:
  *  - admin   : linked to Supabase (pin_hash = NULL, supabase_uid = <uid>)
  *  - cashier : local-only (pin_hash = SHA-256 of PIN, no Supabase uid)
+ *
+ * PIN lockout (cashiers only):
+ *  - 3 failed attempts  → soft lock, 30 seconds
+ *  - 5 failed attempts  → hard lock, 5 minutes, AND a temp code is emailed
+ *                          to the boutique's admin address (reuses the same
+ *                          Supabase edge functions as the admin's own PIN
+ *                          reset flow). Entering that code just clears the
+ *                          lock — it does not change the cashier's PIN.
  */
 
 import { dbSelect, dbExecute } from '@/src/lib/db'
+import { supabase } from '@/src/lib/supabase'
 import { DEFAULT_CASHIER_PERMISSIONS, type Permission } from '@/lib/rbac'
+
+// ─── Lockout tuning ─────────────────────────────────────────────────────────
+
+const SOFT_LOCK_THRESHOLD = 3
+const SOFT_LOCK_SECONDS = 30
+const HARD_LOCK_THRESHOLD = 5
+const HARD_LOCK_SECONDS = 5 * 60
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -24,9 +40,16 @@ export interface AppUserRow {
   avatarUrl: string | null
   supabaseUid: string | null
   pinHash: string | null
+  failedPinAttempts: number
+  lockedUntil: string | null
   createdAt: string
   updatedAt: string
 }
+
+export type VerifyPinResult =
+  | { status: 'success'; user: AppUserRow }
+  | { status: 'invalid'; remainingAttempts: number }
+  | { status: 'locked'; type: 'soft' | 'hard'; remainingSeconds: number; emailSent?: boolean }
 
 // ─── Internal helpers ────────────────────────────────────────────────────────
 
@@ -60,16 +83,40 @@ function mapRow(row: any): AppUserRow {
     avatarUrl: row.avatar_url ?? null,
     supabaseUid: row.supabase_uid ?? null,
     pinHash: row.pin_hash ?? null,
+    failedPinAttempts: row.failed_pin_attempts ?? 0,
+    lockedUntil: row.locked_until ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
 }
 
+/**
+ * Sends a temp unlock code to the boutique's admin email, via the same
+ * edge function used by the admin's own "PIN oublié" flow. Requires an
+ * active Supabase session on this device — which there always is, since
+ * the admin's OAuth session persists regardless of which local profile
+ * (admin or cashier) is currently active in the UI.
+ *
+ * Returns true if the email call was made without throwing (best-effort —
+ * failure here should never block the lockout itself).
+ */
+async function sendCashierUnlockEmail(): Promise<boolean> {
+  try {
+    const { data: sessionData } = await supabase.auth.getSession()
+    const accessToken = sessionData.session?.access_token
+    if (!accessToken) return false
+
+    const { error } = await supabase.functions.invoke('generate-temp-pin', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+    return !error
+  } catch {
+    return false
+  }
+}
+
 // ─── Queries ─────────────────────────────────────────────────────────────────
 
-/**
- * Returns all users, ordered admin first then active cashiers, then inactive.
- */
 export async function getAllUsers(): Promise<AppUserRow[]> {
   const rows = await dbSelect<any>(
     `SELECT * FROM users ORDER BY
@@ -103,7 +150,6 @@ export async function upsertAdminFromSupabase(supabaseUser: {
 }): Promise<AppUserRow> {
   const existing = await getUserBySupabaseUid(supabaseUser.id)
   if (existing) {
-    // Update name / avatar in case they changed in Google
     await dbExecute(
       `UPDATE users SET
          name       = ?,
@@ -124,8 +170,8 @@ export async function upsertAdminFromSupabase(supabaseUser: {
   const id = generateId()
   const now = new Date().toISOString()
   await dbExecute(
-    `INSERT INTO users (id, name, email, phone, role, active, permissions, avatar_url, supabase_uid, pin_hash, created_at, updated_at)
-     VALUES (?, ?, ?, NULL, 'admin', 1, '[]', ?, ?, NULL, ?, ?)`,
+    `INSERT INTO users (id, name, email, phone, role, active, permissions, avatar_url, supabase_uid, pin_hash, failed_pin_attempts, locked_until, created_at, updated_at)
+     VALUES (?, ?, ?, NULL, 'admin', 1, '[]', ?, ?, NULL, 0, NULL, ?, ?)`,
     [
       id,
       supabaseUser.user_metadata?.full_name || supabaseUser.email || 'Admin',
@@ -163,8 +209,8 @@ export async function createCashier(input: CreateCashierInput): Promise<AppUserR
   const permissions = input.permissions ?? DEFAULT_CASHIER_PERMISSIONS
 
   await dbExecute(
-    `INSERT INTO users (id, name, email, phone, role, active, permissions, avatar_url, supabase_uid, pin_hash, created_at, updated_at)
-     VALUES (?, ?, NULL, ?, 'cashier', 1, ?, ?, NULL, ?, ?, ?)`,
+    `INSERT INTO users (id, name, email, phone, role, active, permissions, avatar_url, supabase_uid, pin_hash, failed_pin_attempts, locked_until, created_at, updated_at)
+     VALUES (?, ?, NULL, ?, 'cashier', 1, ?, ?, NULL, ?, 0, NULL, ?, ?)`,
     [
       id,
       input.name.trim(),
@@ -223,6 +269,9 @@ export async function updateCashier(id: string, input: UpdateCashierInput): Prom
     const pinHash = await sha256(input.pin)
     fields.push('pin_hash = ?')
     values.push(pinHash)
+    // Changing the PIN also clears any active lockout
+    fields.push('failed_pin_attempts = 0')
+    fields.push('locked_until = NULL')
   }
 
   if (fields.length === 0) return current
@@ -248,20 +297,116 @@ export async function deactivateCashier(id: string): Promise<void> {
   )
 }
 
-// ─── PIN verification (per-user, DB-backed) ───────────────────────────────────
+// ─── PIN verification + lockout (per-user, DB-backed) ─────────────────────────
 
 /**
- * Verifies a cashier's PIN against their stored hash in the database.
- * Returns the full user row on success, null on failure.
+ * Verifies a cashier's PIN. Handles the full lockout lifecycle:
+ *  - checks for an existing lock before even looking at the PIN
+ *  - on failure, increments the counter and applies the appropriate tier
+ *  - on success, resets the counter
  */
-export async function verifyCashierPin(userId: string, pin: string): Promise<AppUserRow | null> {
+export async function verifyCashierPin(userId: string, pin: string): Promise<VerifyPinResult> {
   const user = await getUserById(userId)
-  if (!user || !user.pinHash || !user.active) return null
+  if (!user || !user.active || !user.pinHash) {
+    return { status: 'invalid', remainingAttempts: 0 }
+  }
+
+  // Already locked?
+  if (user.lockedUntil) {
+    const lockedUntilMs = new Date(user.lockedUntil).getTime()
+    const remaining = Math.ceil((lockedUntilMs - Date.now()) / 1000)
+    if (remaining > 0) {
+      return {
+        status: 'locked',
+        type: user.failedPinAttempts >= HARD_LOCK_THRESHOLD ? 'hard' : 'soft',
+        remainingSeconds: remaining,
+      }
+    }
+    // Lock expired naturally — fall through and let this attempt count fresh
+  }
 
   const inputHash = await sha256(pin)
-  if (inputHash !== user.pinHash) return null
 
-  return user
+  if (inputHash === user.pinHash) {
+    await dbExecute(
+      `UPDATE users SET failed_pin_attempts = 0, locked_until = NULL, updated_at = datetime('now') WHERE id = ?`,
+      [userId]
+    )
+    return { status: 'success', user }
+  }
+
+  // Wrong PIN — increment and apply tier
+  const newAttempts = user.failedPinAttempts + 1
+  let lockedUntil: string | null = null
+  let lockType: 'soft' | 'hard' | null = null
+  let emailSent = false
+
+  if (newAttempts >= HARD_LOCK_THRESHOLD) {
+    lockedUntil = new Date(Date.now() + HARD_LOCK_SECONDS * 1000).toISOString()
+    lockType = 'hard'
+    emailSent = await sendCashierUnlockEmail()
+  } else if (newAttempts >= SOFT_LOCK_THRESHOLD) {
+    lockedUntil = new Date(Date.now() + SOFT_LOCK_SECONDS * 1000).toISOString()
+    lockType = 'soft'
+  }
+
+  await dbExecute(
+    `UPDATE users SET failed_pin_attempts = ?, locked_until = ?, updated_at = datetime('now') WHERE id = ?`,
+    [newAttempts, lockedUntil, userId]
+  )
+
+  if (lockType) {
+    return {
+      status: 'locked',
+      type: lockType,
+      remainingSeconds: lockType === 'hard' ? HARD_LOCK_SECONDS : SOFT_LOCK_SECONDS,
+      emailSent,
+    }
+  }
+
+  return {
+    status: 'invalid',
+    remainingAttempts: SOFT_LOCK_THRESHOLD - newAttempts,
+  }
+}
+
+/**
+ * Verifies the temp code the admin received by email and, if valid,
+ * clears the lockout on the given cashier so they can retry their own PIN.
+ * Does NOT change the cashier's pin_hash.
+ */
+export async function unlockCashierWithEmailCode(
+  userId: string,
+  code: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { data: sessionData } = await supabase.auth.getSession()
+    const accessToken = sessionData.session?.access_token
+    if (!accessToken) {
+      return { success: false, error: 'Session administrateur expirée' }
+    }
+
+    const { data, error } = await supabase.functions.invoke('verify-temp-pin', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: { pin: code },
+    })
+
+    if (error || !data?.valid) {
+      return { success: false, error: data?.error || 'Code incorrect' }
+    }
+
+    const user = await getUserById(userId)
+    if (!user) return { success: false, error: 'Utilisateur introuvable' }
+
+    await dbExecute(
+      `UPDATE users SET failed_pin_attempts = 0, locked_until = NULL, updated_at = datetime('now') WHERE id = ?`,
+      [userId]
+    )
+
+    return { success: true }
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Erreur lors de la vérification' }
+  }
 }
 
 /**

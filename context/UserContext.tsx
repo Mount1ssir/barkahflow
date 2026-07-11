@@ -11,11 +11,19 @@
  *
  * This context is the single source of truth consumed by all components
  * and permission guards. It replaces the scattered `setUser(data.user)` calls.
+ *
+ * NOTE: The admin bootstrap (Supabase session → upsertAdminFromSupabase →
+ * setCurrentUser) and the cashier restore-on-refresh logic both live in
+ * app/dashboard/layout.tsx (DashboardContent's initSession). This context
+ * only restores a LOCAL session on mount (for cases outside the dashboard
+ * layout's own effect, or a quick re-render before it runs) — it does not
+ * duplicate the Supabase bootstrap to avoid two competing init flows.
  */
 
-import { createContext, useContext, useState, useCallback, type ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
 import type { Permission } from '@/lib/rbac'
 import { hasPermission } from '@/lib/rbac'
+import { getUserById } from '@/lib/user-data'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -57,6 +65,54 @@ const UserContext = createContext<UserContextValue | null>(null)
 export function UserProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUserState] = useState<AppUser | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+
+  // ─── Restore a local session on mount ───────────────────────────────────
+  // Reads the last active user id from sessionStorage and reloads their
+  // row from SQLite. If the user was deactivated in the meantime (or the
+  // id is stale), the stored session is cleared. If nothing is stored,
+  // this is a no-op — DashboardLayout's initSession is responsible for
+  // resolving the admin from the Supabase session in that case.
+  useEffect(() => {
+    const savedId = sessionStorage.getItem('barkahflow_active_user_id')
+
+    if (!savedId) {
+      setIsLoading(false)
+      return
+    }
+
+    let cancelled = false
+
+    getUserById(savedId)
+      .then((row) => {
+        if (cancelled) return
+
+        if (row && row.active) {
+          setCurrentUserState({
+            id: row.id,
+            name: row.name,
+            email: row.email,
+            phone: row.phone,
+            avatarUrl: row.avatarUrl,
+            role: row.role,
+            permissions: row.permissions,
+          })
+        } else {
+          sessionStorage.removeItem('barkahflow_active_user_id')
+          sessionStorage.removeItem('barkahflow_active_user_role')
+        }
+      })
+      .catch(() => {
+        sessionStorage.removeItem('barkahflow_active_user_id')
+        sessionStorage.removeItem('barkahflow_active_user_role')
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const setCurrentUser = useCallback((user: AppUser | null) => {
     setCurrentUserState(user)

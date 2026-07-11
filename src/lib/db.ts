@@ -115,6 +115,8 @@ CREATE TABLE IF NOT EXISTS users (
   supabase_uid TEXT,
   email TEXT,
   phone TEXT,
+  failed_pin_attempts INTEGER NOT NULL DEFAULT 0,
+  locked_until TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -158,10 +160,10 @@ CREATE INDEX IF NOT EXISTS idx_stock_movements_created ON stock_movements(create
 const MIGRATIONS = [
   // Clients
   `ALTER TABLE clients ADD COLUMN credit_limit INTEGER DEFAULT NULL;`,
-  
+
   // Transactions
   `ALTER TABLE transactions ADD COLUMN payment_method TEXT DEFAULT 'cash';`,
-  
+
   // Reminders Queue
   `CREATE TABLE IF NOT EXISTS reminders_queue (
     id TEXT PRIMARY KEY,
@@ -174,15 +176,15 @@ const MIGRATIONS = [
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );`,
-  
+
   // Invoices
   `ALTER TABLE invoices ADD COLUMN due_date TEXT;`,
   `ALTER TABLE invoices ADD COLUMN po_number TEXT;`,
   `ALTER TABLE invoices ADD COLUMN user_id TEXT REFERENCES users(id);`,
-  
+
   // Transactions user_id
   `ALTER TABLE transactions ADD COLUMN user_id TEXT REFERENCES users(id);`,
-  
+
   // Users
   `CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
@@ -197,12 +199,12 @@ const MIGRATIONS = [
   );`,
   `ALTER TABLE users ADD COLUMN avatar_url TEXT;`,
   `ALTER TABLE users ADD COLUMN permissions TEXT DEFAULT '[]';`,
-  
+
   // Products - options
   `ALTER TABLE products ADD COLUMN show_in_pos INTEGER DEFAULT 1;`,
   `ALTER TABLE products ADD COLUMN track_stock INTEGER DEFAULT 1;`,
   `ALTER TABLE products ADD COLUMN is_favorite INTEGER DEFAULT 0;`,
-  
+
   // Notifications
   `CREATE TABLE IF NOT EXISTS dismissed_notifications (
     id TEXT PRIMARY KEY,
@@ -215,7 +217,7 @@ const MIGRATIONS = [
     read_at TEXT NOT NULL,
     UNIQUE(notification_id)
   );`,
-  
+
   // Stock Movements
   `CREATE TABLE IF NOT EXISTS stock_movements (
     id TEXT PRIMARY KEY,
@@ -225,12 +227,12 @@ const MIGRATIONS = [
     reason TEXT,
     created_at TEXT NOT NULL
   );`,
-  
+
   // ✅ AJOUT DES COLONNES MANQUANTES SUR stock_movements
   `ALTER TABLE stock_movements ADD COLUMN previous_qty INTEGER DEFAULT 0;`,
   `ALTER TABLE stock_movements ADD COLUMN new_qty INTEGER DEFAULT 0;`,
   `ALTER TABLE stock_movements ADD COLUMN user_id TEXT REFERENCES users(id);`,
-  
+
   // Index
   `CREATE INDEX IF NOT EXISTS idx_invoices_user_id ON invoices(user_id);`,
   `CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);`,
@@ -260,6 +262,10 @@ const MIGRATIONS = [
     user_agent TEXT,
     created_at TEXT NOT NULL
   );`,
+
+  // Cashier PIN lockout columns (2026-07 migration)
+  `ALTER TABLE users ADD COLUMN failed_pin_attempts INTEGER NOT NULL DEFAULT 0;`,
+  `ALTER TABLE users ADD COLUMN locked_until TEXT;`,
 ]
 
 async function runMigrations(db: any) {

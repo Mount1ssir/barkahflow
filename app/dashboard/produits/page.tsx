@@ -1,8 +1,6 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { usePermission } from '@/components/rbac/usePermission'
-import { PERMISSIONS } from '@/lib/rbac'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Plus,
@@ -217,7 +215,6 @@ export default function ProduitsPage() {
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
   const [deleteTarget, setDeleteTarget] = useState<Product | null>(null)
   const [scannerOpen, setScannerOpen] = useState(false)
-  const [scannedProduct, setScannedProduct] = useState<Product | null>(null)
   const [replenishProduct, setReplenishProduct] = useState<Product | null>(null)
   const [historyProduct, setHistoryProduct] = useState<Product | null>(null)
   const [stats, setStats] = useState<{
@@ -226,9 +223,6 @@ export default function ProduitsPage() {
     lowStock: number
     outOfStock: number
   }>({ total: 0, inStock: 0, lowStock: 0, outOfStock: 0 })
-
-  // RBAC
-  const canEditProducts = usePermission(PERMISSIONS.CAN_EDIT_PRODUCTS)
 
   const computeStats = useCallback((products: Product[]) => {
     let total = 0, inStock = 0, lowStock = 0, outOfStock = 0
@@ -392,14 +386,6 @@ export default function ProduitsPage() {
       if (stockFilter === 'stock_bas') {
         data = data.filter((p) => p.stockQty <= p.alertThreshold)
       }
-      if (scannedProduct) {
-        const scannedInList = data.find((p) => p.id === scannedProduct.id)
-        if (scannedInList) {
-          data = [scannedInList, ...data.filter((p) => p.id !== scannedProduct.id)]
-        } else {
-          data = [scannedProduct, ...data]
-        }
-      }
       setProducts(data)
       setStats(computeStats(data))
     } catch (e) {
@@ -407,7 +393,7 @@ export default function ProduitsPage() {
     } finally {
       setLoading(false)
     }
-  }, [query, categoryFilter, statusFilter, stockFilter, productIdFilter, scannedProduct, showInactive, computeStats])
+  }, [query, categoryFilter, statusFilter, stockFilter, productIdFilter, showInactive, computeStats])
 
   useEffect(() => {
     loadProducts()
@@ -466,14 +452,17 @@ export default function ProduitsPage() {
   const handleEditProduct = (product: Product) => {
     router.push(`/dashboard/produits/nouveau?id=${product.id}`)
   }
+
+  // ── Scan : affiche le produit trouvé filtré dans la liste par
+  // son nom, exactement comme s'il avait été tapé dans la barre
+  // de recherche ──────────────────────────────────────────────────
   const handleScan = async (barcode: string) => {
     try {
       const product = await findBySkuOrBarcode(barcode)
       if (product) {
-        setScannedProduct(product)
-        setQuery('')
-        toast.success(`✅ Produit scanné : ${product.nameAr}`)
-        setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 100)
+        const name = product.nameFr || product.nameAr
+        setQuery(name)
+        toast.success(`Produit trouvé : ${name}`)
       } else {
         toast.error('Aucun produit trouvé', {
           description: 'Voulez-vous l\'ajouter ?',
@@ -489,11 +478,6 @@ export default function ProduitsPage() {
       console.error(error)
       toast.error('Erreur lors du scan')
     }
-  }
-
-  const clearScannedProduct = () => {
-    setScannedProduct(null)
-    loadProducts()
   }
 
   const resetStockFilter = () => {
@@ -560,9 +544,8 @@ export default function ProduitsPage() {
                 {products.map((product) => {
                   const status = getProductStatus(product)
                   const statusInfo = statusConfig[status]
-                  const isScanned = scannedProduct?.id === product.id
                   return (
-                    <TableRow key={product.id} className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${isScanned ? 'bg-blue-50/30 dark:bg-blue-900/10' : ''}`}>
+                    <TableRow key={product.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
                       <TableCell>
                         <div className="flex items-center gap-3">
                           <div className="w-11 h-11 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center overflow-hidden flex-shrink-0">
@@ -599,30 +582,24 @@ export default function ProduitsPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        {canEditProducts ? (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full"><MoreHorizontal size={16} /></Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="rounded-xl w-48">
-                              <DropdownMenuItem onClick={() => handleEditProduct(product)} className="gap-2"><Edit size={14} /> Modifier</DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => setReplenishProduct(product)} className="gap-2"><RefreshCw size={14} /> Réapprovisionner</DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => setHistoryProduct(product)} className="gap-2"><History size={14} /> Historique</DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => handleToggle(product)} className="gap-2">
-                                {product.isActive ? <ToggleLeft size={14} /> : <ToggleRight size={14} />}
-                                {product.isActive ? 'Désactiver' : 'Activer'}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => setDeleteTarget(product)} className="gap-2 text-red-500 hover:text-red-600">
-                                <Trash2 size={14} /> Supprimer
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        ) : (
-                          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => setHistoryProduct(product)} title="Historique">
-                            <History size={16} />
-                          </Button>
-                        )}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full"><MoreHorizontal size={16} /></Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="rounded-xl w-48">
+                            <DropdownMenuItem onClick={() => handleEditProduct(product)} className="gap-2"><Edit size={14} /> Modifier</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setReplenishProduct(product)} className="gap-2"><RefreshCw size={14} /> Réapprovisionner</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setHistoryProduct(product)} className="gap-2"><History size={14} /> Historique</DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => handleToggle(product)} className="gap-2">
+                              {product.isActive ? <ToggleLeft size={14} /> : <ToggleRight size={14} />}
+                              {product.isActive ? 'Désactiver' : 'Activer'}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setDeleteTarget(product)} className="gap-2 text-red-500 hover:text-red-600">
+                              <Trash2 size={14} /> Supprimer
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </TableCell>
                     </TableRow>
                   )
@@ -639,9 +616,8 @@ export default function ProduitsPage() {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {products.map((product) => {
-          const isScanned = scannedProduct?.id === product.id
           return (
-            <Card key={product.id} className={`rounded-2xl overflow-hidden border shadow-sm hover:shadow-md transition-shadow ${isScanned ? 'border-2' : ''}`} style={isScanned ? { borderColor: GOLD } : {}}>
+            <Card key={product.id} className="rounded-2xl overflow-hidden border shadow-sm hover:shadow-md transition-shadow">
               <div className="h-40 bg-gradient-to-br from-amber-50/50 to-blue-50/50 dark:from-amber-900/10 dark:to-blue-900/10 flex items-center justify-center relative overflow-hidden">
                 {product.imagePath ? (
                   <ProductImage3D src={getDisplayUrl(product.imagePath)} alt={product.nameAr} />
@@ -659,7 +635,6 @@ export default function ProduitsPage() {
                   {product.isActive && product.stockQty > 0 && product.stockQty <= product.alertThreshold && (
                     <Badge className="text-[10px]" style={{ backgroundColor: '#f59e0b', color: '#ffffff' }}>Stock bas</Badge>
                   )}
-                  {isScanned && <Badge className="text-[10px]" style={{ backgroundColor: GOLD, color: 'white' }}>Scanné</Badge>}
                 </div>
                 <div className="absolute top-2 right-2">
                   <DropdownMenu>
@@ -719,11 +694,9 @@ export default function ProduitsPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Produits</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Gérez vos produits, votre inventaire et vos tarifs.</p>
         </div>
-        {canEditProducts && (
-          <Button className="gap-2 rounded-xl text-white font-medium shadow-sm hover:shadow-md transition-all" style={{ backgroundColor: PRIMARY }} onClick={handleAddProduct}>
-            <Plus size={16} /> Ajouter un produit
-          </Button>
-        )}
+        <Button className="gap-2 rounded-xl text-white font-medium shadow-sm hover:shadow-md transition-all" style={{ backgroundColor: PRIMARY }} onClick={handleAddProduct}>
+          <Plus size={16} /> Ajouter un produit
+        </Button>
       </div>
 
       {/* Bandeau filtre produit unique (venant d'une notification stock) */}
