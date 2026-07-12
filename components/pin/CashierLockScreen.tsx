@@ -16,6 +16,7 @@ import {
   type AppUserRow,
 } from '@/lib/user-data'
 import type { AppUser } from '@/context/UserContext'
+import { useTranslation } from 'react-i18next'
 
 interface CashierLockScreenProps {
   onSuccess: (user: AppUser) => void
@@ -26,6 +27,7 @@ interface CashierLockScreenProps {
 type Overlay = 'none' | 'locked' | 'forgot-code' | 'forgot-newpin'
 
 export function CashierLockScreen({ onSuccess, onCancel, preselectedCashier }: CashierLockScreenProps) {
+  const { t } = useTranslation()
   const [cashiers, setCashiers] = useState<AppUserRow[]>([])
   const [loadingCashiers, setLoadingCashiers] = useState(true)
   const [selected, setSelected] = useState<AppUserRow | null>(preselectedCashier || null)
@@ -72,7 +74,7 @@ export function CashierLockScreen({ onSuccess, onCancel, preselectedCashier }: C
       const list = await getActiveCashiers()
       setCashiers(list)
     } catch {
-      toast.error('Impossible de charger les utilisateurs')
+      toast.error(t('switch_user.no_cashier_found', 'Impossible de charger les utilisateurs'))
     } finally {
       setLoadingCashiers(false)
     }
@@ -120,7 +122,7 @@ export function CashierLockScreen({ onSuccess, onCancel, preselectedCashier }: C
           permissions: result.user.permissions,
           active: result.user.active,
         }
-        toast.success('PIN correct')
+        toast.success(t('lock_screen.pin_correct', 'PIN correct'))
         setTimeout(() => onSuccess(appUser), 300)
         return
       }
@@ -134,12 +136,12 @@ export function CashierLockScreen({ onSuccess, onCancel, preselectedCashier }: C
 
       setError(
         result.remainingAttempts > 0
-          ? `Code incorrect. ${result.remainingAttempts} tentative(s) restante(s).`
-          : 'Code PIN incorrect.'
+          ? t('switch_user.incorrect_pin_attempts', { count: result.remainingAttempts })
+          : t('switch_user.incorrect_pin_retry', 'Code PIN incorrect.')
       )
       setPin('')
     } catch {
-      setError('Erreur lors de la vérification.')
+      setError(t('errors.verification_error', 'Erreur lors de la vérification.'))
       setPin('')
     } finally {
       setLoading(false)
@@ -158,13 +160,13 @@ export function CashierLockScreen({ onSuccess, onCancel, preselectedCashier }: C
     try {
       const sent = await requestCashierPinResetEmail()
       if (sent) {
-        toast.success("Un code a été envoyé à l'administrateur")
+        toast.success(t('lock_screen.reset_code_sent', "Un code a été envoyé à l'administrateur"))
         setOverlay('forgot-code')
       } else {
-        toast.error("Échec de l'envoi de l'email")
+        toast.error(t('lock_screen.email_send_failed', "Échec de l'envoi de l'email"))
       }
     } catch {
-      toast.error('Erreur lors de la demande')
+      toast.error(t('errors.request_error', 'Erreur lors de la demande'))
     } finally {
       setSendingReset(false)
     }
@@ -178,10 +180,10 @@ export function CashierLockScreen({ onSuccess, onCancel, preselectedCashier }: C
       if (result.success) {
         setOverlay('forgot-newpin')
       } else {
-        setResetError(result.error || 'Code incorrect')
+        setResetError(result.error || t('switch_user.incorrect_code', 'Code incorrect'))
       }
     } catch {
-      setResetError('Erreur lors de la vérification')
+      setResetError(t('errors.verification_error', 'Erreur lors de la vérification'))
     } finally {
       setLoading(false)
     }
@@ -190,24 +192,24 @@ export function CashierLockScreen({ onSuccess, onCancel, preselectedCashier }: C
   const handleSetNewPin = async () => {
     if (!selected) return
     if (!/^\d{4,6}$/.test(newPin)) {
-      toast.error('Le PIN doit contenir entre 4 et 6 chiffres')
+      toast.error(t('lock_screen.pin_length_error', 'Le PIN doit contenir entre 4 et 6 chiffres'))
       return
     }
     if (newPin !== confirmNewPin) {
-      toast.error('Les deux codes ne correspondent pas')
+      toast.error(t('lock_screen.pin_mismatch', 'Les deux codes ne correspondent pas'))
       return
     }
     setLoading(true)
     try {
       await updateCashier(selected.id, { pin: newPin })
-      toast.success('Nouveau PIN enregistré')
+      toast.success(t('switch_user.new_pin_saved', 'Nouveau PIN enregistré'))
       setResetCode('')
       setNewPin('')
       setConfirmNewPin('')
       setOverlay('none')
       setPin('')
     } catch (err: any) {
-      toast.error(err?.message || 'Erreur lors de la mise à jour')
+      toast.error(err?.message || t('errors.update_error', 'Erreur lors de la mise à jour'))
     } finally {
       setLoading(false)
     }
@@ -243,10 +245,10 @@ export function CashierLockScreen({ onSuccess, onCancel, preselectedCashier }: C
           {/* En-tête */}
           <div className="text-center">
             <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-1">
-              {selected ? `Bonjour, ${selected.name.split(' ')[0]} !` : 'Qui êtes-vous ?'}
+              {selected ? t('switch_user.hello_user', { name: selected.name.split(' ')[0] }) : t('switch_user.who_are_you', 'Qui êtes-vous ?')}
             </h2>
             <p className="text-sm text-gray-500">
-              {selected ? 'Entrez votre code PIN' : 'Sélectionnez votre profil pour continuer.'}
+              {selected ? t('switch_user.enter_pin_desc', 'Entrez votre code PIN') : t('switch_user.select_profile_desc', 'Sélectionnez votre profil pour continuer.')}
             </p>
           </div>
 
@@ -258,7 +260,7 @@ export function CashierLockScreen({ onSuccess, onCancel, preselectedCashier }: C
                   <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
                 </div>
               ) : cashiers.length === 0 ? (
-                <p className="text-center text-sm text-gray-400 py-8">Aucun caissier actif trouvé.</p>
+                <p className="text-center text-sm text-gray-400 py-8">{t('switch_user.no_cashier_found', 'Aucun caissier actif trouvé.')}</p>
               ) : (
                 cashiers.map((cashier) => (
                   <button
@@ -304,7 +306,7 @@ export function CashierLockScreen({ onSuccess, onCancel, preselectedCashier }: C
                   onClick={handleDeselect}
                   className="self-start flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600"
                 >
-                  <ArrowLeft className="w-3.5 h-3.5" /> Changer de profil
+                  <ArrowLeft className="w-3.5 h-3.5" /> {t('switch_user.choose_another_profile', 'Changer de profil')}
                 </button>
               )}
 
@@ -359,7 +361,7 @@ export function CashierLockScreen({ onSuccess, onCancel, preselectedCashier }: C
                 className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 underline flex items-center gap-1"
               >
                 <Mail className="h-3 w-3" />
-                {sendingReset ? 'Envoi en cours...' : 'PIN oublié ?'}
+                {sendingReset ? t('lock_screen.sending', 'Envoi en cours...') : t('switch_user.forgot_pin', 'PIN oublié ?')}
               </button>
             </div>
           )}
@@ -382,7 +384,7 @@ export function CashierLockScreen({ onSuccess, onCancel, preselectedCashier }: C
             <span className="font-semibold text-sm">{selected.name}</span>
           </div>
           <p className="text-sm text-red-500">
-            Trop de tentatives. Réessayez dans {formatTime(remainingSeconds)}.
+            {t('switch_user.too_many_attempts_retry_in', 'Trop de tentatives. Réessayez dans {{time}}.', { time: formatTime(remainingSeconds) })}
           </p>
           <button
             onClick={handleForgotPin}
@@ -390,13 +392,13 @@ export function CashierLockScreen({ onSuccess, onCancel, preselectedCashier }: C
             className="text-xs text-gray-400 hover:text-gray-600 underline flex items-center gap-1"
           >
             <Mail className="h-3 w-3" />
-            {sendingReset ? 'Envoi en cours...' : "J'ai un code, réinitialiser maintenant"}
+            {sendingReset ? t('lock_screen.sending', 'Envoi en cours...') : t('lock_screen.i_have_code', "J'ai un code, réinitialiser maintenant")}
           </button>
           <button
             onClick={() => { setOverlay('none'); handleDeselect() }}
             className="text-xs text-gray-400 hover:text-gray-600 mt-2"
           >
-            Choisir un autre profil
+            {t('switch_user.choose_another_profile', 'Choisir un autre profil')}
           </button>
         </div>
       )}
@@ -408,13 +410,13 @@ export function CashierLockScreen({ onSuccess, onCancel, preselectedCashier }: C
             onClick={() => { setOverlay('none'); setResetCode(''); setResetError('') }}
             className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600"
           >
-            <ArrowLeft className="w-4 h-4" /> Retour
+            <ArrowLeft className="w-4 h-4" /> {t('common.back', 'Retour')}
           </button>
           <h2 className="text-lg font-bold text-center text-gray-900 dark:text-white">
-            Code reçu par l'administrateur
+            {t('lock_screen.code_received_from_admin', "Code reçu par l'administrateur")}
           </h2>
           <p className="text-sm text-gray-500 text-center">
-            Demandez le code à 6 chiffres envoyé à l'administrateur (valable 15 minutes).
+            {t('lock_screen.ask_code_from_admin', "Demandez le code à 6 chiffres envoyé à l'administrateur (valable 15 minutes).")}
           </p>
           <Input
             type="text"
@@ -432,7 +434,7 @@ export function CashierLockScreen({ onSuccess, onCancel, preselectedCashier }: C
             disabled={resetCode.length < 4 || loading}
             className="w-full rounded-xl"
           >
-            {loading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : 'Valider le code'}
+            {loading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : t('lock_screen.validate_code', 'Valider le code')}
           </Button>
         </div>
       )}
@@ -441,10 +443,10 @@ export function CashierLockScreen({ onSuccess, onCancel, preselectedCashier }: C
       {overlay === 'forgot-newpin' && selected && (
         <div className="w-full max-w-sm space-y-4">
           <h2 className="text-lg font-bold text-center text-gray-900 dark:text-white">
-            Nouveau code PIN
+            {t('lock_screen.new_pin_title', 'Nouveau code PIN')}
           </h2>
           <p className="text-sm text-gray-500 text-center">
-            Choisissez un nouveau code PIN à 4-6 chiffres pour {selected.name}.
+            {t('lock_screen.choose_new_pin_desc', { name: selected.name })}
           </p>
           <Input
             type="password"
@@ -452,7 +454,7 @@ export function CashierLockScreen({ onSuccess, onCancel, preselectedCashier }: C
             maxLength={6}
             value={newPin}
             onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
-            placeholder="Nouveau PIN"
+            placeholder={t('lock_screen.new_pin_placeholder', 'Nouveau PIN')}
             className="rounded-xl text-center text-lg tracking-widest"
           />
           <Input
@@ -461,11 +463,11 @@ export function CashierLockScreen({ onSuccess, onCancel, preselectedCashier }: C
             maxLength={6}
             value={confirmNewPin}
             onChange={(e) => setConfirmNewPin(e.target.value.replace(/\D/g, ''))}
-            placeholder="Confirmer"
+            placeholder={t('lock_screen.confirm_placeholder', 'Confirmer')}
             className="rounded-xl text-center text-lg tracking-widest"
           />
           <Button onClick={handleSetNewPin} disabled={loading} className="w-full rounded-xl">
-            {loading ? 'Enregistrement...' : 'Enregistrer le nouveau PIN'}
+            {loading ? t('lock_screen.saving', 'Enregistrement...') : t('lock_screen.save_new_pin', 'Enregistrer le nouveau PIN')}
           </Button>
         </div>
       )}

@@ -40,6 +40,7 @@ import type { AppUser } from '@/context/UserContext'
 import { ArrowLeft, Loader2, Mail, Lock, User } from 'lucide-react'
 import { toast } from 'sonner'
 import Rive from '@rive-app/react-canvas'
+import { useTranslation } from 'react-i18next'
 
 interface UserSwitchScreenProps {
   open: boolean
@@ -52,6 +53,7 @@ type Step = 'select' | 'pin' | 'locked' | 'unlock-email'
 const BLUE = '#38BDF8'
 
 export default function UserSwitchScreen({ open, onOpenChange, onSuccess }: UserSwitchScreenProps) {
+  const { t } = useTranslation()
   const [step, setStep] = useState<Step>('select')
   const [cashiers, setCashiers] = useState<AppUserRow[]>([])
   const [selected, setSelected] = useState<AppUserRow | null>(null)
@@ -176,12 +178,12 @@ export default function UserSwitchScreen({ open, onOpenChange, onSuccess }: User
       setError(
         result.remainingAttempts > 0
           ? `Code PIN incorrect. ${result.remainingAttempts} tentative(s) avant blocage.`
-          : 'Code PIN incorrect. Réessayez.'
+          : t('switch_user.incorrect_pin_retry', 'Code PIN incorrect. Réessayez.')
       )
       setPin('')
       inputRef.current?.focus()
     } catch {
-      setError('Erreur lors de la vérification.')
+      setError(t('errors.verification_error', 'Erreur lors de la vérification.'))
     } finally {
       setLoading(false)
     }
@@ -194,7 +196,7 @@ export default function UserSwitchScreen({ open, onOpenChange, onSuccess }: User
     try {
       const result = await unlockCashierWithEmailCode(selected.id, emailCode)
       if (result.success) {
-        toast.success('Compte débloqué')
+        toast.success(t('switch_user.account_unlocked', 'Compte débloqué'))
         setEmailCode('')
         setStep('pin')
         setPin('')
@@ -202,7 +204,7 @@ export default function UserSwitchScreen({ open, onOpenChange, onSuccess }: User
         setUnlockError(result.error || 'Code incorrect')
       }
     } catch {
-      setUnlockError('Erreur lors de la vérification')
+      setUnlockError(t('errors.verification_error', 'Erreur lors de la vérification'))
     } finally {
       setUnlockLoading(false)
     }
@@ -223,22 +225,13 @@ export default function UserSwitchScreen({ open, onOpenChange, onSuccess }: User
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md rounded-2xl p-0 overflow-hidden">
 
-        {/* ─── Animation Rive ───────────────────────────────────── */}
-        <div className="w-48 h-48 mx-auto -mb-4 -mt-2">
-          <Rive
-            key={riveKey}
-            src="/animations/pin-animation.riv"
-            onError={handleRiveError}
-          />
-        </div>
-
-        {/* ─── Étape 1 : sélection du profil (Select) ─────────────────── */}
+        {/* ─── Animation Rive ──────────────────────────────�        {/* ─── Étape 1 : sélection du profil (Select) ─────────────────── */}
         {step === 'select' && (
           <>
             <DialogHeader className="px-6 pt-2 pb-4">
-              <DialogTitle className="text-lg font-bold text-center">Qui êtes-vous ?</DialogTitle>
+              <DialogTitle className="text-lg font-bold text-center">{t('switch_user.who_are_you', 'Qui êtes-vous ?')}</DialogTitle>
               <DialogDescription className="text-sm text-gray-500 text-center">
-                Sélectionnez votre profil pour continuer.
+                {t('switch_user.select_profile_desc', 'Sélectionnez votre profil pour continuer.')}
               </DialogDescription>
             </DialogHeader>
 
@@ -249,13 +242,13 @@ export default function UserSwitchScreen({ open, onOpenChange, onSuccess }: User
                 </div>
               ) : cashiers.length === 0 ? (
                 <p className="text-center text-sm text-gray-400 py-8">
-                  Aucun caissier actif trouvé.<br />
-                  L'administrateur doit d'abord créer des profils caissiers.
+                  {t('switch_user.no_cashier_found', 'Aucun caissier actif trouvé.')}<br />
+                  {t('switch_user.admin_must_create_cashier', 'L\'administrateur doit d\'abord créer des profils caissiers.')}
                 </p>
               ) : (
                 <Select onValueChange={handleSelectCashier}>
                   <SelectTrigger className="rounded-xl h-12 px-4 border-gray-200 dark:border-zinc-700">
-                    <SelectValue placeholder="Choisissez votre profil" />
+                    <SelectValue placeholder={t('switch_user.choose_profile_placeholder', 'Choisissez votre profil')} />
                   </SelectTrigger>
                   <SelectContent className="rounded-xl">
                     {cashiers.map((cashier) => (
@@ -293,12 +286,12 @@ export default function UserSwitchScreen({ open, onOpenChange, onSuccess }: User
                   <ArrowLeft className="w-4 h-4 text-gray-500" />
                 </button>
                 <DialogTitle className="text-lg font-bold">
-                  Bonjour, {selected.name.split(' ')[0]} !
+                  {t('switch_user.hello_user', 'Bonjour, {{name}} !', { name: selected.name.split(' ')[0] })}
                 </DialogTitle>
                 <div className="w-8" />
               </div>
               <DialogDescription className="text-sm text-gray-500 text-center">
-                Entrez votre code PIN
+                {t('switch_user.enter_pin_desc', 'Entrez votre code PIN')}
               </DialogDescription>
             </DialogHeader>
 
@@ -388,11 +381,11 @@ export default function UserSwitchScreen({ open, onOpenChange, onSuccess }: User
 
               <button
                 onClick={() => {
-                  toast.info('Demandez à l\'administrateur de réinitialiser votre PIN')
+                  toast.info(t('switch_user.ask_admin_reset', 'Demandez à l\'administrateur de réinitialiser votre PIN'))
                 }}
                 className="w-full text-center text-xs text-gray-400 hover:text-gray-600 mt-4 underline"
               >
-                PIN oublié ?
+                {t('switch_user.forgot_pin', 'PIN oublié ?')}
               </button>
             </div>
           </>
@@ -404,7 +397,7 @@ export default function UserSwitchScreen({ open, onOpenChange, onSuccess }: User
             <DialogHeader className="px-6 pt-6 pb-2">
               <DialogTitle className="text-lg font-bold flex items-center gap-2">
                 <Lock className="w-5 h-5 text-red-500" />
-                Compte temporairement bloqué
+                {t('switch_user.temporarily_locked', 'Compte temporairement bloqué')}
               </DialogTitle>
             </DialogHeader>
 
@@ -423,10 +416,7 @@ export default function UserSwitchScreen({ open, onOpenChange, onSuccess }: User
               </div>
 
               <p className="text-sm text-gray-500">
-                Trop de tentatives incorrectes. Réessayez dans{' '}
-                <span className="font-semibold text-gray-800 dark:text-gray-200">
-                  {formatTime(remainingSeconds)}
-                </span>.
+                {t('switch_user.too_many_attempts_retry_in', 'Trop de tentatives incorrectes. Réessayez dans {{time}}.', { time: formatTime(remainingSeconds) })}
               </p>
 
               {lockType === 'hard' && (
@@ -435,15 +425,15 @@ export default function UserSwitchScreen({ open, onOpenChange, onSuccess }: User
                   <div className="flex items-center gap-2 text-sm text-gray-500">
                     <Mail className="w-4 h-4 shrink-0" />
                     {emailSent
-                      ? "Un code de déblocage a été envoyé à l'administrateur."
-                      : "L'envoi de l'email a échoué — patientez ou réessayez plus tard."}
+                      ? t('switch_user.unlock_code_sent_admin', 'Un code de déblocage a été envoyé à l\'administrateur.')
+                      : t('switch_user.unlock_email_failed', 'L\'envoi de l\'email a échoué — patientez ou réessayez plus tard.')}
                   </div>
                   <Button
                     variant="outline"
                     onClick={() => setStep('unlock-email')}
                     className="rounded-xl mt-1"
                   >
-                    J'ai reçu le code
+                    {t('switch_user.i_received_code', 'J\'ai reçu le code')}
                   </Button>
                 </>
               )}
@@ -452,7 +442,7 @@ export default function UserSwitchScreen({ open, onOpenChange, onSuccess }: User
                 onClick={() => { setStep('select'); setSelected(null) }}
                 className="text-xs text-gray-400 hover:text-gray-600 mt-2"
               >
-                Choisir un autre profil
+                {t('switch_user.choose_another_profile', 'Choisir un autre profil')}
               </button>
             </div>
           </>
@@ -469,10 +459,10 @@ export default function UserSwitchScreen({ open, onOpenChange, onSuccess }: User
                 >
                   <ArrowLeft className="w-4 h-4 text-gray-500" />
                 </button>
-                <DialogTitle className="text-lg font-bold">Code de déblocage</DialogTitle>
+                <DialogTitle className="text-lg font-bold">{t('switch_user.unlock_code_title', 'Code de déblocage')}</DialogTitle>
               </div>
               <DialogDescription className="text-sm text-gray-500">
-                Entrez le code à 6 chiffres reçu par email par l'administrateur.
+                {t('switch_user.enter_unlock_code_desc', 'Entrez le code à 6 chiffres reçu par email par l\'administrateur.')}
               </DialogDescription>
             </DialogHeader>
 
@@ -501,7 +491,7 @@ export default function UserSwitchScreen({ open, onOpenChange, onSuccess }: User
                 className="w-full rounded-xl text-white font-semibold"
                 style={{ backgroundColor: BLUE }}
               >
-                {unlockLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : 'Débloquer le compte'}
+                {unlockLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : t('switch_user.unlock_account', 'Débloquer le compte')}
               </Button>
             </div>
           </>

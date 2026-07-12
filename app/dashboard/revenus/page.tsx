@@ -386,7 +386,7 @@ function RevenusContent() {
     link.download = `revenus_${periodLabel}_${new Date().toISOString().slice(0, 10)}.csv`
     link.click()
     URL.revokeObjectURL(link.href)
-    toast.success(t('revenue_page.transactions_exported', `${transactions.length} transactions exportées`, { count: transactions.length }))
+    toast.success(t('revenue_page.transactions_exported', '{{count}} transactions exportées', { count: transactions.length }))
   }
 
   // ─── Redirection vers les factures avec filtres de dates ──────
@@ -533,7 +533,7 @@ function RevenusContent() {
             <KpiCard
               title={t('revenue_page.avg_basket', 'Panier moyen')}
               value={summary ? formatMAD(summary.panierMoyen) : '0 MAD'}
-              subtitle={t('revenue_page.avg_basket_desc', `Moyenne sur ${summary?.nbTransactions || 0} transactions`, { count: summary?.nbTransactions || 0 })}
+              subtitle={t('revenue_page.avg_basket_desc', 'Moyenne sur {{count}} transactions', { count: summary?.nbTransactions || 0 })}
               icon={<ShoppingBag className="h-4 w-4" />}
             />
           </div>

@@ -107,7 +107,7 @@ export function TopProducts() {
           <div className="flex flex-col items-center justify-center text-center py-12">
             <AlertCircle className="h-12 w-12 text-red-400 mb-3" />
             <p className="text-sm text-red-500">Erreur : {error}</p>
-            <p className="text-xs text-gray-400 mt-1">Vérifiez la console pour plus de détails</p>
+            <p className="text-xs text-gray-400 mt-1">{t('top_products.check_console', 'Vérifiez la console pour plus de détails')}</p>
           </div>
         ) : products.length === 0 ? (
           <div className="flex flex-col items-center justify-center text-center py-12">

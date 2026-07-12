@@ -360,7 +360,7 @@ export function ProductFormDialog({
                     {productToEdit ? t('products.edit') : t('products.add')}
                   </DialogTitle>
                   <p className="text-xs text-slate-500 dark:text-gray-400 mt-0.5">
-                    {productToEdit ? 'Modifier les informations de ce produit' : 'Créez une nouvelle fiche produit'}
+                    {productToEdit ? t('product_form.edit_subtitle', 'Modifier les informations de ce produit') : t('product_form.create_subtitle', 'Créez une nouvelle fiche produit')}
                   </p>
                 </div>
               </div>
@@ -368,7 +368,7 @@ export function ProductFormDialog({
                 <Button variant="ghost" size="sm" onClick={resetForm} disabled={loading}
                   className="gap-1.5 text-xs text-slate-500 dark:text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded-xl font-bold">
                   <RotateCcw className="h-3.5 w-3.5" />
-                  Réinitialiser
+                  {t('common.reset', 'Réinitialiser')}
                 </Button>
                 <Button variant="ghost" size="icon" onClick={() => onOpenChange(false)} className="rounded-xl h-8 w-8">
                   <X className="h-4 w-4 text-slate-500 dark:text-gray-400" />
@@ -451,7 +451,7 @@ export function ProductFormDialog({
                         <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #1D4ED8, #1E3A8A)' }}>
                           <Info className="h-3.5 w-3.5 text-white" />
                         </div>
-                        <h3 className="font-extrabold text-sm text-gray-900 dark:text-gray-50">Informations générales</h3>
+                        <h3 className="font-extrabold text-sm text-gray-900 dark:text-gray-50">{t('product_form.general_info', 'Informations générales')}</h3>
                       </div>
 
                       <div className="flex gap-4">
@@ -507,7 +507,7 @@ export function ProductFormDialog({
                             <div className="flex gap-1.5">
                               <Select key={categoryVersion} value={form.categoryId} onValueChange={(v) => handleChange('categoryId', v)}>
                                 <SelectTrigger className="flex-1 rounded-xl border-slate-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-blue-600 h-10 font-semibold text-sm">
-                                  <SelectValue placeholder="Sélectionner" />
+                                  <SelectValue placeholder={t('product_form.select', 'Sélectionner')} />
                                 </SelectTrigger>
                                 <SelectContent>
                                   {categories.map((cat) => (
@@ -522,7 +522,7 @@ export function ProductFormDialog({
                                     <Plus className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
                                   </Button>
                                 </TooltipTrigger>
-                                <TooltipContent>Ajouter une catégorie</TooltipContent>
+                                <TooltipContent>{t('product_form.add_category', 'Ajouter une catégorie')}</TooltipContent>
                               </Tooltip>
                             </div>
                           </div>
@@ -546,7 +546,7 @@ export function ProductFormDialog({
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1.5">
                           <Label className="text-xs font-extrabold text-slate-600 dark:text-gray-300 flex items-center gap-1">
-                            <Building2 className="h-3 w-3 text-blue-600 dark:text-blue-400" /> Réf. fournisseur <span className="text-[10px] text-slate-400 font-bold">(optionnel)</span>
+                            <Building2 className="h-3 w-3 text-blue-600 dark:text-blue-400" /> {t('product_form.supplier_ref', 'Réf. fournisseur')} <span className="text-[10px] text-slate-400 font-bold">(optionnel)</span>
                           </Label>
                           <Input value={form.supplierRef} onChange={(e) => handleChange('supplierRef', e.target.value)} placeholder=""
                             className="rounded-xl border-slate-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-blue-600 h-10 font-semibold text-sm" />
@@ -564,8 +564,8 @@ export function ProductFormDialog({
                         <span className="text-xs font-bold text-blue-700 dark:text-blue-300">Requis :</span>
                         {[
                           { label: 'Nom', ok: form.nameFr.trim().length > 0 },
-                          { label: 'Catégorie', ok: form.categoryId.length > 0 },
-                          { label: 'Unité', ok: form.unit.length > 0 },
+                          { label: t('product_form.category', 'Catégorie'), ok: form.categoryId.length > 0 },
+                          { label: t('product_form.unit', 'Unité'), ok: form.unit.length > 0 },
                         ].map((f, i) => (
                           <span key={i} className={`inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${f.ok ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-slate-100 dark:bg-gray-700 text-slate-500 dark:text-gray-400'}`}>
                             {f.ok ? <CheckCircle2 className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}
@@ -604,7 +604,7 @@ export function ProductFormDialog({
                                   <RefreshCw className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                                 </Button>
                               </TooltipTrigger>
-                              <TooltipContent>Générer automatiquement</TooltipContent>
+                              <TooltipContent>{t('product_form.auto_generate', 'Générer automatiquement')}</TooltipContent>
                             </Tooltip>
                           </div>
                           {skuCheck.checked && !skuCheck.valid && <p className="text-xs font-bold text-red-500 flex items-center gap-1"><AlertCircle className="h-3 w-3" /> {skuCheck.message}</p>}
@@ -620,7 +620,7 @@ export function ProductFormDialog({
                               className={`font-mono rounded-xl border-slate-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-blue-600 h-10 font-bold text-sm ${!barcodeCheck.valid ? 'border-red-500' : ''}`} placeholder="" />
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <Button type="button" variant="outline" size="icon" onClick={() => toast.info('Scan à venir')}
+                                <Button type="button" variant="outline" size="icon" onClick={() => toast.info(t('product_form.scan_coming', 'Scan à venir'))}
                                   className="shrink-0 rounded-xl border-slate-200 dark:border-gray-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 h-10 w-10">
                                   <Scan className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                                 </Button>
@@ -635,8 +635,8 @@ export function ProductFormDialog({
 
                       <div className="grid grid-cols-3 gap-3">
                         {[
-                          { icon: RefreshCw, label: 'Création automatique du SKU', color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-900/20' },
-                          { icon: AlertCircle, label: 'Détection des doublons', color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-900/20' },
+                          { icon: RefreshCw, label: t('product_form.sku_auto_create', 'Création automatique du SKU'), color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-900/20' },
+                          { icon: AlertCircle, label: t('product_form.duplicate_detection', 'Détection des doublons'), color: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-900/20' },
                           { icon: CheckCircle2, label: 'Validation intelligente', color: 'text-green-600 dark:text-green-400', bg: 'bg-green-50 dark:bg-green-900/20' },
                         ].map((item, i) => (
                           <div key={i} className={`rounded-xl ${item.bg} border border-slate-100 dark:border-gray-700 p-2.5 flex items-center gap-2`}>
@@ -698,7 +698,7 @@ export function ProductFormDialog({
                         <div className="grid grid-cols-3 gap-3">
                           {[
                             { icon: TrendingUp, label: 'Marge', value: `${marginPercent.toFixed(0)}%`, color: marginPercent > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-500', iconColor: GOLD, bg: 'bg-amber-50 dark:bg-amber-900/20 border-amber-100 dark:border-amber-800/30' },
-                            { icon: DollarSign, label: 'Profit estimé', value: `${margin.toFixed(2)} MAD`, color: 'text-green-600 dark:text-green-400', iconColor: '#16A34A', bg: 'bg-green-50 dark:bg-green-900/20 border-green-100 dark:border-green-800/30' },
+                            { icon: DollarSign, label: t('product_form.estimated_profit', 'Profit estimé'), value: `${margin.toFixed(2)} MAD`, color: 'text-green-600 dark:text-green-400', iconColor: '#16A34A', bg: 'bg-green-50 dark:bg-green-900/20 border-green-100 dark:border-green-800/30' },
                             { icon: ShoppingCart, label: 'Prix TTC', value: `${totalTTC.toFixed(2)} MAD`, color: 'text-blue-700 dark:text-blue-400', iconColor: PRIMARY, bg: 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-800/30' },
                           ].map((item, i) => (
                             <div key={i} className={`rounded-xl border p-3 flex flex-col items-center gap-1 ${item.bg}`}>
@@ -713,7 +713,7 @@ export function ProductFormDialog({
                       {retailNum > 0 && margin <= 0 && costNum > 0 && (
                         <div className="rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/30 p-2.5 flex items-center gap-2">
                           <AlertCircle className="h-3.5 w-3.5 text-red-500" />
-                          <span className="text-xs font-bold text-red-600 dark:text-red-400">Le prix de vente doit être supérieur au prix d'achat</span>
+                          <span className="text-xs font-bold text-red-600 dark:text-red-400">{t('product_form.price_above_cost', "Le prix de vente doit être supérieur au prix d'achat")}</span>
                         </div>
                       )}
                     </CardContent>
@@ -737,7 +737,7 @@ export function ProductFormDialog({
                           </Label>
                           <Input type="number" min="0" value={form.stockQty} onChange={(e) => handleChange('stockQty', e.target.value)} placeholder=""
                             className="rounded-xl border-slate-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-blue-600 h-10 font-semibold text-sm" />
-                          <p className="text-[10px] text-slate-400 dark:text-gray-500">Quantité disponible au démarrage. Par défaut : 0</p>
+                          <p className="text-[10px] text-slate-400 dark:text-gray-500">{t('product_form.qty_default_zero', 'Quantité disponible au démarrage. Par défaut : 0')}</p>
                         </div>
                         <div className="space-y-1.5">
                           <Label className="text-xs font-extrabold text-slate-600 dark:text-gray-300 flex items-center gap-1">
@@ -746,14 +746,14 @@ export function ProductFormDialog({
                           </Label>
                           <Input type="number" min="0" value={form.alertThreshold} onChange={(e) => handleChange('alertThreshold', e.target.value)} placeholder=""
                             className="rounded-xl border-slate-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-blue-600 h-10 font-semibold text-sm" />
-                          <p className="text-[10px] text-slate-400 dark:text-gray-500">Alerte déclenchée quand stock ≤ cette valeur</p>
+                          <p className="text-[10px] text-slate-400 dark:text-gray-500">{t('product_form.alert_when_below', 'Alerte déclenchée quand stock ≤ cette valeur')}</p>
                         </div>
                       </div>
                       {form.stockQty && form.alertThreshold && parseInt(form.stockQty) <= parseInt(form.alertThreshold) && parseInt(form.stockQty) > 0 && (
                         <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/30 p-2.5 flex items-center gap-2">
                           <AlertCircle className="h-3.5 w-3.5 text-amber-500" />
                           <span className="text-xs font-bold text-amber-600 dark:text-amber-400">
-                            Alerte : Le produit sera indiqué "Stock faible" dès sa création (stock ≤ {form.alertThreshold})
+                            {t('product_form.low_stock_warning', 'Alerte : Le produit sera indiqué "Stock faible" dès sa création (stock ≤')} {form.alertThreshold})
                           </span>
                         </div>
                       )}
@@ -770,13 +770,13 @@ export function ProductFormDialog({
                           <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #1D4ED8, #1E3A8A)' }}>
                             <Activity className="h-3.5 w-3.5 text-white" />
                           </div>
-                          <h3 className="font-extrabold text-sm text-gray-900 dark:text-gray-50">Options supplémentaires</h3>
+                          <h3 className="font-extrabold text-sm text-gray-900 dark:text-gray-50">{t('product_form.extra_options', 'Options supplémentaires')}</h3>
                         </div>
                         {[
-                          { key: 'isActive', icon: Activity, label: 'Produit actif après création', desc: 'Visible et disponible immédiatement' },
-                          { key: 'isFavorite', icon: Star, label: 'Ajouter aux favoris', desc: 'Apparaît en tête dans le point de vente' },
-                          { key: 'trackStock', icon: Eye, label: 'Suivre les mouvements de stock', desc: 'Enregistre entrées et sorties' },
-                          { key: 'showInPos', icon: ShoppingCart, label: 'Afficher dans le point de vente', desc: 'Sélectionnable lors des ventes' },
+                          { key: 'isActive', icon: Activity, label: t('product_form.active_after_create', 'Produit actif après création'), desc: t('product_form.active_desc', 'Visible et disponible immédiatement') },
+                          { key: 'isFavorite', icon: Star, label: t('product_form.add_to_favorites', 'Ajouter aux favoris'), desc: t('product_form.favorite_desc', 'Apparaît en tête dans le point de vente') },
+                          { key: 'trackStock', icon: Eye, label: t('product_form.track_stock', 'Suivre les mouvements de stock'), desc: t('product_form.track_stock_desc', 'Enregistre entrées et sorties') },
+                          { key: 'showInPos', icon: ShoppingCart, label: t('product_form.show_in_pos', 'Afficher dans le point de vente'), desc: t('product_form.show_in_pos_desc', 'Sélectionnable lors des ventes') },
                         ].map((opt) => {
                           const OptIcon = opt.icon
                           return (
@@ -803,13 +803,13 @@ export function ProductFormDialog({
 
                     <Card className="rounded-2xl shadow-sm border border-slate-200 dark:border-gray-800 bg-white dark:bg-gray-900">
                       <CardContent className="p-4">
-                        <h4 className="font-extrabold text-xs text-slate-500 dark:text-gray-400 mb-3 uppercase tracking-wider">Récapitulatif</h4>
+                        <h4 className="font-extrabold text-xs text-slate-500 dark:text-gray-400 mb-3 uppercase tracking-wider">{t('product_form.summary', 'Récapitulatif')}</h4>
                         <div className="grid grid-cols-2 gap-2">
                           {[
-                            { label: 'Informations générales', ok: step1Valid },
+                            { label: t('product_form.general_info', 'Informations générales'), ok: step1Valid },
                             { label: 'SKU disponible', ok: step2Valid },
-                            { label: 'Prix cohérent', ok: step3Valid },
-                            { label: 'Stock configuré', ok: true },
+                            { label: t('product_form.price_consistent', 'Prix cohérent'), ok: step3Valid },
+                            { label: t('product_form.stock_configured', 'Stock configuré'), ok: true },
                           ].map((check, i) => (
                             <div key={i} className={`flex items-center gap-2 p-2.5 rounded-xl text-xs font-bold ${check.ok ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400' : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'}`}>
                               {check.ok ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> : <AlertCircle className="h-3.5 w-3.5 shrink-0" />}
@@ -819,8 +819,8 @@ export function ProductFormDialog({
                         </div>
                         <div className={`mt-3 flex items-center justify-center gap-2 p-2.5 rounded-xl text-xs font-extrabold ${isReady ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800/30' : 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/30'}`}>
                           {isReady
-                            ? <><CheckCircle2 className="h-3.5 w-3.5" /> Prêt à être enregistré</>
-                            : <><AlertCircle className="h-3.5 w-3.5" /> Retournez compléter les étapes précédentes</>}
+                            ? <><CheckCircle2 className="h-3.5 w-3.5" /> {t('product_form.ready_to_save', 'Prêt à être enregistré')}</>
+                            : <><AlertCircle className="h-3.5 w-3.5" /> {t('product_form.complete_previous_steps', 'Retournez compléter les étapes précédentes')}</>}
                         </div>
                       </CardContent>
                     </Card>
@@ -846,7 +846,7 @@ export function ProductFormDialog({
                     <div className="p-4 space-y-3">
                       <div className="flex items-center gap-2 pb-2 border-b border-slate-100 dark:border-gray-700">
                         <Eye className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
-                        <span className="font-extrabold text-[11px] text-slate-500 dark:text-gray-400 uppercase tracking-wider">Aperçu</span>
+                        <span className="font-extrabold text-[11px] text-slate-500 dark:text-gray-400 uppercase tracking-wider">{t('common.preview', 'Aperçu')}</span>
                       </div>
 
                       <div className="relative">
@@ -883,7 +883,7 @@ export function ProductFormDialog({
                       </div>
 
                       <div className={`flex items-center justify-center gap-1.5 p-2 rounded-xl text-[10px] font-extrabold ${isReady ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800/30' : 'bg-slate-50 dark:bg-gray-800 text-slate-500 dark:text-gray-400 border border-slate-200 dark:border-gray-700'}`}>
-                        {isReady ? <><CheckCircle2 className="h-3 w-3" /> Prêt</> : <><AlertCircle className="h-3 w-3" style={{ color: GOLD }} /> Incomplet</>}
+                        {isReady ? <><CheckCircle2 className="h-3 w-3" /> {t('product_form.ready', 'Prêt')}</> : <><AlertCircle className="h-3 w-3" style={{ color: GOLD }} /> Incomplet</>}
                       </div>
                     </div>
                   </div>

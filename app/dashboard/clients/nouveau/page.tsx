@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
 import { ArrowLeft, Save, CreditCard } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { createClient } from '@/lib/client-data'
 import PhoneInput from 'react-phone-number-input'
 import 'react-phone-number-input/style.css'
@@ -16,6 +17,7 @@ import 'react-phone-number-input/style.css'
 const DARK_NAVY = '#0F172A'
 
 export default function NewClientPage() {
+  const { t } = useTranslation()
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [phone, setPhone] = useState<string | undefined>('')

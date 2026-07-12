@@ -95,6 +95,7 @@ function SimpleImageUpload({ src, onUpload, onRemove }: {
   onUpload: (file: File) => void
   onRemove: () => void
 }) {
+  const { t } = useTranslation()
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   return (
@@ -111,7 +112,7 @@ function SimpleImageUpload({ src, onUpload, onRemove }: {
             onClick={onRemove}
             className="rounded-xl border-red-200 text-red-500 hover:bg-red-50"
           >
-            <X className="h-4 w-4 mr-1" /> Supprimer
+            <X className="h-4 w-4 mr-1" /> {t('common.delete', 'Supprimer')}
           </Button>
         </>
       ) : (
@@ -122,7 +123,7 @@ function SimpleImageUpload({ src, onUpload, onRemove }: {
           className="rounded-xl border-gray-300 dark:border-gray-600 h-11 px-4 gap-2"
         >
           <Upload className="h-4 w-4 text-gray-500" />
-          Télécharger une image
+          {t('product_form.upload_image', 'Télécharger une image')}
         </Button>
       )}
       <input
@@ -297,7 +298,7 @@ export default function NewProductPage() {
             setBarcodeCheck({ valid: true, checked: true })
             toast.info(`Mode édition : ${product.nameFr || product.sku}`)
           } else {
-            toast.error('Produit non trouvé')
+            toast.error(t('product_form.product_not_found', 'Produit non trouvé'))
             router.push('/dashboard/produits')
           }
         })
@@ -386,10 +387,10 @@ export default function NewProductPage() {
           imagePreview: product.imagePath || null,
         })
         setSkuCheck({ valid: true, checked: true })
-        toast.success('Produit chargé avec succès')
+        toast.success(t('product_form.product_loaded', 'Produit chargé avec succès'))
         setCurrentStep(1)
       } else {
-        toast.info('Aucun produit trouvé avec ce SKU ou code-barres')
+        toast.info(t('product_form.no_product_found', 'Aucun produit trouvé avec ce SKU ou code-barres'))
       }
     } catch (error) {
       console.error(error)
@@ -410,7 +411,7 @@ export default function NewProductPage() {
       if (result.offline) {
         toast.warning('Pas de connexion Internet, remplissage manuel requis')
       } else {
-        toast.info('Produit non trouvé, veuillez remplir manuellement')
+        toast.info(t('product_form.product_not_found_manual', 'Produit non trouvé, veuillez remplir manuellement'))
       }
       setAutoFilling(false)
       return
@@ -461,7 +462,7 @@ export default function NewProductPage() {
     // pour que le commerçant la sélectionne lui-même — plutôt que de
     // sauter à l'étape Prix avec un champ obligatoire vide
     if (!matchedCategoryId) {
-      toast.warning('Nom et infos récupérés ! Sélectionnez juste la catégorie manquante.')
+      toast.warning(t('product_form.info_retrieved_select_category', 'Nom et infos récupérés ! Sélectionnez juste la catégorie manquante.'))
       setCurrentStep(1)
     } else {
       toast.success(`Informations récupérées (${result.source}) ! Complétez le prix et le stock.`)
@@ -508,11 +509,11 @@ export default function NewProductPage() {
 
   const handleImageUpload = (file: File) => {
     if (!file.type.startsWith('image/')) {
-      toast.error('Le fichier doit être une image')
+      toast.error(t('product_form.file_must_be_image', 'Le fichier doit être une image'))
       return
     }
     if (file.size > 5 * 1024 * 1024) {
-      toast.error('L\'image ne doit pas dépasser 5 Mo')
+      toast.error(t('product_form.image_too_large', "L'image ne doit pas dépasser 5 Mo"))
       return
     }
     const reader = new FileReader()
@@ -588,7 +589,7 @@ export default function NewProductPage() {
     }
 
     if (!form.categoryId || form.categoryId.trim() === '') {
-      toast.error('Veuillez sélectionner une catégorie')
+      toast.error(t('product_form.select_category_required', 'Veuillez sélectionner une catégorie'))
       return
     }
 
@@ -630,10 +631,10 @@ export default function NewProductPage() {
 
       if (isEditMode && productId) {
         await updateProduct(productId, { ...input, imagePath })
-        toast.success('Produit mis à jour avec succès')
+        toast.success(t('product_form.product_updated', 'Produit mis à jour avec succès'))
       } else {
         await createProduct({ ...input, imagePath })
-        toast.success('Produit enregistré avec succès')
+        toast.success(t('product_form.product_saved', 'Produit enregistré avec succès'))
       }
       router.push('/dashboard/produits')
     } catch (err: any) {
@@ -666,10 +667,10 @@ export default function NewProductPage() {
             </Button>
             <div>
               <h1 className="text-xl font-extrabold text-gray-900 dark:text-gray-50">
-                {isEditMode ? 'Modifier le produit' : 'Ajouter un produit'}
+                {isEditMode ? t('product_form.edit_title', 'Modifier le produit') : t('product_form.add_product', 'Ajouter un produit')}
               </h1>
               <p className="text-xs font-semibold text-slate-500 dark:text-gray-400">
-                {isEditMode ? 'Modifiez les informations du produit' : 'Créez une nouvelle fiche produit'}
+                {isEditMode ? t('product_form.edit_subtitle', 'Modifiez les informations du produit') : t('product_form.create_subtitle', 'Créez une nouvelle fiche produit')}
               </p>
             </div>
           </div>
@@ -684,7 +685,7 @@ export default function NewProductPage() {
               }`}
             >
               <Eye className="h-4 w-4" />
-              {previewOpen ? 'Masquer' : 'Aperçu'}
+              {previewOpen ? t('common.hide', 'Masquer') : t('common.preview', 'Aperçu')}
             </Button>
             <Button
               variant="ghost"
@@ -693,7 +694,7 @@ export default function NewProductPage() {
               disabled={loading || loadingProduct}
               className="gap-2 text-slate-500 dark:text-gray-400 hover:text-red-500 font-bold rounded-xl"
             >
-              <RotateCcw className="h-4 w-4" /> Réinitialiser
+              <RotateCcw className="h-4 w-4" /> {t('common.reset', 'Réinitialiser')}
             </Button>
             <Button
               variant="outline"
@@ -701,7 +702,7 @@ export default function NewProductPage() {
               disabled={loading}
               className="gap-2 rounded-xl border-slate-200 dark:border-gray-700 text-slate-600 dark:text-gray-400 font-bold"
             >
-              <X className="h-4 w-4" /> Annuler
+              <X className="h-4 w-4" /> {t('common.cancel', 'Annuler')}
             </Button>
           </div>
         </header>
@@ -711,7 +712,7 @@ export default function NewProductPage() {
             <div className="max-w-3xl mx-auto flex items-center gap-3">
               <div className="flex-1 relative">
                 <Input
-                  placeholder="Rechercher un produit existant (SKU ou code-barres)"
+                  placeholder={t('product_form.search_placeholder', 'Rechercher un produit existant (SKU ou code-barres)')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="h-10 rounded-xl border-slate-200 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 pl-4 pr-10 text-sm"
@@ -725,11 +726,11 @@ export default function NewProductPage() {
                 style={{ backgroundColor: PRIMARY }}
               >
                 <Search className="h-4 w-4" />
-                {searching ? 'Recherche...' : 'Rechercher'}
+                {searching ? t('common.searching', 'Recherche...') : t('common.search', 'Rechercher')}
               </Button>
             </div>
             <p className="text-[10px] text-slate-400 dark:text-gray-500 mt-1 max-w-3xl mx-auto">
-              Recherchez par SKU ou code-barres pour charger les données d&apos;un produit existant
+              {t('product_form.search_hint', 'Recherchez par SKU ou code-barres pour charger les données d\'un produit existant')}
             </p>
           </div>
         )}
@@ -739,7 +740,7 @@ export default function NewProductPage() {
             <div className="max-w-3xl mx-auto flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-blue-600 dark:text-blue-400 animate-pulse" />
               <span className="text-xs font-bold text-blue-700 dark:text-blue-300">
-                Vérification et récupération automatique en cours…
+                {t('product_form.auto_filling', 'Vérification et récupération automatique en cours…')}
               </span>
             </div>
           </div>
@@ -748,7 +749,7 @@ export default function NewProductPage() {
         {loadingProduct && (
           <div className="flex items-center justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent" />
-            <span className="ml-2 text-sm text-slate-500">Chargement du produit...</span>
+            <span className="ml-2 text-sm text-slate-500">{t('product_form.loading_product', 'Chargement du produit...')}</span>
           </div>
         )}
 
@@ -839,8 +840,8 @@ export default function NewProductPage() {
                       <CardContent className="p-6 space-y-6">
                         <SectionHeader
                           icon={Info}
-                          title="Informations générales"
-                          subtitle="Nom, catégorie, unité et photo du produit"
+                          title={t('product_form.general_info', 'Informations générales')}
+                          subtitle={t('product_form.general_info_subtitle', 'Nom, catégorie, unité et photo du produit')}
                         />
 
                         <div className="flex flex-col gap-5">
@@ -866,7 +867,7 @@ export default function NewProductPage() {
                               {errors.nameFr && <FErr msg={errors.nameFr} />}
                             </FieldWrap>
 
-                            <FieldWrap label="Catégorie" required>
+                            <FieldWrap label={t('product_form.category', 'Catégorie')} required>
                               <Select
                                 value={form.categoryId}
                                 onValueChange={(v) => {
@@ -878,12 +879,12 @@ export default function NewProductPage() {
                                 }}
                               >
                                 <SelectTrigger className={sCls()}>
-                                  <SelectValue placeholder="Sélectionner…" />
+                                  <SelectValue placeholder={t('product_form.select_placeholder', 'Sélectionner…')} />
                                 </SelectTrigger>
                                 <SelectContent>
                                   {categories.length === 0 && (
                                     <div className="px-3 py-2 text-xs text-slate-400">
-                                      Aucune catégorie
+                                      {t('product_form.no_category', 'Aucune catégorie')}
                                     </div>
                                   )}
                                   {categories.map((cat) => (
@@ -903,29 +904,29 @@ export default function NewProductPage() {
                                   >
                                     <div className="flex items-center gap-2">
                                       <Plus className="h-4 w-4" />
-                                      Ajouter une catégorie
+                                      {t('product_form.add_category', 'Ajouter une catégorie')}
                                     </div>
                                   </SelectItem>
                                 </SelectContent>
                               </Select>
                               {form.categoryId === '' && (
                                 <p className="text-[11px] text-slate-400 dark:text-gray-500 mt-1">
-                                  Aucune catégorie ? Sélectionnez{' '}
+                                  {t('product_form.no_category_hint', 'Aucune catégorie ? Sélectionnez')}{' '}
                                   <span className="font-bold text-orange-500">
-                                    Ajouter une catégorie
+                                    {t('product_form.add_category', 'Ajouter une catégorie')}
                                   </span>{' '}
-                                  dans la liste
+                                  {t('product_form.in_list', 'dans la liste')}
                                 </p>
                               )}
                             </FieldWrap>
 
-                            <FieldWrap label="Unité" required>
+                            <FieldWrap label={t('product_form.unit', 'Unité')} required>
                               <Select
                                 value={form.unit}
                                 onValueChange={(v) => handleChange('unit', v)}
                               >
                                 <SelectTrigger className={sCls()}>
-                                  <SelectValue placeholder="Sélectionner" />
+                                  <SelectValue placeholder={t('product_form.select', 'Sélectionner')} />
                                 </SelectTrigger>
                                 <SelectContent>
                                   {UNITS.map((u) => (
@@ -943,14 +944,14 @@ export default function NewProductPage() {
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
-                          <FieldWrap label="Référence fournisseur" optional>
+                          <FieldWrap label={t('product_form.supplier_ref', 'Référence fournisseur')} optional>
                             <Input
                               value={form.supplierRef}
                               onChange={(e) => handleChange('supplierRef', e.target.value)}
                               className={iCls()}
                             />
                           </FieldWrap>
-                          <FieldWrap label="Description" optional>
+                          <FieldWrap label={t('product_form.description', 'Description')} optional>
                             <Textarea
                               value={form.description}
                               onChange={(e) => handleChange('description', e.target.value)}
@@ -962,9 +963,9 @@ export default function NewProductPage() {
 
                         <StepChecklist
                           items={[
-                            { label: 'Nom du produit', ok: form.nameFr.trim().length > 0 },
-                            { label: 'Catégorie', ok: form.categoryId.length > 0 },
-                            { label: 'Unité', ok: form.unit.length > 0 },
+                            { label: t('product_form.product_name', 'Nom du produit'), ok: form.nameFr.trim().length > 0 },
+                            { label: t('product_form.category', 'Catégorie'), ok: form.categoryId.length > 0 },
+                            { label: t('product_form.unit', 'Unité'), ok: form.unit.length > 0 },
                           ]}
                         />
                       </CardContent>
@@ -977,13 +978,13 @@ export default function NewProductPage() {
                       <CardContent className="p-6 space-y-6">
                         <SectionHeader
                           icon={Scan}
-                          title="Identifiants du produit"
-                          subtitle="SKU interne et code-barres"
+                          title={t('product_form.identifiers', 'Identifiants du produit')}
+                          subtitle={t('product_form.identifiers_subtitle', 'SKU interne et code-barres')}
                         />
                         <div className="grid grid-cols-2 gap-6">
                           <div className="space-y-2">
                             <Label className="text-sm font-extrabold text-slate-600 dark:text-gray-300 flex items-center gap-1">
-                              SKU (Référence) <span className="text-red-500">*</span>
+                              {t('product_form.sku', 'SKU (Référence)')} <span className="text-red-500">*</span>
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <Info className="h-3 w-3 text-slate-400 cursor-help" />
@@ -1013,7 +1014,7 @@ export default function NewProductPage() {
                                     <RefreshCw className="h-4 w-4" style={{ color: PRIMARY }} />
                                   </Button>
                                 </TooltipTrigger>
-                                <TooltipContent>Générer automatiquement</TooltipContent>
+                                <TooltipContent>{t('product_form.auto_generate', 'Générer automatiquement')}</TooltipContent>
                               </Tooltip>
                             </div>
                             {skuCheck.checked && !skuCheck.valid && (
@@ -1021,15 +1022,15 @@ export default function NewProductPage() {
                             )}
                             {skuCheck.checked && skuCheck.valid && form.sku && (
                               <p className="text-xs font-bold text-green-600 dark:text-green-400 flex items-center gap-1">
-                                <CheckCircle2 className="h-3 w-3" /> SKU disponible
+                                <CheckCircle2 className="h-3 w-3" /> {t('product_form.sku_available', 'SKU disponible')}
                               </p>
                             )}
                           </div>
                           <div className="space-y-2">
                             <Label className="text-sm font-extrabold text-slate-600 dark:text-gray-300">
-                              Code-barres (EAN/UPC){' '}
+                              {t('product_form.barcode', 'Code-barres (EAN/UPC)')}{' '}
                               <span className="text-xs text-slate-400 font-normal">
-                                (optionnel)
+                                ({t('common.optional', 'optionnel')})
                               </span>
                             </Label>
                             <div className="flex gap-2">
@@ -1056,7 +1057,7 @@ export default function NewProductPage() {
                                     )}
                                   </Button>
                                 </TooltipTrigger>
-                                <TooltipContent>Scanner (remplissage automatique)</TooltipContent>
+                                <TooltipContent>{t('product_form.scan_tooltip', 'Scanner (remplissage automatique)')}</TooltipContent>
                               </Tooltip>
                             </div>
                             {barcodeCheck.checked && !barcodeCheck.valid && (
@@ -1064,7 +1065,7 @@ export default function NewProductPage() {
                             )}
                             {barcodeCheck.checked && barcodeCheck.valid && form.barcode && (
                               <p className="text-xs font-bold text-green-600 dark:text-green-400 flex items-center gap-1">
-                                <CheckCircle2 className="h-3 w-3" /> Code-barres valide
+                                <CheckCircle2 className="h-3 w-3" /> {t('product_form.barcode_valid', 'Code-barres valide')}
                               </p>
                             )}
                           </div>
@@ -1072,19 +1073,19 @@ export default function NewProductPage() {
                         <div className="grid grid-cols-3 gap-3">
                           {[
                             {
-                              label: 'SKU auto-généré depuis code-barres',
+                              label: t('product_form.sku_auto_from_barcode', 'SKU auto-généré depuis code-barres'),
                               color: 'text-orange-600 dark:text-orange-400',
                               bg: 'bg-orange-50 dark:bg-orange-900/20',
                               icon: RefreshCw,
                             },
                             {
-                              label: 'Détection doublons temps réel',
+                              label: t('product_form.duplicate_detection', 'Détection doublons temps réel'),
                               color: 'text-amber-600 dark:text-amber-400',
                               bg: 'bg-amber-50 dark:bg-amber-900/20',
                               icon: AlertCircle,
                             },
                             {
-                              label: 'Scan avec remplissage automatique',
+                              label: t('product_form.scan_autofill', 'Scan avec remplissage automatique'),
                               color: 'text-green-600 dark:text-green-400',
                               bg: 'bg-green-50 dark:bg-green-900/20',
                               icon: Scan,
@@ -1111,11 +1112,11 @@ export default function NewProductPage() {
                       <CardContent className="p-6 space-y-6">
                         <SectionHeader
                           icon={DollarSign}
-                          title="Prix et marges"
-                          subtitle="Prix d'achat, de vente et TVA"
+                          title={t('product_form.prices', 'Prix et marges')}
+                          subtitle={t('product_form.prices_subtitle', "Prix d'achat, de vente et TVA")}
                         />
                         <div className="grid grid-cols-3 gap-4">
-                          <FieldWrap label="Prix d'achat (MAD)" optional>
+                          <FieldWrap label={t('product_form.cost_price', "Prix d'achat (MAD)")} optional>
                             <Input
                               type="number"
                               step="1"
@@ -1126,7 +1127,7 @@ export default function NewProductPage() {
                               onKeyDown={preventDecimal}
                             />
                           </FieldWrap>
-                          <FieldWrap label="Prix de vente (MAD)" required>
+                          <FieldWrap label={t('product_form.retail_price', 'Prix de vente (MAD)')} required>
                             <Input
                               type="number"
                               step="1"
@@ -1138,7 +1139,7 @@ export default function NewProductPage() {
                             />
                             {errors.retailPrice && <FErr msg={errors.retailPrice} />}
                           </FieldWrap>
-                          <FieldWrap label="TVA (%)" optional>
+                          <FieldWrap label={t('product_form.tax_rate', 'TVA (%)')} optional>
                             <Select
                               value={form.taxRate}
                               onValueChange={(v) => handleChange('taxRate', v)}
@@ -1147,7 +1148,7 @@ export default function NewProductPage() {
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="0">Aucune</SelectItem>
+                                <SelectItem value="0">{t('product_form.no_tax', 'Aucune')}</SelectItem>
                                 {TAX_RATES.filter((r) => r > 0).map((r) => (
                                   <SelectItem key={r} value={r.toString()}>
                                     {r}%
@@ -1161,7 +1162,7 @@ export default function NewProductPage() {
                           <div className="grid grid-cols-3 gap-3">
                             <StatCard
                               icon={TrendingUp}
-                              label="Marge bénéficiaire"
+                              label={t('product_form.profit_margin', 'Marge bénéficiaire')}
                               value={`${marginPercent.toFixed(0)}%`}
                               valueColor={marginPercent > 0 ? '#16A34A' : '#DC2626'}
                               iconColor={ORANGE}
@@ -1169,7 +1170,7 @@ export default function NewProductPage() {
                             />
                             <StatCard
                               icon={DollarSign}
-                              label="Profit estimé"
+                              label={t('product_form.estimated_profit', 'Profit estimé')}
                               value={`${margin.toFixed(2)} MAD`}
                               valueColor="#16A34A"
                               iconColor="#16A34A"
@@ -1177,7 +1178,7 @@ export default function NewProductPage() {
                             />
                             <StatCard
                               icon={ShoppingCart}
-                              label="Prix TTC"
+                              label={t('product_form.ttc_price', 'Prix TTC')}
                               value={`${totalTTC.toFixed(2)} MAD`}
                               valueColor={PRIMARY}
                               iconColor={PRIMARY}
@@ -1189,7 +1190,7 @@ export default function NewProductPage() {
                           <div className="rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 p-3 flex items-center gap-2">
                             <AlertCircle className="h-4 w-4 text-red-500" />
                             <span className="text-xs font-bold text-red-600 dark:text-red-400">
-                              Le prix de vente doit être supérieur au prix d'achat
+                              {t('product_form.price_above_cost', "Le prix de vente doit être supérieur au prix d'achat")}
                             </span>
                           </div>
                         )}
@@ -1203,11 +1204,11 @@ export default function NewProductPage() {
                       <CardContent className="p-6 space-y-6">
                         <SectionHeader
                           icon={ShoppingCart}
-                          title="Gestion du stock"
-                          subtitle="Stock initial et seuil d'alerte"
+                          title={t('product_form.stock_management', 'Gestion du stock')}
+                          subtitle={t('product_form.stock_subtitle', "Stock initial et seuil d'alerte")}
                         />
                         <div className="grid grid-cols-2 gap-6">
-                          <FieldWrap label="Stock initial" optional>
+                          <FieldWrap label={t('product_form.initial_stock', 'Stock initial')} optional>
                             <Input
                               type="number"
                               step="1"
@@ -1217,10 +1218,10 @@ export default function NewProductPage() {
                               className={iCls()}
                             />
                             <p className="text-xs text-slate-400 dark:text-gray-500 mt-1">
-                              Par défaut : 0
+                              {t('product_form.default_zero', 'Par défaut : 0')}
                             </p>
                           </FieldWrap>
-                          <FieldWrap label="Seuil d'alerte" optional>
+                          <FieldWrap label={t('product_form.alert_threshold', "Seuil d'alerte")} optional>
                             <Input
                               type="number"
                               step="1"
@@ -1230,7 +1231,7 @@ export default function NewProductPage() {
                               className={iCls()}
                             />
                             <p className="text-xs text-slate-400 dark:text-gray-500 mt-1">
-                              Alerte si stock {"<="} cette valeur
+                              {t('product_form.alert_if_below', 'Alerte si stock ≤ cette valeur')}
                             </p>
                           </FieldWrap>
                         </div>
@@ -1241,7 +1242,7 @@ export default function NewProductPage() {
                             <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 p-3 flex items-center gap-2">
                               <AlertCircle className="h-4 w-4 text-amber-500" />
                               <span className="text-xs font-bold text-amber-600 dark:text-amber-400">
-                                Le produit sera indiqué "Stock faible" dès sa création
+                                {t('product_form.low_stock_warning', 'Le produit sera indiqué "Stock faible" dès sa création')}
                               </span>
                             </div>
                           )}
@@ -1256,34 +1257,34 @@ export default function NewProductPage() {
                         <CardContent className="p-6">
                           <SectionHeader
                             icon={Activity}
-                            title="Options supplémentaires"
-                            subtitle="Visibilité et comportement du produit"
+                            title={t('product_form.extra_options', 'Options supplémentaires')}
+                            subtitle={t('product_form.extra_options_subtitle', 'Visibilité et comportement du produit')}
                           />
                           <div className="mt-4 space-y-1">
                             {[
                               {
                                 key: 'isActive',
                                 icon: Activity,
-                                label: 'Produit actif après création',
-                                desc: 'Visible et disponible immédiatement',
+                                label: t('product_form.active_after_create', 'Produit actif après création'),
+                                desc: t('product_form.active_desc', 'Visible et disponible immédiatement'),
                               },
                               {
                                 key: 'isFavorite',
                                 icon: Star,
-                                label: 'Ajouter à la liste des favoris',
-                                desc: 'Apparaît en tête dans le point de vente',
+                                label: t('product_form.add_to_favorites', 'Ajouter à la liste des favoris'),
+                                desc: t('product_form.favorite_desc', 'Apparaît en tête dans le point de vente'),
                               },
                               {
                                 key: 'trackStock',
                                 icon: Eye,
-                                label: 'Suivre les mouvements de stock',
-                                desc: 'Enregistre entrées et sorties',
+                                label: t('product_form.track_stock', 'Suivre les mouvements de stock'),
+                                desc: t('product_form.track_stock_desc', 'Enregistre entrées et sorties'),
                               },
                               {
                                 key: 'showInPos',
                                 icon: ShoppingCart,
-                                label: 'Afficher dans le point de vente',
-                                desc: 'Sélectionnable lors des ventes',
+                                label: t('product_form.show_in_pos', 'Afficher dans le point de vente'),
+                                desc: t('product_form.show_in_pos_desc', 'Sélectionnable lors des ventes'),
                               },
                             ].map((opt) => {
                               const Icon = opt.icon
@@ -1322,14 +1323,14 @@ export default function NewProductPage() {
                       <Card className="rounded-2xl shadow-sm border border-slate-200 dark:border-gray-800 bg-white dark:bg-gray-900">
                         <CardContent className="p-5">
                           <h4 className="font-extrabold text-xs text-slate-500 dark:text-gray-400 mb-3 uppercase tracking-wider">
-                            Récapitulatif
+                            {t('product_form.summary', 'Récapitulatif')}
                           </h4>
                           <div className="grid grid-cols-2 gap-2">
                             {[
-                              { label: 'Informations générales', ok: step1Valid },
-                              { label: 'SKU disponible', ok: step2Valid },
-                              { label: 'Prix cohérent', ok: step3Valid },
-                              { label: 'Stock configuré', ok: true },
+                              { label: t('product_form.general_info', 'Informations générales'), ok: step1Valid },
+                              { label: t('product_form.sku_available', 'SKU disponible'), ok: step2Valid },
+                              { label: t('product_form.price_consistent', 'Prix cohérent'), ok: step3Valid },
+                              { label: t('product_form.stock_configured', 'Stock configuré'), ok: true },
                             ].map((c, i) => (
                               <div
                                 key={i}
@@ -1357,12 +1358,11 @@ export default function NewProductPage() {
                           >
                             {isReady ? (
                               <>
-                                <CheckCircle2 className="h-4 w-4 text-orange-500" /> Prêt à être enregistré
+                                <CheckCircle2 className="h-4 w-4 text-orange-500" /> {t('product_form.ready_to_save', 'Prêt à être enregistré')}
                               </>
                             ) : (
                               <>
-                                <AlertCircle className="h-4 w-4" /> Complétez les étapes
-                                précédentes
+                                <AlertCircle className="h-4 w-4" /> {t('product_form.complete_previous_steps', 'Complétez les étapes précédentes')}
                               </>
                             )}
                           </div>
@@ -1382,7 +1382,7 @@ export default function NewProductPage() {
                   disabled={currentStep === 1 || loading}
                   className="gap-2 rounded-xl border-slate-200 dark:border-gray-700 text-slate-600 dark:text-gray-400 font-bold h-11 px-6"
                 >
-                  <ChevronLeft className="h-4 w-4" /> Retour
+                  <ChevronLeft className="h-4 w-4" /> {t('common.back', 'Retour')}
                 </Button>
 
                 <div className="flex items-center gap-2">
@@ -1415,7 +1415,7 @@ export default function NewProductPage() {
                         : undefined,
                     }}
                   >
-                    Continuer <ChevronRight className="h-4 w-4" />
+                    {t('common.continue', 'Continuer')} <ChevronRight className="h-4 w-4" />
                   </Button>
                 ) : (
                   <Button
@@ -1434,10 +1434,10 @@ export default function NewProductPage() {
                       <Save className="h-4 w-4" />
                     )}
                     {loading
-                      ? 'Enregistrement…'
+                      ? t('common.saving', 'Enregistrement…')
                       : isEditMode
-                      ? 'Mettre à jour'
-                      : 'Enregistrer le produit'}
+                      ? t('product_form.update_product', 'Mettre à jour')
+                      : t('product_form.save_product', 'Enregistrer le produit')}
                   </Button>
                 )}
               </div>
@@ -1454,7 +1454,7 @@ export default function NewProductPage() {
       >
         <div className="h-full flex flex-col">
           <div className="p-4 border-b border-slate-200 dark:border-gray-700 flex items-center justify-between">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white">Aperçu du produit</h2>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">{t('product_form.product_preview', 'Aperçu du produit')}</h2>
             <Button
               variant="ghost"
               size="icon"
@@ -1478,7 +1478,7 @@ export default function NewProductPage() {
                   )}
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">{form.nameFr || '(Nom non défini)'}</h3>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">{form.nameFr || t('product_form.unnamed', '(Nom non défini)')}</h3>
                   <p className="text-sm text-gray-500 dark:text-gray-400">SKU : {form.sku || '—'}</p>
                   {form.barcode && <p className="text-sm text-gray-500 dark:text-gray-400">Code‑barres : {form.barcode}</p>}
                 </div>
@@ -1488,45 +1488,45 @@ export default function NewProductPage() {
 
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
-                  <p className="text-gray-500 dark:text-gray-400">Catégorie</p>
+                  <p className="text-gray-500 dark:text-gray-400">{t('product_form.category', 'Catégorie')}</p>
                   <p className="font-medium">{categoryName || '—'}</p>
                 </div>
                 <div>
-                  <p className="text-gray-500 dark:text-gray-400">Unité</p>
+                  <p className="text-gray-500 dark:text-gray-400">{t('product_form.unit', 'Unité')}</p>
                   <p className="font-medium">{form.unit ? t(`products.units.${form.unit as Unit}`) : '—'}</p>
                 </div>
                 <div>
-                  <p className="text-gray-500 dark:text-gray-400">Prix d'achat</p>
+                  <p className="text-gray-500 dark:text-gray-400">{t('product_form.cost_price', "Prix d'achat")}</p>
                   <p className="font-medium">{costNum > 0 ? `${costNum.toFixed(2)} MAD` : '—'}</p>
                 </div>
                 <div>
-                  <p className="text-gray-500 dark:text-gray-400">Prix de vente</p>
+                  <p className="text-gray-500 dark:text-gray-400">{t('product_form.retail_price', 'Prix de vente')}</p>
                   <p className="font-medium text-blue-600 dark:text-blue-400">{retailNum > 0 ? `${retailNum.toFixed(2)} MAD` : '—'}</p>
                 </div>
                 <div>
-                  <p className="text-gray-500 dark:text-gray-400">TVA</p>
+                  <p className="text-gray-500 dark:text-gray-400">{t('product_form.tax_rate', 'TVA')}</p>
                   <p className="font-medium">{taxNum > 0 ? `${taxNum}%` : '0%'}</p>
                 </div>
                 <div>
-                  <p className="text-gray-500 dark:text-gray-400">Prix TTC</p>
+                  <p className="text-gray-500 dark:text-gray-400">{t('product_form.ttc_price', 'Prix TTC')}</p>
                   <p className="font-medium text-green-600 dark:text-green-400">{totalTTC > 0 ? `${totalTTC.toFixed(2)} MAD` : '—'}</p>
                 </div>
                 <div>
-                  <p className="text-gray-500 dark:text-gray-400">Stock initial</p>
+                  <p className="text-gray-500 dark:text-gray-400">{t('product_form.initial_stock', 'Stock initial')}</p>
                   <p className="font-medium">{form.stockQty || '0'}</p>
                 </div>
                 <div>
-                  <p className="text-gray-500 dark:text-gray-400">Seuil d'alerte</p>
+                  <p className="text-gray-500 dark:text-gray-400">{t('product_form.alert_threshold', "Seuil d'alerte")}</p>
                   <p className="font-medium">{form.alertThreshold || '5'}</p>
                 </div>
                 <div className="col-span-2">
-                  <p className="text-gray-500 dark:text-gray-400">Description</p>
+                  <p className="text-gray-500 dark:text-gray-400">{t('product_form.description', 'Description')}</p>
                   <p className="font-medium text-sm">{form.description || '—'}</p>
                 </div>
                 <div className="col-span-2">
-                  <p className="text-gray-500 dark:text-gray-400">Statut</p>
+                  <p className="text-gray-500 dark:text-gray-400">{t('product_form.status', 'Statut')}</p>
                   <Badge className="border-0" variant={form.isActive ? 'default' : 'secondary'}>
-                    {form.isActive ? 'Actif' : 'Inactif'}
+                    {form.isActive ? t('products_page.active', 'Actif') : t('products_page.inactive', 'Inactif')}
                   </Badge>
                 </div>
               </div>
@@ -1618,9 +1618,10 @@ function FErr({ msg }: { msg: string }) {
 }
 
 function StepChecklist({ items }: { items: { label: string; ok: boolean }[] }) {
+  const { t } = useTranslation()
   return (
     <div className="rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/40 p-3 flex flex-wrap gap-2 items-center">
-      <span className="text-xs font-bold text-blue-700 dark:text-blue-300">Requis :</span>
+      <span className="text-xs font-bold text-blue-700 dark:text-blue-300">{t('product_form.required', 'Requis :')}</span>
       {items.map((f, i) => (
         <span
           key={i}

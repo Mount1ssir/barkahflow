@@ -16,10 +16,12 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
 import { ArrowLeft, Save, Mail, ShieldCheck } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 const PRIMARY = '#2C3E50'
 
 export default function ProfilePage() {
+  const { t } = useTranslation()
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -44,7 +46,7 @@ export default function ProfilePage() {
       setPhone(sessionUser.user_metadata?.phone || '')
     } catch (error) {
       console.error(error)
-      toast.error('Erreur chargement du profil')
+      toast.error(t('profile_page.error_load', 'Erreur chargement du profil'))
     } finally {
       setLoading(false)
     }
@@ -52,7 +54,7 @@ export default function ProfilePage() {
 
   const handleSave = async () => {
     if (!fullName.trim()) {
-      toast.error('Le nom est obligatoire')
+      toast.error(t('profile_page.name_required', 'Le nom est obligatoire'))
       return
     }
     setSaving(true)
@@ -65,10 +67,10 @@ export default function ProfilePage() {
       })
       if (error) throw error
       setUser(data.user)
-      toast.success('Profil mis à jour avec succès')
+      toast.success(t('profile_page.success_update', 'Profil mis à jour avec succès'))
     } catch (error: any) {
       console.error(error)
-      toast.error(error?.message || 'Erreur lors de la mise à jour')
+      toast.error(error?.message || t('profile_page.error_update', 'Erreur lors de la mise à jour'))
     } finally {
       setSaving(false)
     }
@@ -97,9 +99,9 @@ export default function ProfilePage() {
     <div className="max-w-2xl mx-auto p-6">
       <div className="flex items-center gap-4 mb-6">
         <Button variant="ghost" onClick={() => router.push('/dashboard')} className="gap-2 rounded-xl">
-          <ArrowLeft className="h-4 w-4" /> Retour
+          <ArrowLeft className="h-4 w-4" /> {t('profile_page.back', 'Retour')}
         </Button>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Mon profil</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('profile_page.title', 'Mon profil')}</h1>
       </div>
 
       <Card className="rounded-2xl border shadow-sm mb-6">
@@ -116,29 +118,29 @@ export default function ProfilePage() {
             </Avatar>
             <div className="flex-1 min-w-0">
               <p className="font-semibold text-lg text-gray-900 dark:text-white truncate">
-                {fullName || 'Commerçant'}
+                {fullName || t('profile_page.merchant', 'Commerçant')}
               </p>
               <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{email}</p>
               <span className="inline-flex items-center gap-1.5 mt-1.5 text-xs text-gray-400">
                 <ShieldCheck className="h-3.5 w-3.5" />
-                Connecté via {authProvider === 'google' ? 'Google' : authProvider}
+                {t('profile_page.google_connected', 'Connecté via Google')}
               </span>
             </div>
           </div>
           <p className="text-xs text-gray-400 mt-4">
-            La photo de profil provient de votre compte Google et ne peut pas être modifiée ici.
+            {t('profile_page.avatar_google_hint', 'La photo de profil provient de votre compte Google et ne peut pas être modifiée ici.')}
           </p>
         </CardContent>
       </Card>
 
       <Card className="rounded-2xl border shadow-sm">
         <CardHeader>
-          <CardTitle className="text-base font-semibold">Informations personnelles</CardTitle>
+          <CardTitle className="text-base font-semibold">{t('profile_page.personal_info', 'Informations personnelles')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-1.5">
             <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              Nom complet <span className="text-red-500">*</span>
+              {t('profile_page.full_name', 'Nom complet')} <span className="text-red-500">*</span>
             </Label>
             <Input
               value={fullName}
@@ -149,7 +151,7 @@ export default function ProfilePage() {
 
           <div className="space-y-1.5">
             <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              Téléphone
+              {t('profile_page.phone', 'Téléphone')}
             </Label>
             <Input
               value={phone}
@@ -161,7 +163,7 @@ export default function ProfilePage() {
 
           <div className="space-y-1.5">
             <Label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
-              <Mail className="h-3.5 w-3.5" /> Email
+              <Mail className="h-3.5 w-3.5" /> {t('profile_page.email', 'Email')}
             </Label>
             <Input
               value={email}
@@ -169,7 +171,7 @@ export default function ProfilePage() {
               className="rounded-xl h-11 border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-500"
             />
             <p className="text-xs text-gray-400">
-              L'email est lié à votre compte Google et ne peut pas être modifié ici.
+              {t('profile_page.email_google_hint', 'L\'email est lié à votre compte Google et ne peut pas être modifié ici.')}
             </p>
           </div>
 
@@ -180,7 +182,7 @@ export default function ProfilePage() {
             style={{ backgroundColor: PRIMARY }}
           >
             <Save className="h-4 w-4 mr-2" />
-            {saving ? 'Enregistrement...' : 'Enregistrer les modifications'}
+            {saving ? t('profile_page.saving', 'Enregistrement...') : t('profile_page.save_changes', 'Enregistrer les modifications')}
           </Button>
         </CardContent>
       </Card>

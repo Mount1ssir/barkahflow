@@ -61,10 +61,10 @@ function ExpensesContent() {
           <TrendingUp className="w-8 h-8 text-gray-300 dark:text-zinc-600" />
         </div>
         <p className="font-semibold text-gray-700 dark:text-gray-300">
-          Accès limité aux dépenses
+          {t('expenses.limited_access_title', 'Accès limité aux dépenses')}
         </p>
         <p className="text-sm text-gray-400 mt-1 max-w-md">
-          Vous n'avez pas la permission de voir les dépenses.
+          {t('expenses.limited_access_desc', "Vous n'avez pas la permission de voir les dépenses.")}
         </p>
       </div>
     )
@@ -265,7 +265,7 @@ function ExpensesContent() {
         item.category,
         item.vendor,
         item.notes,
-        item.status === 'SETTLED' ? 'Réglé' : 'En attente',
+        item.status === 'SETTLED' ? t('expenses.status_settled', 'Réglé') : t('expenses.status_pending', 'En attente'),
         (item.amount / 100).toFixed(2)
       ])
     ]
@@ -375,7 +375,7 @@ function ExpensesContent() {
               ) : (
                 <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-semibold bg-rose-50 dark:bg-rose-950/30 text-rose-700 dark:text-rose-455 rounded-md border border-rose-100/50 dark:border-rose-900/30">
                   <ArrowDownRight size={10} />
-                  <span>Déficit</span>
+                  <span>{t('expenses.deficit', 'Déficit')}</span>
                 </span>
               )}
             </div>
@@ -389,7 +389,7 @@ function ExpensesContent() {
               {totals.income.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} MAD
             </span>
             <span className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1">
-              Basé sur les enregistrements de caisse
+              {t('expenses.based_on_records', 'Basé sur les enregistrements de caisse')}
             </span>
           </div>
 
@@ -401,7 +401,7 @@ function ExpensesContent() {
               {totals.expenses.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} MAD
             </span>
             <span className="text-[10px] text-slate-400 dark:text-zinc-500 mt-1">
-              Somme des opérations sur la période
+              {t('expenses.sum_of_operations', 'Somme des opérations sur la période')}
             </span>
           </div>
         </div>
@@ -580,7 +580,7 @@ function ExpensesContent() {
                       <button 
                         onClick={() => handleDeleteExpense(item.id)}
                         className="text-slate-400 hover:text-rose-600 transition-colors duration-150 opacity-0 group-hover:opacity-100 cursor-pointer"
-                        title="Supprimer la dépense"
+                        title={t('expenses.delete_expense', 'Supprimer la dépense')}
                       >
                         <Trash2 size={14} />
                       </button>

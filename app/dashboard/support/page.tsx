@@ -25,48 +25,59 @@ const BLUE = '#3B82F6'
 
 // ─── FAQ ──────────────────────────────────────────────────────────
 interface FaqItem {
+  key: string
   question: string
   answer: string
 }
 
 const FAQ_ITEMS: FaqItem[] = [
   {
+    key: 'create_invoice',
     question: 'Comment créer une nouvelle facture ?',
     answer: 'Rendez-vous dans la section "Factures" depuis le menu latéral, puis cliquez sur "Nouvelle facture". Remplissez les informations du client, ajoutez les produits, puis validez.',
   },
   {
+    key: 'add_product',
     question: 'Comment ajouter un nouveau produit ?',
     answer: 'Allez dans "Produits" dans le menu latéral, puis cliquez sur "Ajouter un produit". Remplissez les informations (nom, prix, stock, etc.) et enregistrez.',
   },
   {
+    key: 'manage_debts',
     question: 'Comment gérer les dettes clients ?',
     answer: 'La section "Dettes" vous permet de voir tous les clients endettés. Vous pouvez enregistrer des paiements partiels et suivre l\'historique complet.',
   },
   {
+    key: 'export_data',
     question: 'Puis-je exporter mes données ?',
     answer: 'Oui ! Dans la page "Revenus" ou "Clients", vous trouverez un bouton "Exporter" qui génère un fichier CSV de vos données pour la période sélectionnée.',
   },
   {
+    key: 'pin_lock',
     question: 'Comment fonctionne le verrouillage PIN ?',
     answer: 'Allez dans "Paramètres → Sécurité" pour activer ou modifier votre code PIN. L\'application se verrouillera automatiquement après une période d\'inactivité.',
   },
   {
+    key: 'reset_pin',
     question: 'Comment réinitialiser mon PIN ?',
     answer: 'Sur l\'écran PIN, cliquez sur "PIN oublié ?". Un email de réinitialisation sera envoyé à votre adresse Google associée. Suivez le lien reçu pour créer un nouveau PIN.',
   },
   {
+    key: 'print_invoices',
     question: 'Puis-je imprimer mes factures ?',
     answer: 'Oui, sur la page de détail d\'une facture, cliquez sur "Imprimer" pour une version papier, ou "Télécharger PDF" pour la sauvegarder sur votre ordinateur.',
   },
   {
+    key: 'backup_data',
     question: 'Comment sauvegarder mes données ?',
     answer: 'Vos données sont stockées localement dans une base SQLite sur votre ordinateur. Il est recommandé de copier régulièrement le fichier de base de données vers un disque externe ou un cloud (Google Drive, OneDrive).',
   },
   {
+    key: 'app_launch_issue',
     question: 'Que faire si l\'application ne démarre pas ?',
     answer: 'Essayez de redémarrer votre ordinateur. Si le problème persiste, contactez le support via WhatsApp ou email en précisant votre système d\'exploitation et la version de l\'app.',
   },
   {
+    key: 'update_app',
     question: 'Comment mettre à jour l\'application ?',
     answer: 'Une notification apparaîtra automatiquement lorsqu\'une nouvelle version est disponible. Vous pouvez aussi contacter le support pour recevoir la dernière version.',
   },
@@ -74,6 +85,7 @@ const FAQ_ITEMS: FaqItem[] = [
 
 // ─── Accordéon FAQ ─────────────────────────────────────────────────
 function FaqAccordion() {
+  const { t } = useTranslation()
   const [openIndex, setOpenIndex] = useState<number | null>(null)
 
   const toggle = (index: number) => {
@@ -94,7 +106,7 @@ function FaqAccordion() {
               className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors"
             >
               <span className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                {item.question}
+                {t('support_page.faq.' + item.key + '.question', item.question)}
               </span>
               {isOpen ? (
                 <ChevronDown className="h-4 w-4 text-gray-400 shrink-0" />
@@ -104,7 +116,7 @@ function FaqAccordion() {
             </button>
             {isOpen && (
               <div className="px-4 pb-4 text-sm text-gray-600 dark:text-gray-400 leading-relaxed border-t border-gray-100 dark:border-gray-700 pt-3">
-                {item.answer}
+                {t('support_page.faq.' + item.key + '.answer', item.answer)}
               </div>
             )}
           </div>
@@ -119,7 +131,7 @@ export default function SupportPage() {
   const { t } = useTranslation()
 
   const openWhatsApp = () => {
-    const message = encodeURIComponent(`Bonjour, j'ai besoin d'aide avec BarkahFlow v${APP_VERSION}.`)
+    const message = encodeURIComponent(t('support_page.whatsapp_message', "Bonjour, j'ai besoin d'aide avec BarkahFlow v{{version}}.", { version: APP_VERSION }))
     open(`https://wa.me/${WHATSAPP_NUMBER.replace('+', '')}?text=${message}`)
   }
 
@@ -144,10 +156,10 @@ export default function SupportPage() {
         <LifeBuoy className="h-8 w-8" style={{ color: BLUE }} />
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            Support & Aide
+            {t('support_page.title', 'Support & Aide')}
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Trouvez des réponses ou contactez notre équipe.
+            {t('support_page.subtitle', 'Trouvez des réponses ou contactez notre équipe.')}
           </p>
         </div>
       </div>
@@ -164,7 +176,7 @@ export default function SupportPage() {
             </div>
             <div>
               <p className="text-sm font-medium text-gray-900 dark:text-white">WhatsApp</p>
-              <p className="text-xs text-gray-400">Rapide et direct</p>
+              <p className="text-xs text-gray-400">{t('support_page.whatsapp_desc', 'Rapide et direct')}</p>
             </div>
           </CardContent>
         </Card>
@@ -193,8 +205,8 @@ export default function SupportPage() {
               <Bug className="h-5 w-5 text-red-500" />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-900 dark:text-white">Signaler un bug</p>
-              <p className="text-xs text-gray-400">Un problème ? Dites-le nous.</p>
+              <p className="text-sm font-medium text-gray-900 dark:text-white">{t('support_page.bug_title', 'Signaler un bug')}</p>
+              <p className="text-xs text-gray-400">{t('support_page.bug_desc', 'Un problème ? Dites-le nous.')}</p>
             </div>
           </div>
           <Button
@@ -202,7 +214,7 @@ export default function SupportPage() {
             className="rounded-xl text-red-500 border-red-200 hover:bg-red-50 hover:border-red-300"
             onClick={openBugReport}
           >
-            Signaler
+            {t('support_page.bug_action', 'Signaler')}
           </Button>
         </CardContent>
       </Card>
@@ -212,7 +224,7 @@ export default function SupportPage() {
         <CardHeader>
           <CardTitle className="text-base font-semibold flex items-center gap-2">
             <HelpCircle className="h-5 w-5 text-gray-500" />
-            Questions fréquentes
+            {t('support_page.faq_title', 'Questions fréquentes')}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -223,7 +235,7 @@ export default function SupportPage() {
       {/* ─── Footer ───────────────────────────────────────────────── */}
       <div className="text-center text-xs text-gray-400 dark:text-gray-500 space-y-1">
         <p>BarkahFlow v{APP_VERSION}</p>
-        <p>Support disponible du lundi au vendredi, 9h à 18h.</p>
+        <p>{t('support_page.footer_hours', 'Support disponible du lundi au vendredi, 9h à 18h.')}</p>
       </div>
 
     </div>

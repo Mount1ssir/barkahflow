@@ -200,10 +200,10 @@ function InvoicesContent() {
           <FileText className="w-8 h-8 text-gray-300 dark:text-zinc-600" />
         </div>
         <p className="font-semibold text-gray-700 dark:text-gray-300">
-          Accès limité aux factures
+          {t('invoices.limited_access_title', 'Accès limité aux factures')}
         </p>
         <p className="text-sm text-gray-400 mt-1 max-w-md">
-          Vous n'avez pas les permissions nécessaires pour accéder aux factures.
+          {t('invoices.limited_access_desc', "Vous n'avez pas les permissions nécessaires pour accéder aux factures.")}
         </p>
       </div>
     )
@@ -373,7 +373,7 @@ function InvoicesContent() {
     if (selectedIds.length === 0) return
     try {
       await Promise.all(selectedIds.map((id) => deleteInvoice(id)))
-      toast.success(`${selectedIds.length} facture(s) supprimée(s)`)
+      toast.success(t('invoices.bulk_deleted', { count: selectedIds.length }))
       setSelectedIds([])
       loadInvoices()
     } catch {
@@ -385,7 +385,7 @@ function InvoicesContent() {
     if (!deleteTarget || !canDelete) return
     try {
       await deleteInvoice(deleteTarget.id)
-      toast.success(`Facture ${deleteTarget.invoiceNumber} supprimée`)
+      toast.success(t('invoices.deleted', { number: deleteTarget.invoiceNumber }))
       setDeleteTarget(null)
       loadInvoices()
     } catch {
@@ -398,13 +398,13 @@ function InvoicesContent() {
       toast.warning('Vous n\'avez pas la permission d\'exporter')
       return
     }
-    const headers = ['N° facture', 'Client', 'Date', 'Échéance', 'Statut', 'Total HT', 'Total TTC']
+    const headers = [t('invoices.col_number','N° facture'), t('invoices.col_client','Client'), t('invoices.col_date','Date'), t('invoices.col_due','Échéance'), t('invoices.col_status','Statut'), t('invoices.col_ht','Total HT'), t('invoices.col_ttc','Total TTC')]
     const rows = filteredData.map((inv) => [
       inv.invoiceNumber,
       inv.clientName || 'Client de passage',
       new Date(inv.createdAt).toLocaleDateString('fr-FR'),
       inv.dueDate ? new Date(inv.dueDate).toLocaleDateString('fr-FR') : '—',
-      STATUS_LABELS[inv.status] || inv.status,
+      t('invoices.status_' + inv.status.toLowerCase(), STATUS_LABELS[inv.status] || inv.status),
       (inv.subtotal / 100).toFixed(2),
       (inv.total / 100).toFixed(2),
     ])
@@ -415,7 +415,7 @@ function InvoicesContent() {
     link.download = `factures_${new Date().toISOString().slice(0, 10)}.csv`
     link.click()
     URL.revokeObjectURL(link.href)
-    toast.success('Export terminé')
+    toast.success(t('common.export_done', 'Export terminé'))
   }
 
   const exportSelected = () => {
@@ -425,13 +425,13 @@ function InvoicesContent() {
     }
     const selectedInvoices = invoices.filter((inv) => selectedIds.includes(inv.id))
     if (selectedInvoices.length === 0) return
-    const headers = ['N° facture', 'Client', 'Date', 'Échéance', 'Statut', 'Total HT', 'Total TTC']
+    const headers = [t('invoices.col_number','N° facture'), t('invoices.col_client','Client'), t('invoices.col_date','Date'), t('invoices.col_due','Échéance'), t('invoices.col_status','Statut'), t('invoices.col_ht','Total HT'), t('invoices.col_ttc','Total TTC')]
     const rows = selectedInvoices.map((inv) => [
       inv.invoiceNumber,
       inv.clientName || 'Client de passage',
       new Date(inv.createdAt).toLocaleDateString('fr-FR'),
       inv.dueDate ? new Date(inv.dueDate).toLocaleDateString('fr-FR') : '—',
-      STATUS_LABELS[inv.status] || inv.status,
+      t('invoices.status_' + inv.status.toLowerCase(), STATUS_LABELS[inv.status] || inv.status),
       (inv.subtotal / 100).toFixed(2),
       (inv.total / 100).toFixed(2),
     ])
@@ -442,7 +442,7 @@ function InvoicesContent() {
     link.download = `factures_selection_${new Date().toISOString().slice(0, 10)}.csv`
     link.click()
     URL.revokeObjectURL(link.href)
-    toast.success('Export terminé')
+    toast.success(t('common.export_done', 'Export terminé'))
   }
 
   const isWalkInClient = (clientName: string | null, clientId: string | null): boolean => {
@@ -478,11 +478,11 @@ function InvoicesContent() {
       {hasActiveFilters && (
         <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800">
           <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
-            {urlStatus === 'UNPAID' && 'Factures impayées'}
+            {urlStatus === 'UNPAID' && t('invoices.unpaid_invoices', 'Factures impayées')}
             {urlDateFrom && urlDateTo && ` — du ${new Date(urlDateFrom).toLocaleDateString('fr-FR')} au ${new Date(urlDateTo).toLocaleDateString('fr-FR')}`}
           </span>
           <Button variant="ghost" size="sm" onClick={resetUrlFilters} className="text-blue-600 hover:text-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/30 gap-1">
-            <X className="h-4 w-4" /> Réinitialiser
+            <X className="h-4 w-4" /> {t('common.reset', 'Réinitialiser')}
           </Button>
         </div>
       )}
@@ -525,7 +525,7 @@ function InvoicesContent() {
             )}
             {selectedIds.length > 0 && canExport && (
               <Button variant="outline" size="sm" className="gap-2 rounded-xl h-9 border-gray-200" onClick={exportSelected}>
-                <Download className="h-4 w-4" /> Exporter sélection
+                <Download className="h-4 w-4" /> {t('invoices.export_selection', 'Exporter sélection')}
               </Button>
             )}
             {canExport && (
@@ -579,7 +579,7 @@ function InvoicesContent() {
                     <TableHead className="font-semibold text-gray-700 dark:text-gray-300">{t('invoices.number', 'N° facture')}</TableHead>
                     <TableHead className="font-semibold text-gray-700 dark:text-gray-300">{t('invoices.client', 'Client')}</TableHead>
                     <TableHead className="font-semibold text-gray-700 dark:text-gray-300">{t('invoices.date', 'Date')}</TableHead>
-                    <TableHead className="font-semibold text-gray-700 dark:text-gray-300">Échéance</TableHead>
+                    <TableHead className="font-semibold text-gray-700 dark:text-gray-300">{t('invoices.col_due', 'Échéance')}</TableHead>
                     <TableHead className="font-semibold text-gray-700 dark:text-gray-300">{t('invoices.status', 'Statut')}</TableHead>
                     <TableHead className="text-right font-semibold text-gray-700 dark:text-gray-300">{t('invoices.total_ht', 'Total HT')}</TableHead>
                     <TableHead className="text-right font-semibold text-gray-700 dark:text-gray-300">{t('invoices.total_ttc', 'Total TTC')}</TableHead>
@@ -590,7 +590,7 @@ function InvoicesContent() {
                   {paginatedData.map((inv) => {
                     const isSelected = selectedIds.includes(inv.id)
                     const statusColor = STATUS_COLORS[inv.status] || '#6B7280'
-                    const statusLabel = STATUS_LABELS[inv.status] || inv.status
+                    const statusLabel = t('invoices.status_' + inv.status.toLowerCase(), STATUS_LABELS[inv.status] || inv.status)
                     const isWalkin = isWalkInClient(inv.clientName, inv.clientId)
                     const clientDisplay = isWalkin ? t('pos.walkin_client', 'Client de passage') : inv.clientName || t('invoices.anonymous', 'Anonyme')
                     const dueDateInfo = getDueDateInfo(inv)
@@ -668,7 +668,7 @@ function InvoicesContent() {
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
             <AlertDialogDescription>
-              Êtes-vous sûr de vouloir supprimer la facture {deleteTarget?.invoiceNumber} ? Cette action est irréversible.
+              {t('invoices.delete_confirm', { number: deleteTarget?.invoiceNumber })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

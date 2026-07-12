@@ -440,24 +440,24 @@ function ProduitsContent() {
     const targetName = deleteTarget.nameAr
     try {
       await deleteProduct(targetId)
-      toast.success(`Produit "${targetName}" supprimé avec succès`)
+      toast.success(t('products_page.product_deleted', { name: targetName }))
       setDeleteTarget(null)
       loadProducts()
     } catch (error: any) {
       setDeleteTarget(null)
       toast.error(
-        error?.message || 'Ce produit ne peut pas être supprimé',
+        error?.message || t('products_page.cannot_delete'),
         {
-          description: 'Vous pouvez le désactiver à la place.',
+          description: t('products_page.can_deactivate_instead'),
           action: {
-            label: 'Désactiver',
+            label: t('products_page.deactivate'),
             onClick: async () => {
               try {
                 await toggleProductStatus(targetId, false)
-                toast.success(`Produit "${targetName}" désactivé`)
+                toast.success(t('products_page.product_deactivated', { name: targetName }))
                 loadProducts()
               } catch (toggleError: any) {
-                toast.error(toggleError?.message || 'Erreur lors de la désactivation')
+                toast.error(toggleError?.message || t('products_page.deactivation_error'))
               }
             },
           },
@@ -490,9 +490,9 @@ function ProduitsContent() {
       if (product) {
         const name = product.nameFr || product.nameAr
         setQuery(name)
-        toast.success(`Produit trouvé : ${name}`)
+        toast.success(t('products_page.product_found', { name }))
       } else {
-        toast.error('Aucun produit trouvé', {
+        toast.error(t('products_page.no_product_found'), {
           description: 'Voulez-vous l\'ajouter ?',
           action: {
             label: 'Ajouter',
@@ -671,7 +671,7 @@ function ProduitsContent() {
               </TableBody>
             </Table>
             <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 text-sm text-gray-500 dark:text-gray-400">
-              Affichage de 1 à {Math.min(products.length, 10)} sur {products.length} produits
+              {t('products_page.showing_records', { from: 1, to: Math.min(products.length, 10), total: products.length })}
             </div>
           </CardContent>
         </Card>

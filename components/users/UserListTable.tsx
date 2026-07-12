@@ -36,6 +36,7 @@ import {
 } from 'lucide-react'
 import { deactivateCashier, updateCashier, deleteCashier, type AppUserRow } from '@/lib/user-data'
 import { getInvoicesByUser, type Invoice } from '@/lib/invoice-data'
+import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 interface UserListTableProps {
@@ -62,6 +63,7 @@ export function UserListTable({
   onResetPin,
   onRefresh,
 }: UserListTableProps) {
+  const { t } = useTranslation()
   const router = useRouter()
   const [searchQuery, setSearchQuery] = useState('')
   const [filter, setFilter] = useState<FilterType>('all')
@@ -165,7 +167,7 @@ export function UserListTable({
       const diff = now.getTime() - last.getTime()
       
       if (diff < 60000) {
-        return 'À l\'instant'
+        return t('cashiers_page.just_now', 'À l\'instant')
       } else if (diff < 3600000) {
         const minutes = Math.floor(diff / 60000)
         return `Il y a ${minutes} minute${minutes > 1 ? 's' : ''}`
@@ -236,8 +238,8 @@ export function UserListTable({
           </p>
           <p className="text-sm text-gray-400 mt-1">
             {searchQuery 
-              ? 'Essayez une autre recherche' 
-              : 'Créez votre premier caissier avec le bouton ci-dessus'}
+              ? t('cashiers_page.try_another_search', 'Essayez une autre recherche')
+              : t('cashiers_page.create_first_cashier', 'Créez votre premier caissier avec le bouton ci-dessus')}
           </p>
         </div>
       )}

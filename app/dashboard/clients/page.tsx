@@ -95,8 +95,10 @@ function computeScore(client: Client): FidelityScore {
 }
 
 function FidelityBadge({ client }: { client: Client }) {
+  const { t } = useTranslation()
   const score  = computeScore(client)
   const config = SCORE_CONFIG[score]
+  const label = score === 'fidele' ? t('clients.score_loyal', 'Fidèle') : config.label
   return (
     <span
       style={{
@@ -114,7 +116,7 @@ function FidelityBadge({ client }: { client: Client }) {
       }}
     >
       <span style={{ width: 6, height: 6, borderRadius: '50%', background: config.color, display: 'inline-block' }} />
-      {config.label}
+      {label}
     </span>
   )
 }
@@ -232,10 +234,10 @@ function ClientsContent() {
           <Users className="w-8 h-8 text-gray-300 dark:text-zinc-600" />
         </div>
         <p className="font-semibold text-gray-700 dark:text-gray-300">
-          Accès limité aux clients
+          {t('clients.limited_access_title', 'Accès limité aux clients')}
         </p>
         <p className="text-sm text-gray-400 mt-1 max-w-md">
-          Vous n'avez pas les permissions nécessaires pour accéder aux clients.
+          {t('clients.limited_access_desc', "Vous n'avez pas les permissions nécessaires pour accéder aux clients.")}
         </p>
       </div>
     )
@@ -393,7 +395,7 @@ function ClientsContent() {
     if (selectedIds.length === 0) return
     try {
       await Promise.all(selectedIds.map((id) => deleteClient(id)))
-      toast.success(`${selectedIds.length} client(s) supprimé(s)`)
+      toast.success(t('clients.bulk_deleted', { count: selectedIds.length }))
       setSelectedIds([])
       loadClients()
     } catch {
@@ -405,7 +407,7 @@ function ClientsContent() {
     if (!deleteTarget || !canDelete) return
     try {
       await deleteClient(deleteTarget.id)
-      toast.success(`Client ${deleteTarget.fullName} supprimé`)
+      toast.success(t('clients.deleted', { name: deleteTarget.fullName }))
       setDeleteTarget(null)
       loadClients()
     } catch {
@@ -419,7 +421,7 @@ function ClientsContent() {
       toast.warning('Vous n\'avez pas la permission d\'exporter')
       return
     }
-    const headers = ['Nom', 'Téléphone', 'Email', 'Adresse', 'Dette', 'Factures', 'Score', 'Date création']
+    const headers = [t('clients.col_name','Nom'), t('clients.col_phone','Téléphone'), t('clients.col_email','Email'), t('clients.col_address','Adresse'), t('clients.col_debt','Dette'), t('clients.col_invoices','Factures'), t('clients.col_score','Score'), t('clients.col_created','Date création')]
     const rows = filteredData.map((c) => [
       c.fullName,
       c.phone || '',
@@ -437,7 +439,7 @@ function ClientsContent() {
     link.download = `clients_${new Date().toISOString().slice(0, 10)}.csv`
     link.click()
     URL.revokeObjectURL(link.href)
-    toast.success('Export terminé')
+    toast.success(t('common.export_done', 'Export terminé'))
   }
 
   return (
@@ -502,12 +504,12 @@ function ClientsContent() {
 
             <Select value={scoreFilter} onValueChange={setScoreFilter}>
               <SelectTrigger className="w-40 rounded-xl h-10 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-                <SelectValue placeholder="Score fidélité" />
+                <SelectValue placeholder={t('clients.loyalty_score', 'Score fidélité')} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Tous les scores</SelectItem>
                 <SelectItem value="vip">VIP</SelectItem>
-                <SelectItem value="fidele">Fidèle</SelectItem>
+                <SelectItem value="fidele">{t('clients.score_loyal', 'Fidèle')}</SelectItem>
                 <SelectItem value="nouveau">Nouveau</SelectItem>
                 <SelectItem value="inactif">Inactif</SelectItem>
               </SelectContent>
@@ -576,7 +578,7 @@ function ClientsContent() {
                     </TableHead>
                     <TableHead className="font-semibold text-gray-700 dark:text-gray-300">Client</TableHead>
                     <TableHead className="font-semibold text-gray-700 dark:text-gray-300">Score</TableHead>
-                    <TableHead className="font-semibold text-gray-700 dark:text-gray-300">Téléphone</TableHead>
+                    <TableHead className="font-semibold text-gray-700 dark:text-gray-300">{t('clients.col_phone', 'Téléphone')}</TableHead>
                     <TableHead className="font-semibold text-gray-700 dark:text-gray-300">Email</TableHead>
                     <TableHead className="font-semibold text-gray-700 dark:text-gray-300">Factures</TableHead>
                     <TableHead className="text-right font-semibold text-gray-700 dark:text-gray-300">Dette</TableHead>
@@ -654,7 +656,7 @@ function ClientsContent() {
                                   {canExport && (
                                     <DropdownMenuItem onClick={() => {
                                       // Exporter un seul client en CSV
-                                      const headers = ['Nom', 'Téléphone', 'Email', 'Adresse', 'Dette', 'Factures', 'Score']
+                                      const headers = [t('clients.col_name','Nom'), t('clients.col_phone','Téléphone'), t('clients.col_email','Email'), t('clients.col_address','Adresse'), t('clients.col_debt','Dette'), t('clients.col_invoices','Factures'), t('clients.col_score','Score')]
                                       const row = [
                                         client.fullName,
                                         client.phone || '',
@@ -671,7 +673,7 @@ function ClientsContent() {
                                       link.download = `client_${client.fullName}_${new Date().toISOString().slice(0, 10)}.csv`
                                       link.click()
                                       URL.revokeObjectURL(link.href)
-                                      toast.success('Client exporté')
+                                      toast.success(t('clients.exported', 'Client exporté'))
                                     }} className="gap-2">
                                       <Download className="h-4 w-4" /> Exporter
                                     </DropdownMenuItem>
@@ -701,7 +703,7 @@ function ClientsContent() {
           <AlertDialogHeader>
             <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
             <AlertDialogDescription>
-              Êtes-vous sûr de vouloir supprimer {deleteTarget?.fullName} ? Cette action est irréversible.
+              {t('clients.delete_confirm', { name: deleteTarget?.fullName })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
