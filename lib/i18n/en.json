@@ -51,7 +51,13 @@
     "tomorrow": "Tomorrow",
     "week": "Week",
     "month": "Month",
-    "year": "Year"
+    "year": "Year",
+    "payment": {
+      "cash": "Cash",
+      "card": "Card",
+      "mobile": "Mobile",
+      "mixed": "Mixed"
+    }
   },
   "login": {
     "welcome": "Welcome to BarkahFlow",
@@ -97,6 +103,7 @@
       "create_invoice": "Create invoice",
       "add_client": "Add client",
       "stock_entry": "Stock entry",
+      "more": "More actions",
       "invoice": "Add an invoice"
     },
     "charts": {
@@ -145,7 +152,8 @@
         "date": "Date",
         "status": "Status",
         "amount": "Amount"
-      }
+      },
+      "no_match": "No invoice with this status"
     },
     "menu": {
       "language": "Language",
@@ -181,6 +189,9 @@
       "depenses": "Expenses",
       "dettes": "Debts",
       "rapports": "Reports"
+    },
+    "header": {
+      "search": "Search in the dashboard..."
     }
   },
   "stock": {
@@ -233,7 +244,10 @@
       "reason": "Reason",
       "in": "In",
       "out": "Out"
-    }
+    },
+    "total": "total",
+    "categories": "Categories",
+    "total_value": "Stock value"
   },
   "sales": {
     "by_category": "Sales distribution",
@@ -241,7 +255,8 @@
     "total_sales": "Total sales",
     "today_sales": "Today's sales",
     "week_sales": "Week sales",
-    "month_sales": "Month sales"
+    "month_sales": "Month sales",
+    "period": "Period"
   },
   "top_products": {
     "title": "Best selling products",
@@ -251,17 +266,21 @@
     "no_sales": "No sales recorded yet",
     "rank": "Rank",
     "product": "Product",
-    "quantity": "Quantity"
+    "quantity": "Quantity",
+    "period": "Period",
+    "hint": "Ensure that invoices (excluding cancelled ones) exist in the selected period."
   },
   "revenue": {
     "title": "Sales evolution",
     "chart": {
       "sales": "Sales",
-      "balance": "Cash balance"
+      "balance": "Cash balance",
+      "previous": "Previous period"
     },
     "legend": {
       "sales": "Sales",
-      "balance": "Cash balance"
+      "balance": "Cash balance",
+      "previous": "Previous period"
     },
     "empty": {
       "title": "No data yet",
@@ -273,7 +292,12 @@
       "weeks": "Weeks",
       "months": "Months"
     },
-    "currency": "MAD"
+    "currency": "MAD",
+    "insight": {
+      "first_period": "First period – data starting to build.",
+      "up": "Up {{pct}}% from the previous period.",
+      "down": "Down {{pct}}% from the previous period."
+    }
   },
   "products": {
     "title": "Products",
@@ -426,6 +450,12 @@
       "created": "Category added",
       "error": "Error adding category",
       "name_required": "Category name is required"
+    },
+    "stats": {
+      "total": "Products",
+      "active": "Active",
+      "low_stock": "Low Stock",
+      "out_of_stock": "Out of Stock"
     }
   },
   "scanner": {
@@ -452,5 +482,483 @@
     "max": "Value must be at most {{max}}",
     "email": "Please enter a valid email",
     "phone": "Please enter a valid phone number"
+  },
+  "settings": {
+    "title": "Settings",
+    "company_info": "Company details",
+    "company_desc": "Manage your shop details, logo, banking details, and legal notices",
+    "user_management": "User management",
+    "user_management_desc": "Create, edit, and manage cashier accounts for your shop",
+    "click_here": "Click →",
+    "only_admins": "Only administrators have access to these settings",
+    "company": {
+      "title": "Company details",
+      "subtitle": "Manage your shop information",
+      "general_info": "General information",
+      "company_name": "Company Name",
+      "city": "City",
+      "address": "Address",
+      "phone": "Phone",
+      "email": "Email",
+      "website": "Website",
+      "logo": "Company logo",
+      "no_logo": "No logo",
+      "choose_image": "Choose an image",
+      "save_success": "Settings saved successfully",
+      "load_error": "Unable to load settings",
+      "banking": "Bank details",
+      "bank_name": "Bank Name",
+      "rib": "RIB",
+      "payment_terms": "Payment terms",
+      "default_terms": "Default payment terms (days)",
+      "default_terms_desc": "Used to automatically calculate the due date for each new invoice.",
+      "late_penalty": "Legal notice — late payment penalties",
+      "late_penalty_placeholder": "Any delay in payment will result in penalties at the legal rate in force...",
+      "late_penalty_desc": "This text appears at the bottom of each invoice that is not fully paid.",
+      "save": "Save settings"
+    },
+    "users": {
+      "title": "Cashier Management",
+      "subtitle": "Manage cashiers and their access",
+      "add_cashier": "Add a cashier",
+      "total_cashiers": "Total cashiers",
+      "active": "Active",
+      "inactive": "Inactive",
+      "connected": "Currently connected",
+      "search_placeholder": "Search cashier...",
+      "no_results": "No cashier found",
+      "confirm_delete": "Delete {{name}}?",
+      "new_cashier": "New Cashier",
+      "edit_cashier": "Edit Cashier",
+      "create_cashier": "Create Cashier"
+    }
+  },
+  "debts": {
+    "title": "Debt Management",
+    "urgency": {
+      "recent": "Recent",
+      "old": "Old",
+      "very_old": "Very old",
+      "critical": "Critical",
+      "not_due": "Not due yet"
+    },
+    "kpi": {
+      "total_debt": "Total Debt",
+      "active_debtors": "Active Debtors",
+      "overdue_debt": "Overdue Debt"
+    },
+    "table": {
+      "client": "Client",
+      "total_amount": "Total Amount",
+      "remaining": "Remaining",
+      "oldest_debt": "Oldest Debt",
+      "status": "Status"
+    },
+    "filter_placeholder": "Filter by client...",
+    "no_debts": "No active debts found."
+  },
+  "clients": {
+    "new": {
+      "title": "New Client",
+      "name_required": "Name is required",
+      "credit_limit_positive": "Credit limit must be a positive number",
+      "create_success": "Client created successfully",
+      "create_error": "Error during creation",
+      "full_name": "Full Name",
+      "phone": "Phone number",
+      "credit_limit": "Credit limit (MAD)",
+      "notes": "Notes",
+      "address": "Address"
+    },
+    "showing": "Showing",
+    "clients": "clients",
+    "total": "Total clients",
+    "active": "Active clients",
+    "total_debt": "Debts",
+    "debtors": "Debtors",
+    "title": "Clients",
+    "subtitle": "Manage your clients, track their purchases and loyalty.",
+    "search": "Search...",
+    "export": "Export",
+    "add": "Add client",
+    "no_data": "No client"
+  },
+  "pos": {
+    "title": "Point of sale",
+    "subtitle": "Select products and place the order",
+    "walkin_client": "Walk-in client",
+    "cart": "Cart",
+    "clear_cart": "Clear",
+    "empty_cart": "Empty cart",
+    "empty_cart_desc": "Add products from the grid",
+    "subtotal": "Subtotal",
+    "tax": "VAT",
+    "total": "Total",
+    "continue": "Continue",
+    "checkout_title": "Order summary",
+    "customer": "Client",
+    "add_client": "Add client",
+    "discount": "Discount (%)",
+    "payment_status": "Payment status",
+    "paid": "Paid",
+    "partial": "Partial",
+    "unpaid": "Unpaid",
+    "paid_amount": "Amount paid",
+    "confirm_checkout": "Confirm",
+    "search_products": "Search product, barcode, or reference...",
+    "scanner": "Scan",
+    "filter_category": "All categories",
+    "all_categories": "All categories",
+    "no_products": "No product found",
+    "in_stock": "in stock"
+  },
+  "expenses": {
+    "chart": {
+      "tooltip": {
+        "income": "Total income:",
+        "expenses": "Expenses:",
+        "net": "Net revenue:"
+      },
+      "title": "Net revenue",
+      "period": {
+        "7d": "7 days",
+        "30d": "30 days"
+      },
+      "summary": {
+        "net": "Net revenue",
+        "income": "Total income",
+        "expenses": "Total expenses"
+      }
+    },
+    "errors": {
+      "required": "Please fill in the required fields",
+      "invalid_amount": "Please enter a valid amount"
+    },
+    "messages": {
+      "added": "Expense added successfully",
+      "deleted": "Expense deleted successfully",
+      "exported": "CSV exported successfully!"
+    },
+    "confirm": {
+      "delete": "Are you sure you want to delete this expense?"
+    },
+    "title": "Expenses",
+    "subtitle": "Manage operational costs, invoices and cash outflows",
+    "export": "Export",
+    "add": "Add an expense",
+    "filter": {
+      "all": "All",
+      "pending": "Pending",
+      "settled": "Settled"
+    },
+    "search_placeholder": "Search category, supplier, notes...",
+    "table": {
+      "date": "Date",
+      "category": "Category",
+      "vendor": "Supplier/Source",
+      "notes": "Notes",
+      "status": "Status",
+      "amount": "Amount",
+      "empty": "No expenses found matching the criteria"
+    },
+    "status": {
+      "settled": "Settled",
+      "pending": "Pending"
+    },
+    "summary": {
+      "count": "Showing {{count}} entries",
+      "total": "Total amount:"
+    },
+    "modal": {
+      "title": "Add a new expense",
+      "date": "Date",
+      "category": "Category",
+      "vendor": "Supplier/Source",
+      "amount": "Amount (MAD)",
+      "notes": "Notes",
+      "status": "Status",
+      "cancel": "Cancel",
+      "save": "Save"
+    },
+    "placeholder": {
+      "category": "e.g. Rent, Utilities, Stock supply",
+      "vendor": "e.g. Sidi Ali Distribution, landlord name",
+      "notes": "Describe the details of the expense..."
+    }
+  },
+  "invoices": {
+    "showing": "Showing",
+    "invoices": "invoices",
+    "total_invoiced": "Total invoiced",
+    "paid_total": "Paid",
+    "pending_total": "Pending",
+    "unpaid_total": "Unpaid",
+    "title": "Invoices",
+    "subtitle": "Manage your invoices, track payments and reminders.",
+    "search": "Search...",
+    "export": "Export",
+    "new": "New invoice",
+    "no_data": "No invoices",
+    "number": "Invoice No.",
+    "client": "Client",
+    "date": "Date",
+    "status": "Status",
+    "total_ht": "Total Excl. Tax",
+    "total_ttc": "Total Incl. Tax",
+    "actions": "Actions",
+    "anonymous": "Anonymous",
+    "filter_status": "Status",
+    "all_status": "All",
+    "paid": "Paid",
+    "partial": "Partial",
+    "unpaid": "Unpaid"
+  },
+  "reports": {
+    "business": {
+      "sales_revenue": "Sales revenue",
+      "debt_settlement": "Debt settlement",
+      "title": "Business reports",
+      "subtitle": "Analyze gross profit margins, operating costs and cash flow ledger",
+      "profit_margin": "Gross profit margin",
+      "total_expenses": "Total expenses",
+      "exp_count": "On {{count}} expense operations",
+      "ledger_title": "Cash flow ledger",
+      "date": "Date",
+      "type": "Type",
+      "category": "Category",
+      "amount": "Amount"
+    },
+    "export": "Export",
+    "customer": {
+      "title": "Client reports",
+      "subtitle": "Analyze trends of active clients, order volumes and remaining debt balances",
+      "active_clients": "Total active clients",
+      "unpaid_debt": "Total unpaid debt",
+      "debt_notice": "Requires reminder actions",
+      "analysis_title": "Order & debt profile by client",
+      "name": "Client name",
+      "phone": "Phone",
+      "orders_count": "Total Orders",
+      "debt_bal": "Remaining debt"
+    },
+    "inventory": {
+      "title": "Inventory reports",
+      "subtitle": "Assess stock items, track low levels and manage reorder limits",
+      "total_val": "Total stock value",
+      "sku_count": "On {{count}} product references",
+      "low_stock": "Low stock alerts",
+      "need_reorder": "Items requiring fast replenishment",
+      "stock_levels_title": "Stock level status",
+      "product": "Product",
+      "current_stock": "Current stock",
+      "threshold": "Threshold",
+      "value": "Value (Cost)"
+    },
+    "categories": {
+      "sales": "Sales reports",
+      "inventory": "Inventory reports",
+      "business": "Business reports",
+      "tax": "Tax & Invoice reports",
+      "customers": "Client reports",
+      "revenue": "Revenue reports"
+    },
+    "desc": {
+      "sales": "Track revenues, average order value and product performance.",
+      "inventory": "Monitor stock levels, goods value and reorder alerts.",
+      "business": "Overview of profit margins, expenses and cash flow ledger.",
+      "tax": "Export summaries of collected taxes and client billing history.",
+      "customers": "Analyze client credit levels, unpaid debts and top clients.",
+      "revenue": "View reports on regular sales and external event revenues."
+    },
+    "badges": {
+      "popular": "Popular"
+    },
+    "title": "Reports",
+    "subtitle": "Access summaries, sales statistics and performance indicators",
+    "view": "View report",
+    "revenue": {
+      "title": "Revenue reports",
+      "subtitle": "Track revenues from regular sales and external events",
+      "total_revenue": "Total Revenue",
+      "regular_sales": "Regular Sales",
+      "based_on_invoices": "{{count}} invoices issued",
+      "external_sales": "External Sales / Revenues",
+      "based_on_events": "{{count}} events recorded",
+      "regular_sales_tab": "Regular Sales",
+      "external_sales_tab": "External Revenues",
+      "regular_details": "Sales Details",
+      "external_details": "External Revenue Details",
+      "invoice_id": "Invoice No.",
+      "client": "Client",
+      "date": "Date",
+      "payment_method": "Payment",
+      "status": "Status",
+      "amount": "Amount",
+      "tx_id": "Transaction ID",
+      "description": "Description"
+    },
+    "sales": {
+      "title": "Sales reports",
+      "subtitle": "Track revenues, orders and product sales individually",
+      "total_revenue": "Total revenue",
+      "aov": "Average order value",
+      "based_on_orders": "Based on {{count}} orders",
+      "performance_title": "Product performance",
+      "item_name": "Product name",
+      "sku": "SKU",
+      "qty_sold": "Quantity sold",
+      "total_sales": "Total sales"
+    },
+    "tax": {
+      "title": "Tax & Invoice reports",
+      "subtitle": "Examine accumulated sales taxes, outstanding balances and invoice history",
+      "total_collected": "Total taxes collected",
+      "fiscal_year": "Taxes calculated on all invoices",
+      "outstanding": "Pending invoices",
+      "unpaid_warn": "Unsettled or partial invoices",
+      "history_title": "Billing history",
+      "invoice_id": "Invoice No.",
+      "client": "Client",
+      "date": "Date",
+      "tax_amt": "Tax",
+      "total_amt": "Total Amount",
+      "status": "Status"
+    }
+  },
+  "notifications": {
+    "title": "Notifications",
+    "empty": "No notifications"
+  },
+  "stock_alerts": {
+    "title": "Alerts & notifications",
+    "empty_title": "No alerts",
+    "empty_description": "You will be notified here of important events.",
+    "view_all": "View all alerts",
+    "remaining": "Remaining stock",
+    "critical": "Critical",
+    "low": "Low"
+  },
+  "voice": {
+    "toggle_assistant": "Voice assistant",
+    "no_input": "Please speak a command.",
+    "not_understood": "Sorry, I did not understand your command.",
+    "no_pending_confirmation": "I don't have any pending confirmation.",
+    "action_cancelled": "Action cancelled.",
+    "nothing_to_repeat": "I have nothing to repeat.",
+    "confirm_default": "Would you like to confirm this action?",
+    "type_command": "Type your command..."
+  },
+  "revenue_page": {
+    "restricted_title": "Limited Access to Revenues",
+    "restricted_desc": "You do not have permission to view revenues.",
+    "evolution": "Revenue Evolution",
+    "subtitle": "Analyze your turnover, cash collections, and claims.",
+    "add_revenue": "Add income",
+    "export": "Export",
+    "payment_distribution": "Distribution by payment method",
+    "no_data_period": "No data for this period",
+    "top_products_ca": "Top products by turnover",
+    "no_products_sold": "No products sold during this period",
+    "aging_balance": "Aging balance of claims",
+    "no_unpaid_claims": "No unpaid claims",
+    "transaction_details": "Transaction Details",
+    "all": "All",
+    "paid": "Paid",
+    "pending": "Pending",
+    "unpaid": "Unpaid",
+    "cash": "Cash",
+    "tpe": "POS",
+    "mobile": "Mobile",
+    "mixed": "Mixed",
+    "no_transactions": "No transactions for this period.",
+    "invoice_number": "Invoice No.",
+    "date": "Date",
+    "client": "Client",
+    "payment": "Payment",
+    "status": "Status",
+    "amount_ttc": "Amount Incl. Tax",
+    "external": "External",
+    "add_external_revenue": "Add external revenue",
+    "external_desc_1": "Records a receipt that does not come from an invoice (occasional sale, refund, other revenue...). This amount will be added to the ",
+    "external_desc_collected": "collected amount",
+    "external_desc_2": " (not to the turnover).",
+    "amount_label": "Amount (MAD)",
+    "payment_method": "Payment method",
+    "cancel": "Cancel",
+    "period_vs": "vs prev. period"
+  },
+  "products_page": {
+    "restricted_title": "Limited Access to Products",
+    "restricted_desc": "You do not have the necessary permissions to access products.",
+    "no_permission_view": "You do not have permission to view products.",
+    "add_product": "Add product",
+    "product": "Product",
+    "sku": "SKU",
+    "category": "Category",
+    "stock": "Stock",
+    "price_mad": "Price (MAD)",
+    "purchase": "Purchase",
+    "status": "Status",
+    "actions": "Actions",
+    "edit": "Edit",
+    "replenish": "Replenish",
+    "history": "History",
+    "delete": "Delete",
+    "no_image": "No image",
+    "inactive": "Inactive",
+    "out_of_stock": "Out of stock",
+    "low_stock": "Low stock",
+    "title": "Products",
+    "subtitle": "Manage your products, inventory, and pricing.",
+    "filtered_for": "Filtered display for product:",
+    "clear_filter": "Clear filter",
+    "all_categories": "All categories",
+    "all_statuses": "All statuses",
+    "in_stock": "In stock",
+    "scan": "Scan",
+    "confirm_delete": "Confirm deletion",
+    "cancel": "Cancel"
+  },
+  "debts_page": {
+    "restricted_title": "Limited Access to Debts",
+    "restricted_desc": "You do not have permission to view debts.",
+    "title": "Debt Management",
+    "subtitle": "Track client claims, manage payments, and anticipate risks.",
+    "filtered_for": "Filtered display for client:",
+    "clear_filter": "Clear filter",
+    "distribution_due": "Distribution by due date",
+    "no_debt": "No debt",
+    "debt_evolution": "Debt Evolution",
+    "loading": "Loading...",
+    "no_data": "No data",
+    "indebted_clients": "Indebted Clients",
+    "decreasing_amount": "Decreasing amount",
+    "decreasing_delay": "Decreasing delay",
+    "client": "Client",
+    "phone": "Phone",
+    "amount_due": "Amount due",
+    "unpaid_invoices": "Unpaid invoices",
+    "due_date": "Due date",
+    "limit_date": "Limit date",
+    "credit_limit": "Credit limit",
+    "actions": "Actions",
+    "whatsapp": "WhatsApp",
+    "settle": "Settle",
+    "recent_settlements": "Recent Settlements",
+    "date": "Date",
+    "amount": "Amount",
+    "method": "Method",
+    "record_payment": "Record a payment",
+    "client_label": "Client:",
+    "total_due_balance": "Total due balance:",
+    "choose_debt": "Choose debt to settle",
+    "amount_label": "Amount (MAD)",
+    "pay_balance": "Pay balance",
+    "payment_method": "Payment method",
+    "cash": "Cash",
+    "tpe": "POS",
+    "mobile": "Mobile",
+    "cancel": "Cancel",
+    "save_payment": "Record payment"
   }
 }

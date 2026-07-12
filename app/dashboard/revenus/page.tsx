@@ -103,11 +103,11 @@ const PAYMENT_CHART_COLORS = {
 }
 
 const PERIODS = [
-  { label: "Aujourd'hui", value: 'today' },
-  { label: '7 jours', value: 'week' },
-  { label: 'Ce mois', value: 'month' },
-  { label: 'Ce trimestre', value: 'quarter' },
-  { label: 'Cette année', value: 'year' },
+  { label: 'today', value: 'today' },
+  { label: 'week', value: 'week' },
+  { label: 'month', value: 'month' },
+  { label: 'quarter', value: 'quarter' },
+  { label: 'year', value: 'year' },
 ]
 
 // ─── KPI Card ──────────────────────────────────────────────────────
@@ -121,6 +121,7 @@ interface KpiCardProps {
 }
 
 function KpiCard({ title, value, subtitle, icon, trend }: KpiCardProps) {
+  const { t } = useTranslation()
   const isPositive = trend !== undefined && trend > 0
   const isZero = trend === 0 || trend === undefined
 
@@ -156,7 +157,7 @@ function KpiCard({ title, value, subtitle, icon, trend }: KpiCardProps) {
             ) : (
               <span className="text-[10px] text-gray-400">—</span>
             )}
-            <span className="text-[10px] text-gray-400">vs période préc.</span>
+            <span className="text-[10px] text-gray-400">{t('revenue_page.vs_previous_period', 'vs période préc.')}</span>
           </div>
         )}
       </CardContent>
@@ -175,13 +176,14 @@ interface PaginationProps {
 }
 
 function Pagination({ currentPage, totalPages, totalItems, pageSize, onPageChange }: PaginationProps) {
+  const { t } = useTranslation()
   const start = (currentPage - 1) * pageSize + 1
   const end = Math.min(currentPage * pageSize, totalItems)
 
   return (
     <div className="flex items-center justify-between mt-4 text-sm text-gray-500 dark:text-gray-400">
       <span>
-        Affichage {start} à {end} sur {totalItems} transaction(s)
+        {t('showing_records', 'Affichage')} {start} {t('common.to', 'à')} {end} {t('common.of', 'sur')} {totalItems} {t('revenue_page.transactions_count', 'transaction(s)')}
       </span>
       <div className="flex items-center gap-1">
         <Button
@@ -228,10 +230,10 @@ function RevenusContent() {
           <DollarSign className="w-8 h-8 text-gray-300 dark:text-zinc-600" />
         </div>
         <p className="font-semibold text-gray-700 dark:text-gray-300">
-          Accès limité aux revenus
+          {t('revenue_page.restricted_title', 'Accès limité aux revenus')}
         </p>
         <p className="text-sm text-gray-400 mt-1 max-w-md">
-          Vous n'avez pas la permission de voir les revenus.
+          {t('revenue_page.restricted_desc', "Vous n'avez pas la permission de voir les revenus.")}
         </p>
       </div>
     )
@@ -280,7 +282,7 @@ function RevenusContent() {
       setAgedReceivables(ar)
     } catch (error) {
       console.error(error)
-      toast.error('Erreur lors du chargement des données')
+      toast.error(t('errors.load_failed', 'Erreur lors du chargement des données'))
     } finally {
       setLoading(false)
     }
@@ -293,7 +295,7 @@ function RevenusContent() {
   const handleAddExternalRevenue = async () => {
     const amountValue = parseFloat(newAmount.replace(',', '.'))
     if (!amountValue || amountValue <= 0) {
-      toast.error('Merci de saisir un montant valide')
+      toast.error(t('errors.invalid_amount', 'Merci de saisir un montant valide'))
       return
     }
 
@@ -304,7 +306,7 @@ function RevenusContent() {
         paymentMethod: newPaymentMethod,
         description: newDescription.trim() || undefined,
       })
-      toast.success('Revenu externe ajouté')
+      toast.success(t('revenue_page.revenue_added', 'Revenu externe ajouté'))
       setAddRevenueOpen(false)
       setNewAmount('')
       setNewDescription('')
@@ -312,7 +314,7 @@ function RevenusContent() {
       loadData()
     } catch (error) {
       console.error(error)
-      toast.error("Erreur lors de l'ajout du revenu")
+      toast.error(t('errors.add_revenue_failed', "Erreur lors de l'ajout du revenu"))
     } finally {
       setSubmitting(false)
     }
@@ -334,32 +336,32 @@ function RevenusContent() {
   // ─── EXPORT CSV ──────────────────────────────────────────────────
   const handleExport = () => {
     if (!canExport) {
-      toast.warning('Vous n\'avez pas la permission d\'exporter')
+      toast.warning(t('errors.no_permission_export', "Vous n'avez pas la permission d'exporter"))
       return
     }
     if (transactions.length === 0) {
-      toast.info('Aucune transaction à exporter pour cette période.')
+      toast.info(t('revenue_page.no_transactions_to_export', 'Aucune transaction à exporter pour cette période.'))
       return
     }
 
     const headers = [
-      'N° facture',
-      'Date',
-      'Client',
-      'Mode de paiement',
-      'Statut',
-      'Montant TTC (MAD)',
+      t('revenue_page.invoice_number', 'N° facture'),
+      t('revenue_page.date', 'Date'),
+      t('revenue_page.client', 'Client'),
+      t('revenue_page.payment_method', 'Mode de paiement'),
+      t('revenue_page.status', 'Statut'),
+      t('revenue_page.amount_ttc', 'Montant TTC (MAD)'),
     ]
 
     const rows = transactions.map((tx) => {
       const statusLabel =
-        tx.status === 'PAID' ? 'Payée' :
-        tx.status === 'PARTIAL' ? 'En attente' : 'Impayée'
+        tx.status === 'PAID' ? t('revenue_page.paid', 'Payée') :
+        tx.status === 'PARTIAL' ? t('revenue_page.pending', 'En attente') : t('revenue_page.unpaid', 'Impayée')
       const paymentLabel: Record<string, string> = {
-        cash: 'Espèces',
-        card: 'TPE',
-        mobile: 'Mobile',
-        mixed: 'Mixte',
+        cash: t('revenue_page.cash', 'Espèces'),
+        card: t('revenue_page.tpe', 'TPE'),
+        mobile: t('revenue_page.mobile', 'Mobile'),
+        mixed: t('revenue_page.mixed', 'Mixte'),
       }
       return [
         tx.invoiceNumber,
@@ -379,11 +381,12 @@ function RevenusContent() {
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement('a')
     link.href = URL.createObjectURL(blob)
-    const periodLabel = PERIODS.find((p) => p.value === period)?.label || period
+    const periodObj = PERIODS.find((p) => p.value === period)
+    const periodLabel = periodObj ? t('revenue_page.periods.' + periodObj.label, periodObj.label) : period
     link.download = `revenus_${periodLabel}_${new Date().toISOString().slice(0, 10)}.csv`
     link.click()
     URL.revokeObjectURL(link.href)
-    toast.success(`${transactions.length} transactions exportées`)
+    toast.success(t('revenue_page.transactions_exported', `${transactions.length} transactions exportées`, { count: transactions.length }))
   }
 
   // ─── Redirection vers les factures avec filtres de dates ──────
@@ -434,22 +437,22 @@ function RevenusContent() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            Évolution des ventes
+            {t('revenue_page.title', 'Évolution des ventes')}
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            Analysez votre chiffre d'affaires, vos encaissements et vos créances.
+            {t('revenue_page.subtitle', 'Analysez votre chiffre d\'affaires, vos encaissements et vos créances.')}
           </p>
         </div>
         <div className="flex items-center gap-3">
           <Select value={period} onValueChange={setPeriod}>
             <SelectTrigger className="w-40 rounded-xl h-10 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
               <Calendar className="mr-2 h-4 w-4 text-gray-400" />
-              <SelectValue placeholder="Période" />
+              <SelectValue placeholder={t('revenue_page.period', 'Période')} />
             </SelectTrigger>
             <SelectContent>
               {PERIODS.map((p) => (
                 <SelectItem key={p.value} value={p.value}>
-                  {p.label}
+                  {t('revenue_page.periods.' + p.label, p.label)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -460,7 +463,7 @@ function RevenusContent() {
               style={{ backgroundColor: BLUE }}
               onClick={() => setAddRevenueOpen(true)}
             >
-              <Plus className="h-4 w-4" /> Ajouter un revenu
+              <Plus className="h-4 w-4" /> {t('revenue_page.add_revenue', 'Ajouter un revenu')}
             </Button>
           )}
           {canExport && (
@@ -469,7 +472,7 @@ function RevenusContent() {
               className="gap-2 rounded-xl h-10 border-gray-200 dark:border-gray-700"
               onClick={handleExport}
             >
-              <Download className="h-4 w-4" /> Exporter
+              <Download className="h-4 w-4" /> {t('revenue_page.export', 'Exporter')}
             </Button>
           )}
         </div>
@@ -493,44 +496,44 @@ function RevenusContent() {
           {/* ─── 6 CARTES KPI ───────────────────────────────────────── */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
             <KpiCard
-              title="CA HT"
+              title={t('revenue_page.ca_ht', 'CA HT')}
               value={summary ? formatMAD(summary.caHT) : '0 MAD'}
-              subtitle="Hors taxes"
+              subtitle={t('revenue_page.excl_tax', 'Hors taxes')}
               icon={<Receipt className="h-4 w-4" />}
               trend={12.5}
             />
             <KpiCard
-              title="CA TTC"
+              title={t('revenue_page.ca_ttc', 'CA TTC')}
               value={summary ? formatMAD(summary.caTTC) : '0 MAD'}
-              subtitle="Toutes taxes comprises"
+              subtitle={t('revenue_page.incl_tax', 'Toutes taxes comprises')}
               icon={<DollarSign className="h-4 w-4" />}
               trend={8.3}
             />
             <KpiCard
-              title="Encaissé"
+              title={t('revenue_page.collected', 'Encaissé')}
               value={summary ? formatMAD(summary.encaisse) : '0 MAD'}
-              subtitle={`${encaissementRate}% du CA TTC`}
+              subtitle={`${encaissementRate}% ${t('revenue_page.of_ca_ttc', 'du CA TTC')}`}
               icon={<Wallet className="h-4 w-4" />}
               trend={5.1}
             />
             <KpiCard
-              title="Créances"
+              title={t('revenue_page.receivables', 'Créances')}
               value={summary ? formatMAD(summary.creances) : '0 MAD'}
-              subtitle="Factures impayées"
+              subtitle={t('revenue_page.unpaid_invoices', 'Factures impayées')}
               icon={<ShoppingBag className="h-4 w-4" />}
               trend={-2.0}
             />
             <KpiCard
-              title="Marge brute"
+              title={t('revenue_page.gross_margin', 'Marge brute')}
               value={summary ? formatMAD(summary.margeBrute) : '0 MAD'}
-              subtitle="CA HT - Coût d'achat"
+              subtitle={t('revenue_page.margin_desc', "CA HT - Coût d'achat")}
               icon={<TrendingUp className="h-4 w-4" />}
               trend={3.2}
             />
             <KpiCard
-              title="Panier moyen"
+              title={t('revenue_page.avg_basket', 'Panier moyen')}
               value={summary ? formatMAD(summary.panierMoyen) : '0 MAD'}
-              subtitle={`Moyenne sur ${summary?.nbTransactions || 0} transactions`}
+              subtitle={t('revenue_page.avg_basket_desc', `Moyenne sur ${summary?.nbTransactions || 0} transactions`, { count: summary?.nbTransactions || 0 })}
               icon={<ShoppingBag className="h-4 w-4" />}
             />
           </div>
@@ -542,13 +545,13 @@ function RevenusContent() {
             <Card className="rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm bg-white dark:bg-gray-900">
               <CardHeader>
                 <CardTitle className="text-base font-semibold text-gray-900 dark:text-white">
-                  Répartition par mode de paiement
+                  {t('revenue_page.payment_method_distribution', 'Répartition par mode de paiement')}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 {paymentMethods.every((p) => p.value === 0) ? (
                   <div className="flex items-center justify-center h-48 text-gray-400 text-sm">
-                    Aucune donnée pour cette période
+                    {t('revenue_page.no_data_period', 'Aucune donnée pour cette période')}
                   </div>
                 ) : (
                   <div className="flex flex-col items-center">
@@ -584,12 +587,16 @@ function RevenusContent() {
                                     item.name === 'TPE' ? 'card' :
                                     item.name === 'Mobile' ? 'mobile' : 'mixed'
                         const color = PAYMENT_CHART_COLORS[key] || '#6B7280'
+                        const translatedName = item.name === 'Espèces' ? t('revenue_page.cash', 'Espèces') :
+                                               item.name === 'TPE' ? t('revenue_page.tpe', 'TPE') :
+                                               item.name === 'Mobile' ? t('revenue_page.mobile', 'Mobile') :
+                                               item.name === 'Mixte' ? t('revenue_page.mixed', 'Mixte') : item.name
                         return (
                           <div key={item.name} className="flex items-center justify-between text-sm">
                             <div className="flex items-center gap-2">
                               <div className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
                               <Icon className="h-3 w-3 text-gray-400" />
-                              <span className="text-gray-700 dark:text-gray-300">{item.name}</span>
+                              <span className="text-gray-700 dark:text-gray-300">{translatedName}</span>
                             </div>
                             <span className="font-medium text-gray-900 dark:text-white">
                               {formatMAD(item.value)}
@@ -607,13 +614,13 @@ function RevenusContent() {
             <Card className="rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm bg-white dark:bg-gray-900">
               <CardHeader>
                 <CardTitle className="text-base font-semibold text-gray-900 dark:text-white">
-                  Top produits par CA
+                  {t('revenue_page.top_products_revenue', 'Top produits par CA')}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 {topProducts.length === 0 ? (
                   <div className="flex items-center justify-center h-48 text-gray-400 text-sm">
-                    Aucun produit vendu sur cette période
+                    {t('revenue_page.no_product_sold_period', 'Aucun produit vendu sur cette période')}
                   </div>
                 ) : (
                   <div className="h-64">
@@ -654,19 +661,23 @@ function RevenusContent() {
             <Card className="rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm bg-white dark:bg-gray-900">
               <CardHeader>
                 <CardTitle className="text-base font-semibold text-gray-900 dark:text-white">
-                  Balance âgée des créances
+                  {t('revenue_page.aged_receivables_balance', 'Balance âgée des créances')}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 {totalReceivables === 0 ? (
                   <div className="flex items-center justify-center h-48 text-gray-400 text-sm">
-                    Aucune créance impayée
+                    {t('revenue_page.no_unpaid_receivables', 'Aucune créance impayée')}
                   </div>
                 ) : (
                   <div className="space-y-3">
                     {agedReceivables.map((item) => {
                       const pct = totalReceivables > 0 ? (item.amount / totalReceivables) * 100 : 0
                       const isClickable = item.amount > 0
+                      const mappedRange = item.range === '0-7 jours' ? t('debts.urgency.recent', 'Récent') :
+                                          item.range === '8-30 jours' ? t('debts.urgency.old', 'Ancien') :
+                                          item.range === '31-60 jours' ? t('debts.urgency.very_old', 'Très ancien') :
+                                          item.range === '+60 jours' ? t('debts.urgency.critical', 'Critique') : item.range
                       return (
                         <div
                           key={item.range}
@@ -676,7 +687,7 @@ function RevenusContent() {
                           onClick={() => isClickable && goToInvoicesWithFilter(item.range, item.amount)}
                         >
                           <div className="flex items-center justify-between text-sm">
-                            <span className="text-gray-600 dark:text-gray-300">{item.range}</span>
+                            <span className="text-gray-600 dark:text-gray-300">{mappedRange}</span>
                             <span className="font-medium text-gray-900 dark:text-white">
                               {formatMAD(item.amount)}
                             </span>
@@ -704,30 +715,30 @@ function RevenusContent() {
           <Card className="rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm bg-white dark:bg-gray-900">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-base font-semibold text-gray-900 dark:text-white">
-                Détail des transactions
+                {t('revenue_page.transaction_details', 'Détail des transactions')}
               </CardTitle>
               <div className="flex items-center gap-2">
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger className="w-32 rounded-xl h-8 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs">
-                    <SelectValue placeholder="Statut" />
+                    <SelectValue placeholder={t('revenue_page.status', 'Statut')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Tous</SelectItem>
-                    <SelectItem value="PAID">Payée</SelectItem>
-                    <SelectItem value="PARTIAL">En attente</SelectItem>
-                    <SelectItem value="UNPAID">Impayée</SelectItem>
+                    <SelectItem value="all">{t('revenue_page.all', 'Tous')}</SelectItem>
+                    <SelectItem value="PAID">{t('revenue_page.paid', 'Payée')}</SelectItem>
+                    <SelectItem value="PARTIAL">{t('revenue_page.pending', 'En attente')}</SelectItem>
+                    <SelectItem value="UNPAID">{t('revenue_page.unpaid', 'Impayée')}</SelectItem>
                   </SelectContent>
                 </Select>
                 <Select value={paymentFilter} onValueChange={setPaymentFilter}>
                   <SelectTrigger className="w-32 rounded-xl h-8 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs">
-                    <SelectValue placeholder="Paiement" />
+                    <SelectValue placeholder={t('revenue_page.payment_method', 'Paiement')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Tous</SelectItem>
-                    <SelectItem value="cash">Espèces</SelectItem>
-                    <SelectItem value="card">TPE</SelectItem>
-                    <SelectItem value="mobile">Mobile</SelectItem>
-                    <SelectItem value="mixed">Mixte</SelectItem>
+                    <SelectItem value="all">{t('revenue_page.all', 'Tous')}</SelectItem>
+                    <SelectItem value="cash">{t('revenue_page.cash', 'Espèces')}</SelectItem>
+                    <SelectItem value="card">{t('revenue_page.tpe', 'TPE')}</SelectItem>
+                    <SelectItem value="mobile">{t('revenue_page.mobile', 'Mobile')}</SelectItem>
+                    <SelectItem value="mixed">{t('revenue_page.mixed', 'Mixte')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -735,7 +746,7 @@ function RevenusContent() {
             <CardContent className="p-0">
               {transactions.length === 0 ? (
                 <div className="px-6 py-8 text-center text-gray-500">
-                  Aucune transaction pour cette période.
+                  {t('revenue_page.no_transactions_period', 'Aucune transaction pour cette période.')}
                 </div>
               ) : (
                 <>
@@ -744,22 +755,22 @@ function RevenusContent() {
                       <TableHeader>
                         <TableRow className="bg-gray-50 dark:bg-gray-800/50">
                           <TableHead className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
-                            N° facture
+                            {t('revenue_page.invoice_number', 'N° facture')}
                           </TableHead>
                           <TableHead className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
-                            Date
+                            {t('revenue_page.date', 'Date')}
                           </TableHead>
                           <TableHead className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
-                            Client
+                            {t('revenue_page.client', 'Client')}
                           </TableHead>
                           <TableHead className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
-                            Paiement
+                            {t('revenue_page.payment_method', 'Paiement')}
                           </TableHead>
                           <TableHead className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
-                            Statut
+                            {t('revenue_page.status', 'Statut')}
                           </TableHead>
                           <TableHead className="text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
-                            Montant TTC
+                            {t('revenue_page.amount_ttc', 'Montant TTC')}
                           </TableHead>
                         </TableRow>
                       </TableHeader>
@@ -769,13 +780,13 @@ function RevenusContent() {
                             tx.status === 'PAID' ? GREEN :
                             tx.status === 'PARTIAL' ? ORANGE : RED
                           const statusLabel =
-                            tx.status === 'PAID' ? 'Payée' :
-                            tx.status === 'PARTIAL' ? 'En attente' : 'Impayée'
+                            tx.status === 'PAID' ? t('revenue_page.paid', 'Payée') :
+                            tx.status === 'PARTIAL' ? t('revenue_page.pending', 'En attente') : t('revenue_page.unpaid', 'Impayée')
                           const paymentLabel: Record<string, string> = {
-                            cash: 'Espèces',
-                            card: 'TPE',
-                            mobile: 'Mobile',
-                            mixed: 'Mixte',
+                            cash: t('revenue_page.cash', 'Espèces'),
+                            card: t('revenue_page.tpe', 'TPE'),
+                            mobile: t('revenue_page.mobile', 'Mobile'),
+                            mixed: t('revenue_page.mixed', 'Mixte'),
                           }
                           return (
                             <TableRow
@@ -796,7 +807,7 @@ function RevenusContent() {
                                       variant="outline"
                                       className="text-[10px] font-sans border-orange-300 text-orange-600 dark:border-orange-700 dark:text-orange-400"
                                     >
-                                      Externe
+                                      {t('revenue_page.external', 'Externe')}
                                     </Badge>
                                   )}
                                 </div>
@@ -847,15 +858,14 @@ function RevenusContent() {
       <Dialog open={addRevenueOpen} onOpenChange={setAddRevenueOpen}>
         <DialogContent className="sm:max-w-md rounded-2xl">
           <DialogHeader>
-            <DialogTitle>Ajouter un revenu externe</DialogTitle>
+            <DialogTitle>{t('revenue_page.add_external_revenue', 'Ajouter un revenu externe')}</DialogTitle>
             <DialogDescription>
-              Enregistre un encaissement qui ne provient pas d'une facture (vente occasionnelle, remboursement, autre revenu...).
-              Ce montant sera ajouté à l'<strong>encaissé</strong> (pas au chiffre d'affaires).
+              {t('revenue_page.add_external_desc', 'Enregistre un encaissement qui ne provient pas d\'une facture (vente occasionnelle, remboursement, autre revenu...). Ce montant sera ajouté à l\'encaissé (pas au chiffre d\'affaires).')}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
-              <Label htmlFor="amount">Montant (MAD)</Label>
+              <Label htmlFor="amount">{t('revenue_page.amount_label', 'Montant (MAD)')}</Label>
               <Input
                 id="amount"
                 type="number"
@@ -868,23 +878,23 @@ function RevenusContent() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Mode de paiement</Label>
+              <Label>{t('revenue_page.payment_method', 'Mode de paiement')}</Label>
               <Select value={newPaymentMethod} onValueChange={setNewPaymentMethod}>
                 <SelectTrigger className="rounded-xl">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="cash">Espèces</SelectItem>
-                  <SelectItem value="card">TPE</SelectItem>
-                  <SelectItem value="mobile">Mobile</SelectItem>
+                  <SelectItem value="cash">{t('revenue_page.cash', 'Espèces')}</SelectItem>
+                  <SelectItem value="card">{t('revenue_page.tpe', 'TPE')}</SelectItem>
+                  <SelectItem value="mobile">{t('revenue_page.mobile', 'Mobile')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="description">Description / motif (optionnel)</Label>
+              <Label htmlFor="description">{t('revenue_page.description_label', 'Description / motif (optionnel)')}</Label>
               <Input
                 id="description"
-                placeholder="Ex: Vente occasionnelle, remboursement..."
+                placeholder={t('revenue_page.description_placeholder', 'Ex: Vente occasionnelle, remboursement...')}
                 value={newDescription}
                 onChange={(e) => setNewDescription(e.target.value)}
                 className="rounded-xl"
@@ -898,7 +908,7 @@ function RevenusContent() {
               onClick={() => setAddRevenueOpen(false)}
               disabled={submitting}
             >
-              Annuler
+              {t('revenue_page.cancel', 'Annuler')}
             </Button>
             <Button
               className="rounded-xl text-white"
@@ -906,7 +916,7 @@ function RevenusContent() {
               onClick={handleAddExternalRevenue}
               disabled={submitting}
             >
-              {submitting ? 'Ajout...' : 'Ajouter'}
+              {submitting ? t('revenue_page.adding', 'Ajout...') : t('revenue_page.add', 'Ajouter')}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -75,6 +75,7 @@ import { getDisplayUrl } from '@/lib/photo-capture'
 import { BarcodeScannerModal } from '@/components/products/BarcodeScannerModal'
 import { toast } from 'sonner'
 import '@/lib/i18n/config'
+import { useTranslation } from 'react-i18next'
 import { ReplenishStockDialog } from '@/components/products/ReplenishStockDialog'
 import { StockHistoryDialog } from '@/components/products/StockHistoryDialog'
 
@@ -205,6 +206,7 @@ function ProduitsContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { can } = useUserContext()
+  const { t } = useTranslation()
 
   // ─── Vérification des permissions Produits ──────────────────────
   const canView = can(PERMISSIONS.PRODUCTS_VIEW)
@@ -224,10 +226,10 @@ function ProduitsContent() {
           <Package className="w-8 h-8 text-gray-300 dark:text-zinc-600" />
         </div>
         <p className="font-semibold text-gray-700 dark:text-gray-300">
-          Accès limité aux produits
+          {t('products_page.restricted_title', 'Accès limité aux produits')}
         </p>
         <p className="text-sm text-gray-400 mt-1 max-w-md">
-          Vous n'avez pas les permissions nécessaires pour accéder aux produits.
+          {t('products_page.restricted_desc', "Vous n'avez pas les permissions nécessaires pour accéder aux produits.")}
         </p>
       </div>
     )
@@ -502,7 +504,7 @@ function ProduitsContent() {
       }
     } catch (error) {
       console.error(error)
-      toast.error('Erreur lors du scan')
+      toast.error(t('errors.scan_failed', 'Erreur lors du scan'))
     }
   }
 
@@ -516,10 +518,10 @@ function ProduitsContent() {
               <Package className="h-9 w-9" style={{ color: GOLD }} />
             </div>
             <h4 className="text-base font-semibold text-foreground mb-1">
-              Accès limité
+              {t('products_page.restricted_title', 'Accès limité')}
             </h4>
             <p className="text-sm text-muted-foreground mb-5 max-w-xs">
-              Vous n'avez pas la permission de voir les produits.
+              {t('products_page.no_permission_view', "Vous n'avez pas la permission de voir les produits.")}
             </p>
             {canAdd && (
               <Button className="gap-2 rounded-xl text-white font-semibold" style={{ backgroundColor: PRIMARY }} onClick={handleAddProduct}>
@@ -555,14 +557,14 @@ function ProduitsContent() {
               <Package className="h-9 w-9" style={{ color: GOLD }} />
             </div>
             <h4 className="text-base font-semibold text-foreground mb-1">
-              {productIdFilter ? 'Produit introuvable' : 'Aucun produit'}
+              {productIdFilter ? t('products_page.not_found', 'Produit introuvable') : t('products_page.no_products', 'Aucun produit')}
             </h4>
             <p className="text-sm text-muted-foreground mb-5 max-w-xs">
-              {productIdFilter ? 'Ce produit a peut-être été supprimé.' : 'Commencez par ajouter votre premier produit'}
+              {productIdFilter ? t('products_page.deleted_hint', 'Ce produit a peut-être été supprimé.') : t('products_page.first_product_hint', 'Commencez par ajouter votre premier produit')}
             </p>
             {!productIdFilter && canAdd && (
               <Button className="gap-2 rounded-xl text-white font-semibold" style={{ backgroundColor: PRIMARY }} onClick={handleAddProduct}>
-                <Plus size={16} /> Ajouter un produit
+                <Plus size={16} /> {t('products_page.add_product', 'Ajouter un produit')}
               </Button>
             )}
           </CardContent>
@@ -576,14 +578,14 @@ function ProduitsContent() {
             <Table>
               <TableHeader>
                 <TableRow className="bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                  <TableHead className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Produit</TableHead>
-                  <TableHead className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">SKU</TableHead>
-                  <TableHead className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Catégorie</TableHead>
-                  <TableHead className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">Stock</TableHead>
-                  <TableHead className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">Prix (MAD)</TableHead>
-                  <TableHead className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">Achat</TableHead>
-                  <TableHead className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Statut</TableHead>
-                  <TableHead className="text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</TableHead>
+                  <TableHead className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{t('products_page.product', 'Produit')}</TableHead>
+                  <TableHead className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{t('products_page.sku', 'SKU')}</TableHead>
+                  <TableHead className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{t('products_page.category', 'Catégorie')}</TableHead>
+                  <TableHead className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">{t('products_page.stock', 'Stock')}</TableHead>
+                  <TableHead className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">{t('products_page.price_mad', 'Prix (MAD)')}</TableHead>
+                  <TableHead className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-right">{t('products_page.purchase', 'Achat')}</TableHead>
+                  <TableHead className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{t('products_page.status', 'Statut')}</TableHead>
+                  <TableHead className="text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{t('products_page.actions', 'Actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -624,7 +626,7 @@ function ProduitsContent() {
                         <Badge className="border-0 font-medium text-xs px-3 py-0.5"
                           style={{ backgroundColor: statusInfo.bg, color: statusInfo.color }}
                         >
-                          {statusInfo.label}
+                          {t('products_page.' + status, statusInfo.label)}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
@@ -635,29 +637,29 @@ function ProduitsContent() {
                           <DropdownMenuContent align="end" className="rounded-xl w-48">
                             {canEdit && (
                               <DropdownMenuItem onClick={() => handleEditProduct(product)} className="gap-2">
-                                <Edit size={14} /> Modifier
+                                <Edit size={14} /> {t('products_page.edit', 'Modifier')}
                               </DropdownMenuItem>
                             )}
                             {canRestock && (
                               <DropdownMenuItem onClick={() => setReplenishProduct(product)} className="gap-2">
-                                <RefreshCw size={14} /> Réapprovisionner
+                                <RefreshCw size={14} /> {t('products_page.replenish', 'Réapprovisionner')}
                               </DropdownMenuItem>
                             )}
                             {canHistory && (
                               <DropdownMenuItem onClick={() => setHistoryProduct(product)} className="gap-2">
-                                <History size={14} /> Historique
+                                <History size={14} /> {t('products_page.history', 'Historique')}
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuSeparator />
                             {canDeactivate && (
                               <DropdownMenuItem onClick={() => handleToggle(product)} className="gap-2">
                                 {product.isActive ? <ToggleLeft size={14} /> : <ToggleRight size={14} />}
-                                {product.isActive ? 'Désactiver' : 'Activer'}
+                                {product.isActive ? t('common.deactivate', 'Désactiver') : t('common.activate', 'Activer')}
                               </DropdownMenuItem>
                             )}
                             {canDelete && (
                               <DropdownMenuItem onClick={() => setDeleteTarget(product)} className="gap-2 text-red-500 hover:text-red-600">
-                                <Trash2 size={14} /> Supprimer
+                                <Trash2 size={14} /> {t('products_page.delete', 'Supprimer')}
                               </DropdownMenuItem>
                             )}
                           </DropdownMenuContent>
@@ -688,14 +690,14 @@ function ProduitsContent() {
                     <div className="w-16 h-16 rounded-2xl flex items-center justify-center shadow-lg" style={{ background: 'linear-gradient(135deg, #D4A017, #1D4ED8)' }}>
                       <Package className="h-8 w-8 text-white" />
                     </div>
-                    <span className="text-xs text-slate-400 dark:text-gray-500 font-medium">Aucune image</span>
+                    <span className="text-xs text-slate-400 dark:text-gray-500 font-medium">{t('products_page.no_image', 'Aucune image')}</span>
                   </div>
                 )}
                 <div className="absolute top-2 left-2 flex flex-col gap-1">
-                  {!product.isActive && <Badge variant="secondary" className="text-[10px]">Inactif</Badge>}
-                  {product.isActive && product.stockQty === 0 && <Badge variant="destructive" className="text-[10px]">Rupture</Badge>}
+                  {!product.isActive && <Badge variant="secondary" className="text-[10px]">{t('products_page.inactive', 'Inactif')}</Badge>}
+                  {product.isActive && product.stockQty === 0 && <Badge variant="destructive" className="text-[10px]">{t('products_page.out_of_stock', 'Rupture')}</Badge>}
                   {product.isActive && product.stockQty > 0 && product.stockQty <= product.alertThreshold && (
-                    <Badge className="text-[10px]" style={{ backgroundColor: '#f59e0b', color: '#ffffff' }}>Stock bas</Badge>
+                    <Badge className="text-[10px]" style={{ backgroundColor: '#f59e0b', color: '#ffffff' }}>{t('products_page.low_stock', 'Stock bas')}</Badge>
                   )}
                 </div>
                 <div className="absolute top-2 right-2">
@@ -706,29 +708,29 @@ function ProduitsContent() {
                     <DropdownMenuContent align="end" className="rounded-xl w-48">
                       {canEdit && (
                         <DropdownMenuItem onClick={() => handleEditProduct(product)} className="gap-2">
-                          <Edit size={14} /> Modifier
+                          <Edit size={14} /> {t('products_page.edit', 'Modifier')}
                         </DropdownMenuItem>
                       )}
                       {canRestock && (
                         <DropdownMenuItem onClick={() => setReplenishProduct(product)} className="gap-2">
-                          <RefreshCw size={14} /> Réapprovisionner
+                          <RefreshCw size={14} /> {t('products_page.replenish', 'Réapprovisionner')}
                         </DropdownMenuItem>
                       )}
                       {canHistory && (
                         <DropdownMenuItem onClick={() => setHistoryProduct(product)} className="gap-2">
-                          <History size={14} /> Historique
+                          <History size={14} /> {t('products_page.history', 'Historique')}
                         </DropdownMenuItem>
                       )}
                       <DropdownMenuSeparator />
                       {canDeactivate && (
                         <DropdownMenuItem onClick={() => handleToggle(product)} className="gap-2">
                           {product.isActive ? <ToggleLeft size={14} /> : <ToggleRight size={14} />}
-                          {product.isActive ? 'Désactiver' : 'Activer'}
+                          {product.isActive ? t('common.deactivate', 'Désactiver') : t('common.activate', 'Activer')}
                         </DropdownMenuItem>
                       )}
                       {canDelete && (
                         <DropdownMenuItem onClick={() => setDeleteTarget(product)} className="gap-2 text-destructive">
-                          <Trash2 size={14} /> Supprimer
+                          <Trash2 size={14} /> {t('products_page.delete', 'Supprimer')}
                         </DropdownMenuItem>
                       )}
                     </DropdownMenuContent>
@@ -769,12 +771,12 @@ function ProduitsContent() {
     <div className="flex flex-col gap-6 max-w-7xl mx-auto w-full">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Produits</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Gérez vos produits, votre inventaire et vos tarifs.</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('products_page.title', 'Produits')}</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{t('products_page.subtitle', 'Gérez vos produits, votre inventaire et vos tarifs.')}</p>
         </div>
         {canAdd && (
           <Button className="gap-2 rounded-xl text-white font-medium shadow-sm hover:shadow-md transition-all" style={{ backgroundColor: PRIMARY }} onClick={handleAddProduct}>
-            <Plus size={16} /> Ajouter un produit
+            <Plus size={16} /> {t('products_page.add_product', 'Ajouter un produit')}
           </Button>
         )}
       </div>
@@ -784,7 +786,7 @@ function ProduitsContent() {
         <div className="flex items-center gap-3 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl">
           <AlertTriangle className="h-4 w-4 text-blue-500 shrink-0" />
           <p className="text-sm text-blue-700 dark:text-blue-300 flex-1">
-            Affichage filtré pour le produit : <strong>{productNameFilter || productIdFilter}</strong>
+            {t('products_page.filtered_for', 'Affichage filtré pour le produit :')} <strong>{productNameFilter || productIdFilter}</strong>
           </p>
           <Button
             variant="ghost"
@@ -792,7 +794,7 @@ function ProduitsContent() {
             onClick={clearProductFilter}
             className="text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded-lg h-7 px-2 gap-1"
           >
-            <X className="h-3.5 w-3.5" /> Effacer le filtre
+            <X className="h-3.5 w-3.5" /> {t('products_page.clear_filter', 'Effacer le filtre')}
           </Button>
         </div>
       )}
@@ -807,10 +809,10 @@ function ProduitsContent() {
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <KpiCard icon={<Package size={20} style={{ color: PRIMARY }} />} value={stats.total} label="Total produits" subtitle="Tous les produits actifs" color={PRIMARY} bg="rgba(44,62,80,0.10)" progress={100} index={0} />
-              <KpiCard icon={<Box size={20} style={{ color: '#22C55E' }} />} value={stats.inStock} label="En stock" subtitle={stats.total > 0 ? `${Math.round((stats.inStock / stats.total) * 100)}% du total` : '0% du total'} color="#22C55E" bg="rgba(34,197,94,0.10)" progress={stats.total > 0 ? (stats.inStock / stats.total) * 100 : 0} index={1} />
-              <KpiCard icon={<AlertTriangle size={20} style={{ color: '#F59E0B' }} />} value={stats.lowStock} label="Stock bas" subtitle="Nécessite une attention" color="#F59E0B" bg="rgba(245,158,11,0.10)" progress={stats.total > 0 ? (stats.lowStock / stats.total) * 100 : 0} index={2} />
-              <KpiCard icon={<XCircle size={20} style={{ color: '#EF4444' }} />} value={stats.outOfStock} label="Rupture" subtitle="Indisponible" color="#EF4444" bg="rgba(239,68,68,0.10)" progress={stats.total > 0 ? (stats.outOfStock / stats.total) * 100 : 0} index={3} />
+              <KpiCard icon={<Package size={20} style={{ color: PRIMARY }} />} value={stats.total} label={t('products.stats.total', 'Total produits')} subtitle={t('products.stats.active_desc', 'Tous les produits actifs')} color={PRIMARY} bg="rgba(44,62,80,0.10)" progress={100} index={0} />
+              <KpiCard icon={<Box size={20} style={{ color: '#22C55E' }} />} value={stats.inStock} label={t('products_page.in_stock', 'En stock')} subtitle={stats.total > 0 ? `${Math.round((stats.inStock / stats.total) * 100)}% ${t('stock.total', 'du total')}` : `0% ${t('stock.total', 'du total')}`} color="#22C55E" bg="rgba(34,197,94,0.10)" progress={stats.total > 0 ? (stats.inStock / stats.total) * 100 : 0} index={1} />
+              <KpiCard icon={<AlertTriangle size={20} style={{ color: '#F59E0B' }} />} value={stats.lowStock} label={t('products.stats.low_stock', 'Stock bas')} subtitle={t('stock_alerts.critical', 'Nécessite une attention')} color="#F59E0B" bg="rgba(245,158,11,0.10)" progress={stats.total > 0 ? (stats.lowStock / stats.total) * 100 : 0} index={2} />
+              <KpiCard icon={<XCircle size={20} style={{ color: '#EF4444' }} />} value={stats.outOfStock} label={t('products.stats.out_of_stock', 'Rupture')} subtitle={t('products_page.out_of_stock', 'Indisponible')} color="#EF4444" bg="rgba(239,68,68,0.10)" progress={stats.total > 0 ? (stats.outOfStock / stats.total) * 100 : 0} index={3} />
             </div>
           )}
         </>
@@ -822,30 +824,30 @@ function ProduitsContent() {
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[180px] max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input placeholder="Rechercher un produit..." value={query} onChange={(e) => setQuery(e.target.value)} className="pl-9 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 h-10 text-sm" />
+            <Input placeholder={t('products.search', 'Rechercher un produit...')} value={query} onChange={(e) => setQuery(e.target.value)} className="pl-9 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 h-10 text-sm" />
           </div>
           <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger className="w-40 rounded-xl h-10 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"><SelectValue placeholder="Catégorie" /></SelectTrigger>
+            <SelectTrigger className="w-40 rounded-xl h-10 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"><SelectValue placeholder={t('products_page.category', 'Catégorie')} /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Toutes les catégories</SelectItem>
+              <SelectItem value="all">{t('products_page.all_categories', 'Toutes les catégories')}</SelectItem>
               {categories.map((cat) => <SelectItem key={cat.id} value={cat.id}>{cat.nameFr}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-40 rounded-xl h-10 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"><SelectValue placeholder="Statut" /></SelectTrigger>
+            <SelectTrigger className="w-40 rounded-xl h-10 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"><SelectValue placeholder={t('products_page.status', 'Statut')} /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Tous les statuts</SelectItem>
-              <SelectItem value="in_stock">En stock</SelectItem>
-              <SelectItem value="low_stock">Stock bas</SelectItem>
-              <SelectItem value="out_of_stock">Rupture</SelectItem>
+              <SelectItem value="all">{t('products_page.all_statuses', 'Tous les statuts')}</SelectItem>
+              <SelectItem value="in_stock">{t('products_page.in_stock', 'En stock')}</SelectItem>
+              <SelectItem value="low_stock">{t('products.stats.low_stock', 'Stock bas')}</SelectItem>
+              <SelectItem value="out_of_stock">{t('products.stats.out_of_stock', 'Rupture')}</SelectItem>
             </SelectContent>
           </Select>
           <Button variant="outline" onClick={() => setScannerOpen(true)} className="gap-2 rounded-xl border-gray-200 dark:border-gray-700 h-10 text-white hover:bg-blue-800 transition-colors" style={{ backgroundColor: PRIMARY }}>
-            <Scan size={15} className="text-white" /> Scanner
+            <Scan size={15} className="text-white" /> {t('products_page.scan', 'Scanner')}
           </Button>
           <Button variant={showInactive ? 'default' : 'outline'} size="sm" onClick={() => setShowInactive(!showInactive)}
             className="rounded-xl h-10 px-4 font-medium" style={showInactive ? { backgroundColor: PRIMARY, color: 'white' } : {}}>
-            {showInactive ? 'Masquer inactifs' : 'Afficher inactifs'}
+            {showInactive ? t('products_page.hide_inactive', 'Masquer inactifs') : t('products_page.show_inactive', 'Afficher inactifs')}
           </Button>
           <div className="flex items-center gap-1 ml-auto border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
             <Button variant="ghost" size="sm" className={`rounded-none h-9 px-3 ${viewMode === 'list' ? 'bg-gray-100 dark:bg-gray-800' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'}`} onClick={() => setViewMode('list')}>
@@ -865,12 +867,12 @@ function ProduitsContent() {
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
-            <AlertDialogDescription>{deleteTarget?.nameAr} — Cette action est irréversible.</AlertDialogDescription>
+            <AlertDialogTitle>{t('products_page.confirm_delete', 'Confirmer la suppression')}</AlertDialogTitle>
+            <AlertDialogDescription>{deleteTarget?.nameAr} — {t('products_page.delete_warning', 'Cette action est irréversible.')}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} style={{ backgroundColor: '#EF4444' }}>Supprimer</AlertDialogAction>
+            <AlertDialogCancel>{t('products_page.cancel', 'Annuler')}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} style={{ backgroundColor: '#EF4444' }}>{t('products_page.delete', 'Supprimer')}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

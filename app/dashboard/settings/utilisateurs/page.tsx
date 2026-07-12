@@ -10,6 +10,7 @@ import { getAllUsers, type AppUserRow } from '@/lib/user-data'
 import { UserListTable } from '@/components/users/UserListTable'
 import { ResetPinDialog } from '@/components/users/ResetPinDialog'
 import { useUserContext } from '@/context/UserContext'
+import { useTranslation } from 'react-i18next'
 
 // ─── Couleurs ──────────────────────────────────────────────────────
 const BLUE_MAIN = '#0A2A5E'
@@ -65,6 +66,7 @@ function KpiCard({ label, value, icon, color, bgColor, progress, delay, isLoaded
 
 function UtilisateursSettingsContent() {
   const router = useRouter()
+  const { t } = useTranslation()
   const { currentUser } = useUserContext()
 
   const [users, setUsers] = useState<AppUserRow[]>([])
@@ -111,7 +113,7 @@ function UtilisateursSettingsContent() {
 
   const kpiData = [
     {
-      label: 'Total caissiers',
+      label: t('settings.users.total_cashiers', 'Total caissiers'),
       value: totalUsers,
       icon: <Users className="h-5 w-5" />,
       color: BLUE_MAIN,
@@ -119,7 +121,7 @@ function UtilisateursSettingsContent() {
       progress: 100,
     },
     {
-      label: 'Actifs',
+      label: t('settings.users.active', 'Actifs'),
       value: activeUsers,
       icon: <UserCheck className="h-5 w-5" />,
       color: '#059669',
@@ -127,7 +129,7 @@ function UtilisateursSettingsContent() {
       progress: totalUsers > 0 ? (activeUsers / totalUsers) * 100 : 0,
     },
     {
-      label: 'Inactifs',
+      label: t('settings.users.inactive', 'Inactifs'),
       value: inactiveUsers,
       icon: <UserX className="h-5 w-5" />,
       color: '#6B7280',
@@ -135,7 +137,7 @@ function UtilisateursSettingsContent() {
       progress: totalUsers > 0 ? (inactiveUsers / totalUsers) * 100 : 0,
     },
     {
-      label: 'Connectés actuellement',
+      label: t('settings.users.connected', 'Connectés actuellement'),
       value: connectedUsers,
       icon: <Activity className="h-5 w-5" />,
       color: '#0D9488',
@@ -154,14 +156,14 @@ function UtilisateursSettingsContent() {
           className="gap-2 rounded-xl hover:bg-blue-50 dark:hover:bg-blue-950/20"
         >
           <ArrowLeft className="h-4 w-4" />
-          Retour
+          {t('common.back', 'Retour')}
         </Button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            Gestion des caissiers
+            {t('settings.users.title', 'Gestion des caissiers')}
           </h1>
           <p className="text-sm text-gray-400 mt-0.5">
-            Gérez les caissiers et leurs accès
+            {t('settings.users.subtitle', 'Gérez les caissiers et leurs accès')}
           </p>
         </div>
         <Button
@@ -169,7 +171,7 @@ function UtilisateursSettingsContent() {
           className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg transition-colors duration-150 shadow-sm shadow-blue-600/10 cursor-pointer"
         >
           <Plus size={15} />
-          Ajouter un caissier
+          {t('settings.users.add_cashier', 'Ajouter un caissier')}
         </Button>
       </div>
 

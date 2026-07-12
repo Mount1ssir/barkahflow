@@ -6,17 +6,19 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Guard } from '@/components/rbac/Guard'
 import { PERMISSIONS } from '@/lib/rbac'
+import { useTranslation } from 'react-i18next'
 
 const BLUE = '#3B82F6'
 
 function SettingsContent() {
   const router = useRouter()
+  const { t } = useTranslation()
 
   const settingsOptions = [
     {
       id: 'entreprise',
-      title: 'Informations entreprise',
-      description: 'Gérez les informations de votre boutique, logo, coordonnées bancaires et mentions légales',
+      title: t('settings.company_info'),
+      description: t('settings.company_desc'),
       icon: Building2,
       href: '/dashboard/settings/entreprise',
       color: 'bg-blue-50 dark:bg-blue-950/20',
@@ -26,8 +28,8 @@ function SettingsContent() {
     },
     {
       id: 'utilisateurs',
-      title: 'Gestion des utilisateurs',
-      description: 'Créez, modifiez et gérez les comptes caissiers de votre boutique',
+      title: t('settings.user_management'),
+      description: t('settings.user_management_desc'),
       icon: Users,
       href: '/dashboard/settings/utilisateurs',
       color: 'bg-purple-50 dark:bg-purple-950/20',
@@ -43,15 +45,15 @@ function SettingsContent() {
       <div className="flex items-center gap-3 mb-8">
         <Button variant="ghost" onClick={() => router.back()} className="gap-2 rounded-xl">
           <ArrowLeft className="h-4 w-4" />
-          Retour
+          {t('common.back', 'Retour')}
         </Button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
             <SettingsIcon className="h-6 w-6" style={{ color: BLUE }} />
-            Paramètres
+            {t('settings.title')}
           </h1>
           <p className="text-sm text-gray-400 mt-0.5">
-            Gérez les paramètres de votre boutique et les comptes utilisateurs
+            {t('settings.subtitle')}
           </p>
         </div>
       </div>
@@ -75,7 +77,7 @@ function SettingsContent() {
                     <Icon className="h-6 w-6" />
                   </div>
                   <span className="text-sm text-gray-400 group-hover:text-blue-500 transition-colors">
-                    Cliquer →
+                    {t('settings.click_here', 'Cliquer →')}
                   </span>
                 </div>
                 <CardTitle className="text-lg mt-2 text-gray-900 dark:text-white">
@@ -101,7 +103,7 @@ function SettingsContent() {
       {/* Infos supplémentaires */}
       <div className="mt-8 p-4 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700">
         <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
-          Seuls les administrateurs ont accès à ces paramètres
+          {t('settings.only_admins', 'Seuls les administrateurs ont accès à ces paramètres')}
         </p>
       </div>
     </div>

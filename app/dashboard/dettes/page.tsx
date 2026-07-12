@@ -72,6 +72,7 @@ import { formatMAD } from '@/lib/stats-data'
 import { recordPaymentForClient } from '@/lib/client-data'
 import { getActiveDebtsByClient, type DebtWithInvoice } from '@/lib/debt-ledger'
 import { useUserContext } from '@/context/UserContext'
+import { useTranslation } from 'react-i18next'
 
 import {
   ResponsiveContainer,
@@ -97,25 +98,33 @@ const URGENCY_LABELS: Record<string, string> = {
 
 const NOT_DUE_COLOR = '#3B82F6'
 
-function getDueStatus(client: ClientDebt): { label: string; color: string; isNotDueYet: boolean } {
+function getDueStatus(client: ClientDebt, t: any): { label: string; color: string; isNotDueYet: boolean } {
   const isNotDueYet = !!client.oldestDebtDate && new Date(client.oldestDebtDate).getTime() > Date.now()
   if (isNotDueYet) {
-    return { label: 'Non échue', color: NOT_DUE_COLOR, isNotDueYet: true }
+    return { label: t('debts.urgency.not_due', 'Non échue'), color: NOT_DUE_COLOR, isNotDueYet: true }
   }
+  const urgencyKeyMap: Record<string, string> = {
+    '0-7': 'recent',
+    '8-30': 'old',
+    '31-60': 'very_old',
+    '60+': 'critical',
+  }
+  const key = urgencyKeyMap[client.daysRange] || 'unknown'
   return {
-    label: URGENCY_LABELS[client.daysRange] || 'Inconnu',
+    label: t('debts.urgency.' + key, URGENCY_LABELS[client.daysRange] || 'Inconnu'),
     color: client.urgencyColor,
     isNotDueYet: false,
   }
 }
 
 function CustomTooltip({ active, payload, label }: any) {
+  const { t } = useTranslation()
   if (!active || !payload || payload.length === 0) return null
   return (
     <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm px-3 py-2 text-xs">
       <p className="text-gray-500 dark:text-gray-400 mb-1">{label}</p>
       <p className="font-semibold text-gray-900 dark:text-white">
-        Dette totale : {formatMAD(payload[0].value)}
+        {t('debts_page.total_due_balance', 'Dette totale')} : {formatMAD(payload[0].value)}
       </p>
     </div>
   )
@@ -156,11 +165,12 @@ interface PaginationProps {
 }
 
 function Pagination({ currentPage, totalPages, totalItems, pageSize, onPageChange }: PaginationProps) {
+  const { t } = useTranslation()
   const start = (currentPage - 1) * pageSize + 1
   const end = Math.min(currentPage * pageSize, totalItems)
   return (
     <div className="flex items-center justify-between mt-4 text-sm text-gray-500 dark:text-gray-400">
-      <span>Affichage {start} à {end} sur {totalItems} client(s)</span>
+      <span>{t('showing_records', 'Affichage')} {start} {t('common.to', 'à')} {end} {t('common.of', 'sur')} {totalItems} {t('debts_page.clients_count', 'client(s)')}</span>
       <div className="flex items-center gap-1">
         <Button variant="outline" size="sm" onClick={() => onPageChange(currentPage - 1)} disabled={currentPage === 1} className="h-8 w-8 p-0 rounded-xl">
           <ChevronLeft className="h-4 w-4" />
@@ -179,6 +189,7 @@ function DebtManagementContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { can } = useUserContext()
+  const { t } = useTranslation()
   
   // ─── Vérification des permissions ──────────────────────────────
   const canView = can(PERMISSIONS.FINANCE_DEBTS)
@@ -191,10 +202,10 @@ function DebtManagementContent() {
           <DollarSign className="w-8 h-8 text-gray-300 dark:text-zinc-600" />
         </div>
         <p className="font-semibold text-gray-700 dark:text-gray-300">
-          Accès limité aux dettes
+          {t('debts_page.restricted_title', 'Accès limité aux dettes')}
         </p>
         <p className="text-sm text-gray-400 mt-1 max-w-md">
-          Vous n'avez pas la permission de voir les dettes.
+          {t('debts_page.restricted_desc', "Vous n'avez pas la permission de voir les dettes.")}
         </p>
       </div>
     )
@@ -274,7 +285,7 @@ function DebtManagementContent() {
       setTrendData(trend)
     } catch (error) {
       console.error(error)
-      toast.error('Erreur chargement des données')
+      toast.error(t('errors.load_failed', 'Erreur chargement des données'))
     } finally {
       setLoading(false)
     }
@@ -323,7 +334,7 @@ function DebtManagementContent() {
     try {
       const debts = await getActiveDebtsByClient(client.clientId)
       if (debts.length === 0) {
-        toast.error('Aucune dette active pour ce client')
+        toast.error(t('debts_page.no_active_debts', 'Aucune dette active pour ce client'))
         return
       }
       setSelectedClient(client)
@@ -334,7 +345,7 @@ function DebtManagementContent() {
       setDialogOpen(true)
     } catch (error) {
       console.error(error)
-      toast.error('Erreur lors de la récupération des dettes')
+      toast.error(t('errors.retrieve_failed', 'Erreur lors de la récupération des dettes'))
     }
   }
 
@@ -353,45 +364,45 @@ function DebtManagementContent() {
 
   const handleConfirmPayment = async () => {
     if (!selectedClient || !selectedDebtId) {
-      toast.error('Client ou dette non sélectionné')
+      toast.error(t('errors.missing_client_debt', 'Client ou dette non sélectionné'))
       return
     }
     const amount = parseFloat(paymentAmount)
     if (isNaN(amount) || amount <= 0) {
-      toast.error('Montant invalide')
+      toast.error(t('errors.invalid_amount', 'Montant invalide'))
       return
     }
     const amountCents = Math.round(amount * 100)
     const debt = debtsList.find(d => d.debtId === selectedDebtId)
     if (debt && amountCents > debt.remainingDebt) {
-      toast.error('Le montant dépasse le solde de la dette sélectionnée')
+      toast.error(t('errors.amount_exceeds_balance', 'Le montant dépasse le solde de la dette sélectionnée'))
       return
     }
     try {
       await recordPaymentForClient(selectedClient.clientId, selectedDebtId, amountCents, paymentMethod, null, '', '')
-      toast.success(`Paiement de ${formatMAD(amountCents)} enregistré`)
+      toast.success(t('debts_page.payment_recorded', `Paiement de ${formatMAD(amountCents)} enregistré`, { amount: formatMAD(amountCents) }))
       setDialogOpen(false)
       loadData()
     } catch (error) {
       console.error(error)
-      toast.error("Erreur lors de l'enregistrement")
+      toast.error(t('errors.save_failed', "Erreur lors de l'enregistrement"))
     }
   }
 
   const handleRappel = async (client: ClientDebt) => {
     const phone = client.phone?.replace(/^0/, '212').replace(/\s/g, '')
     if (!phone) {
-      toast.error("Ce client n'a pas de numéro de téléphone")
+      toast.error(t('errors.no_phone_number', "Ce client n'a pas de numéro de téléphone"))
       return
     }
-    const message = `Bonjour ${client.clientName}, vous avez une dette de ${formatMAD(client.totalDebt)} chez nous. Merci de régler dès que possible.`
+    const message = t('debts_page.rappel_message', `Bonjour ${client.clientName}, vous avez une dette de ${formatMAD(client.totalDebt)} chez nous. Merci de régler dès que possible.`, { name: client.clientName, amount: formatMAD(client.totalDebt) })
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
     try {
       await open(url)
       await saveReminder(client.clientId, client.totalDebt, message, 'whatsapp')
-      toast.success('WhatsApp ouvert, rappel enregistré')
+      toast.success(t('debts_page.whatsapp_opened', 'WhatsApp ouvert, rappel enregistré'))
     } catch (error: any) {
-      toast.error(`Erreur: ${error?.message || 'Inconnue'}`)
+      toast.error(t('common.error') + `: ${error?.message || 'Inconnue'}`)
     }
   }
 
@@ -399,9 +410,9 @@ function DebtManagementContent() {
     <div className="flex flex-col gap-6 max-w-7xl mx-auto w-full">
 
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Gestion des dettes</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{t('debts_page.title', 'Gestion des dettes')}</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-          Suivez les créances clients, gérez les règlements et anticipez les risques.
+          {t('debts_page.subtitle', 'Suivez les créances clients, gérez les règlements et anticipez les risques.')}
         </p>
       </div>
 
@@ -410,7 +421,7 @@ function DebtManagementContent() {
         <div className="flex items-center gap-3 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl">
           <AlertTriangle className="h-4 w-4 text-blue-500 shrink-0" />
           <p className="text-sm text-blue-700 dark:text-blue-300 flex-1">
-            Affichage filtré pour le client : <strong>{clientNameFilter || clientIdFilter}</strong>
+            {t('debts_page.filtered_for', 'Affichage filtré pour le client :')} <strong>{clientNameFilter || clientIdFilter}</strong>
           </p>
           <Button
             variant="ghost"
@@ -418,7 +429,7 @@ function DebtManagementContent() {
             onClick={clearClientFilter}
             className="text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded-lg h-7 px-2 gap-1"
           >
-            <X className="h-3.5 w-3.5" /> Effacer le filtre
+            <X className="h-3.5 w-3.5" /> {t('debts_page.clear_filter', 'Effacer le filtre')}
           </Button>
         </div>
       )}
@@ -437,34 +448,44 @@ function DebtManagementContent() {
       ) : (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <KpiCard title="Total des dettes en cours" value={summary ? formatMAD(summary.totalDebt) : '0 MAD'} icon={<DollarSign className="h-4 w-4" />} />
-            <KpiCard title="Clients endettés" value={summary?.debtorsCount?.toString() || '0'} icon={<Users className="h-4 w-4" />} />
-            <KpiCard title="Dette moyenne" value={summary ? formatMAD(summary.averageDebt) : '0 MAD'} icon={<TrendingUp className="h-4 w-4" />} />
-            <KpiCard title="Ancienneté de la dette la plus vieille" value={summary ? `${summary.oldestDebtDays} jours` : '0 j'} subtitle="depuis la création, pas l'échéance" icon={<Calendar className="h-4 w-4" />} />
+            <KpiCard title={t('debts.kpi.total_debt', 'Total des dettes en cours')} value={summary ? formatMAD(summary.totalDebt) : '0 MAD'} icon={<DollarSign className="h-4 w-4" />} />
+            <KpiCard title={t('debts_page.indebted_clients', 'Clients endettés')} value={summary?.debtorsCount?.toString() || '0'} icon={<Users className="h-4 w-4" />} />
+            <KpiCard title={t('debts_page.average_debt', 'Dette moyenne')} value={summary ? formatMAD(summary.averageDebt) : '0 MAD'} icon={<TrendingUp className="h-4 w-4" />} />
+            <KpiCard title={t('debts_page.oldest_debt_age', 'Ancienneté de la dette la plus vieille')} value={summary ? `${summary.oldestDebtDays} ${t('common.days', 'jours')}` : `0 ${t('common.days', 'j')}`} subtitle={t('debts_page.oldest_debt_age_desc', "depuis la création, pas l'échéance")} icon={<Calendar className="h-4 w-4" />} />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Card className="rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
               <CardHeader>
-                <CardTitle className="text-base font-semibold text-gray-900 dark:text-white">Répartition par échéance</CardTitle>
+                <CardTitle className="text-base font-semibold text-gray-900 dark:text-white">{t('debts_page.distribution_due', 'Répartition par échéance')}</CardTitle>
               </CardHeader>
               <CardContent>
                 {agingBuckets.length === 0 ? (
-                  <div className="text-center py-8 text-gray-500 text-sm">Aucune dette</div>
+                  <div className="text-center py-8 text-gray-500 text-sm">{t('debts_page.no_debt', 'Aucune dette')}</div>
                 ) : (
                   <div className="space-y-3">
-                    {agingBuckets.map((bucket) => (
-                      <div key={bucket.range} className="space-y-1">
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-gray-600 dark:text-gray-300">{bucket.range}</span>
-                          <span className="font-medium text-gray-900 dark:text-white">{formatMAD(bucket.amount)}</span>
+                    {agingBuckets.map((bucket) => {
+                      const urgencyKeyMap: Record<string, string> = {
+                        '0-7': 'recent',
+                        '8-30': 'old',
+                        '31-60': 'very_old',
+                        '60+': 'critical',
+                      }
+                      const mappedKey = urgencyKeyMap[bucket.range] || bucket.range
+                      const bucketLabel = t('debts.urgency.' + mappedKey, bucket.range)
+                      return (
+                        <div key={bucket.range} className="space-y-1">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-600 dark:text-gray-300">{bucketLabel}</span>
+                            <span className="font-medium text-gray-900 dark:text-white">{formatMAD(bucket.amount)}</span>
+                          </div>
+                          <div className="h-2 w-full rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                            <div className="h-full rounded-full transition-all duration-500" style={{ width: `${bucket.percentage}%`, backgroundColor: bucket.color }} />
+                          </div>
+                          <p className="text-[10px] text-gray-400 text-right">{bucket.percentage}%</p>
                         </div>
-                        <div className="h-2 w-full rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-                          <div className="h-full rounded-full transition-all duration-500" style={{ width: `${bucket.percentage}%`, backgroundColor: bucket.color }} />
-                        </div>
-                        <p className="text-[10px] text-gray-400 text-right">{bucket.percentage}%</p>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
               </CardContent>
@@ -472,15 +493,15 @@ function DebtManagementContent() {
 
             <Card className="rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between space-y-0">
-                <CardTitle className="text-base font-semibold text-gray-900 dark:text-white">Évolution de la dette</CardTitle>
+                <CardTitle className="text-base font-semibold text-gray-900 dark:text-white">{t('debts_page.debt_evolution', 'Évolution de la dette')}</CardTitle>
                 <Select value={trendPeriod.toString()} onValueChange={(v) => setTrendPeriod(Number(v))}>
                   <SelectTrigger className="w-24 h-8 text-xs rounded-lg bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="7">7 jours</SelectItem>
-                    <SelectItem value="30">30 jours</SelectItem>
-                    <SelectItem value="90">90 jours</SelectItem>
+                    <SelectItem value="7">7 {t('common.days', 'jours')}</SelectItem>
+                    <SelectItem value="30">30 {t('common.days', 'jours')}</SelectItem>
+                    <SelectItem value="90">90 {t('common.days', 'jours')}</SelectItem>
                   </SelectContent>
                 </Select>
               </CardHeader>
@@ -488,11 +509,11 @@ function DebtManagementContent() {
                 <div className="h-48 relative">
                   {trendLoading && (
                     <div className="absolute inset-0 flex items-center justify-center bg-white/60 dark:bg-gray-900/60 z-10 rounded-lg">
-                      <span className="text-xs text-gray-400">Chargement...</span>
+                      <span className="text-xs text-gray-400">{t('debts_page.loading', 'Chargement...')}</span>
                     </div>
                   )}
                   {trendData.length === 0 ? (
-                    <div className="flex items-center justify-center h-full text-gray-500 text-sm">Aucune donnée</div>
+                    <div className="flex items-center justify-center h-full text-gray-500 text-sm">{t('debts_page.no_data', 'Aucune donnée')}</div>
                   ) : (
                     <ResponsiveContainer width="100%" height="100%">
                       <ReLineChart data={trendData}>
@@ -514,11 +535,11 @@ function DebtManagementContent() {
             <CardHeader className="flex flex-row items-center justify-between">
               <div className="flex items-center gap-3">
                 <CardTitle className="text-base font-semibold text-gray-900 dark:text-white">
-                  Clients endettés
+                  {t('debts_page.indebted_clients', 'Clients endettés')}
                 </CardTitle>
                 {clientIdFilter && (
                   <Badge className="text-xs bg-blue-100 text-blue-700 border-blue-200 hover:bg-blue-100">
-                    Filtré : {clientNameFilter}
+                    {t('filtered', 'Filtré')} : {clientNameFilter}
                   </Badge>
                 )}
               </div>
@@ -527,7 +548,7 @@ function DebtManagementContent() {
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                     <Input
-                      placeholder="Rechercher..."
+                      placeholder={t('clients.search', 'Rechercher...')}
                       value={search}
                       onChange={(e) => { setSearch(e.target.value); setCurrentPage(1) }}
                       className="pl-9 rounded-xl h-9 w-48 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-sm"
@@ -535,11 +556,11 @@ function DebtManagementContent() {
                   </div>
                   <Select value={sortBy} onValueChange={setSortBy}>
                     <SelectTrigger className="w-40 rounded-xl h-9 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-sm">
-                      <SelectValue placeholder="Trier par" />
+                      <SelectValue placeholder={t('common.sort_by', 'Trier par')} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="amount">Montant décroissant</SelectItem>
-                      <SelectItem value="oldest">Retard décroissant</SelectItem>
+                      <SelectItem value="amount">{t('debts_page.decreasing_amount', 'Montant décroissant')}</SelectItem>
+                      <SelectItem value="oldest">{t('debts_page.decreasing_delay', 'Retard décroissant')}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -548,7 +569,7 @@ function DebtManagementContent() {
             <CardContent className="p-0">
               {paginatedClients.length === 0 ? (
                 <div className="px-6 py-8 text-center text-gray-500">
-                  {clientIdFilter ? 'Aucune dette trouvée pour ce client.' : 'Aucun client endetté ne correspond à la recherche.'}
+                  {clientIdFilter ? t('debts_page.no_debt_found_client', 'Aucune dette trouvée pour ce client.') : t('debts_page.no_debt_match_search', 'Aucun client endetté ne correspond à la recherche.')}
                 </div>
               ) : (
                 <>
@@ -556,19 +577,19 @@ function DebtManagementContent() {
                     <Table>
                       <TableHeader>
                         <TableRow className="bg-gray-50 dark:bg-gray-800/50">
-                          <TableHead className="font-semibold">Client</TableHead>
-                          <TableHead className="font-semibold">Téléphone</TableHead>
-                          <TableHead className="font-semibold text-right">Montant dû</TableHead>
-                          <TableHead className="font-semibold text-center">Factures impayées</TableHead>
-                          <TableHead className="font-semibold text-center">Échéance</TableHead>
-                          <TableHead className="font-semibold text-center">Date limite</TableHead>
-                          <TableHead className="font-semibold text-center">Limite crédit</TableHead>
-                          <TableHead className="font-semibold text-right">Actions</TableHead>
+                          <TableHead className="font-semibold">{t('debts_page.client', 'Client')}</TableHead>
+                          <TableHead className="font-semibold">{t('debts_page.phone', 'Téléphone')}</TableHead>
+                          <TableHead className="font-semibold text-right">{t('debts_page.amount_due', 'Montant dû')}</TableHead>
+                          <TableHead className="font-semibold text-center">{t('debts_page.unpaid_invoices', 'Factures impayées')}</TableHead>
+                          <TableHead className="font-semibold text-center">{t('debts_page.due_date', 'Échéance')}</TableHead>
+                          <TableHead className="font-semibold text-center">{t('debts_page.limit_date', 'Date limite')}</TableHead>
+                          <TableHead className="font-semibold text-center">{t('debts_page.credit_limit', 'Limite crédit')}</TableHead>
+                          <TableHead className="font-semibold text-right">{t('debts_page.actions', 'Actions')}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {paginatedClients.map((client) => {
-                          const dueStatus = getDueStatus(client)
+                          const dueStatus = getDueStatus(client, t)
                           const isOverdue = !dueStatus.isNotDueYet && client.oldestDebtDays > 0
                           return (
                             <TableRow
@@ -620,9 +641,9 @@ function DebtManagementContent() {
                                       variant="outline"
                                       className="rounded-xl px-3 text-xs border-blue-200 text-blue-600 hover:bg-blue-50"
                                       onClick={(e) => { e.stopPropagation(); handleRappel(client) }}
-                                      title="Rappel WhatsApp"
+                                      title={t('debts_page.whatsapp_rappel', 'Rappel WhatsApp')}
                                     >
-                                      <MessageSquare className="h-3.5 w-3.5 mr-1" /> WhatsApp
+                                      <MessageSquare className="h-3.5 w-3.5 mr-1" /> {t('debts_page.whatsapp', 'WhatsApp')}
                                     </Button>
                                   )}
                                   <Button
@@ -631,7 +652,7 @@ function DebtManagementContent() {
                                     className="text-white hover:opacity-90 rounded-xl px-4 text-xs"
                                     onClick={(e) => { e.stopPropagation(); openPaymentDialog(client) }}
                                   >
-                                    Régler
+                                    {t('debts_page.settle', 'Régler')}
                                   </Button>
                                 </div>
                               </TableCell>
@@ -652,17 +673,17 @@ function DebtManagementContent() {
           {recentPayments.length > 0 && (
             <Card className="rounded-2xl border border-gray-200 dark:border-gray-800 shadow-sm">
               <CardHeader>
-                <CardTitle className="text-base font-semibold text-gray-900 dark:text-white">Règlements récents</CardTitle>
+                <CardTitle className="text-base font-semibold text-gray-900 dark:text-white">{t('debts_page.recent_settlements', 'Règlements récents')}</CardTitle>
               </CardHeader>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-gray-50 dark:bg-gray-800/50">
-                        <TableHead className="font-semibold">Date</TableHead>
-                        <TableHead className="font-semibold">Client</TableHead>
-                        <TableHead className="font-semibold text-right">Montant</TableHead>
-                        <TableHead className="font-semibold">Mode</TableHead>
+                        <TableHead className="font-semibold">{t('debts_page.date', 'Date')}</TableHead>
+                        <TableHead className="font-semibold">{t('debts_page.client', 'Client')}</TableHead>
+                        <TableHead className="font-semibold text-right">{t('debts_page.amount', 'Montant')}</TableHead>
+                        <TableHead className="font-semibold">{t('debts_page.method', 'Mode')}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -673,7 +694,7 @@ function DebtManagementContent() {
                           <TableCell className="text-right font-bold text-green-600">{formatMAD(payment.amount)}</TableCell>
                           <TableCell>
                             <Badge variant="outline" className="text-xs border-gray-300 dark:border-gray-600">
-                              {payment.paymentMethod === 'cash' ? 'Espèces' : payment.paymentMethod === 'card' ? 'TPE' : payment.paymentMethod === 'mobile' ? 'Mobile' : payment.paymentMethod}
+                              {payment.paymentMethod === 'cash' ? t('debts_page.cash', 'Espèces') : payment.paymentMethod === 'card' ? t('debts_page.tpe', 'TPE') : payment.paymentMethod === 'mobile' ? t('debts_page.mobile', 'Mobile') : payment.paymentMethod}
                             </Badge>
                           </TableCell>
                         </TableRow>
@@ -690,12 +711,12 @@ function DebtManagementContent() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md rounded-2xl">
           <DialogHeader>
-            <DialogTitle className="text-xl">Enregistrer un paiement</DialogTitle>
+            <DialogTitle className="text-xl">{t('debts_page.record_payment', 'Enregistrer un paiement')}</DialogTitle>
             <DialogDescription>
               {selectedClient && (
                 <>
-                  Client : <span className="font-semibold">{selectedClient.clientName}</span><br />
-                  Solde dû total : <span className="font-bold text-blue-600">{formatMAD(selectedClient.totalDebt)}</span>
+                  {t('debts_page.client_label', 'Client :')} <span className="font-semibold">{selectedClient.clientName}</span><br />
+                  {t('debts_page.total_due_balance', 'Solde dû total :')} <span className="font-bold text-blue-600">{formatMAD(selectedClient.totalDebt)}</span>
                 </>
               )}
             </DialogDescription>
@@ -703,9 +724,9 @@ function DebtManagementContent() {
           <div className="space-y-4 py-4">
             {debtsList.length > 0 && (
               <div className="space-y-2">
-                <Label>Choisir la dette à régler</Label>
+                <Label>{t('debts_page.choose_debt', 'Choisir la dette à régler')}</Label>
                 <Select value={selectedDebtId || ''} onValueChange={handleDebtChange}>
-                  <SelectTrigger className="rounded-xl"><SelectValue placeholder="Sélectionner une dette" /></SelectTrigger>
+                  <SelectTrigger className="rounded-xl"><SelectValue placeholder={t('debts_page.select_debt', 'Sélectionner une dette')} /></SelectTrigger>
                   <SelectContent>
                     {debtsList.map((debt) => (
                       <SelectItem key={debt.debtId} value={debt.debtId}>
@@ -717,27 +738,27 @@ function DebtManagementContent() {
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="amount">Montant (MAD)</Label>
+              <Label htmlFor="amount">{t('debts_page.amount_label', 'Montant (MAD)')}</Label>
               <div className="flex gap-2">
                 <Input id="amount" type="number" step="0.01" min="0.01" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} className="rounded-xl" />
-                <Button type="button" variant="outline" className="rounded-xl border-blue-200 text-blue-600 hover:bg-blue-50" onClick={handlePayFull}>Payer le solde</Button>
+                <Button type="button" variant="outline" className="rounded-xl border-blue-200 text-blue-600 hover:bg-blue-50" onClick={handlePayFull}>{t('debts_page.pay_balance', 'Payer le solde')}</Button>
               </div>
             </div>
             <div className="space-y-2">
-              <Label>Mode de paiement</Label>
+              <Label>{t('debts_page.payment_method', 'Mode de paiement')}</Label>
               <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                <SelectTrigger className="rounded-xl"><SelectValue placeholder="Choisir un mode" /></SelectTrigger>
+                <SelectTrigger className="rounded-xl"><SelectValue placeholder={t('debts_page.choose_method', 'Choisir un mode')} /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="cash"><div className="flex items-center gap-2"><Wallet className="h-4 w-4 text-blue-500" /> Espèces</div></SelectItem>
-                  <SelectItem value="card"><div className="flex items-center gap-2"><CreditCard className="h-4 w-4 text-blue-500" /> TPE</div></SelectItem>
-                  <SelectItem value="mobile"><div className="flex items-center gap-2"><Smartphone className="h-4 w-4 text-blue-500" /> Mobile</div></SelectItem>
+                  <SelectItem value="cash"><div className="flex items-center gap-2"><Wallet className="h-4 w-4 text-blue-500" /> {t('debts_page.cash', 'Espèces')}</div></SelectItem>
+                  <SelectItem value="card"><div className="flex items-center gap-2"><CreditCard className="h-4 w-4 text-blue-500" /> {t('debts_page.tpe', 'TPE')}</div></SelectItem>
+                  <SelectItem value="mobile"><div className="flex items-center gap-2"><Smartphone className="h-4 w-4 text-blue-500" /> {t('debts_page.mobile', 'Mobile')}</div></SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setDialogOpen(false)} className="rounded-xl">Annuler</Button>
-            <Button style={{ backgroundColor: BLUE }} className="text-white hover:opacity-90 rounded-xl" onClick={handleConfirmPayment}>Enregistrer le paiement</Button>
+            <Button variant="outline" onClick={() => setDialogOpen(false)} className="rounded-xl">{t('debts_page.cancel', 'Annuler')}</Button>
+            <Button style={{ backgroundColor: BLUE }} className="text-white hover:opacity-90 rounded-xl" onClick={handleConfirmPayment}>{t('debts_page.save_payment', 'Enregistrer le paiement')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

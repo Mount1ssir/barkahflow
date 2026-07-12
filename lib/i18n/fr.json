@@ -51,7 +51,13 @@
     "tomorrow": "Demain",
     "week": "Semaine",
     "month": "Mois",
-    "year": "Année"
+    "year": "Année",
+    "payment": {
+      "cash": "Espèces",
+      "card": "TPE",
+      "mobile": "Mobile",
+      "mixed": "Mixte"
+    }
   },
   "login": {
     "welcome": "Bienvenue sur BarkahFlow",
@@ -146,7 +152,8 @@
         "date": "Date",
         "status": "Statut",
         "amount": "Montant"
-      }
+      },
+      "no_match": "Aucune facture avec ce statut"
     },
     "menu": {
       "language": "Langue",
@@ -182,6 +189,9 @@
       "depenses": "Dépenses",
       "dettes": "Dettes",
       "rapports": "Rapports"
+    },
+    "header": {
+      "search": "Rechercher dans le tableau de bord..."
     }
   },
   "stock": {
@@ -234,7 +244,10 @@
       "reason": "Motif",
       "in": "Entrée",
       "out": "Sortie"
-    }
+    },
+    "total": "au total",
+    "categories": "Catégories",
+    "total_value": "Valeur du stock"
   },
   "sales": {
     "by_category": "Répartition des ventes",
@@ -242,7 +255,8 @@
     "total_sales": "Ventes totales",
     "today_sales": "Ventes du jour",
     "week_sales": "Ventes de la semaine",
-    "month_sales": "Ventes du mois"
+    "month_sales": "Ventes du mois",
+    "period": "Période"
   },
   "top_products": {
     "title": "Produits les plus vendus",
@@ -252,17 +266,21 @@
     "no_sales": "Aucune vente enregistrée pour le moment",
     "rank": "Rang",
     "product": "Produit",
-    "quantity": "Quantité"
+    "quantity": "Quantité",
+    "period": "Période",
+    "hint": "Assurez-vous que des factures (hors annulées) existent dans la période sélectionnée."
   },
   "revenue": {
     "title": "Évolution des ventes",
     "chart": {
       "sales": "Ventes",
-      "balance": "Solde caisse"
+      "balance": "Solde caisse",
+      "previous": "Période précédente"
     },
     "legend": {
       "sales": "Ventes",
-      "balance": "Solde caisse"
+      "balance": "Solde caisse",
+      "previous": "Période précédente"
     },
     "empty": {
       "title": "Aucune donnée pour le moment",
@@ -274,7 +292,12 @@
       "weeks": "Semaines",
       "months": "Mois"
     },
-    "currency": "MAD"
+    "currency": "MAD",
+    "insight": {
+      "first_period": "Première période – les données commencent à se construire.",
+      "up": "En hausse de {{pct}}% par rapport à la période précédente.",
+      "down": "En baisse de {{pct}}% par rapport à la période précédente."
+    }
   },
   "products": {
     "title": "Produits",
@@ -427,6 +450,12 @@
       "created": "Catégorie ajoutée",
       "error": "Erreur lors de l'ajout de la catégorie",
       "name_required": "Le nom de la catégorie est obligatoire"
+    },
+    "stats": {
+      "total": "Products",
+      "active": "Active",
+      "low_stock": "Low Stock",
+      "out_of_stock": "Out of Stock"
     }
   },
   "scanner": {
@@ -453,5 +482,483 @@
     "max": "La valeur doit être au plus {{max}}",
     "email": "Veuillez saisir une adresse email valide",
     "phone": "Veuillez saisir un numéro de téléphone valide"
+  },
+  "settings": {
+    "title": "Paramètres",
+    "company_info": "Informations entreprise",
+    "company_desc": "Gérez les informations de votre boutique, logo, coordonnées bancaires et mentions légales",
+    "user_management": "Gestion des utilisateurs",
+    "user_management_desc": "Créez, modifiez et gérez les comptes caissiers de votre boutique",
+    "click_here": "Cliquer →",
+    "only_admins": "Seuls les administrateurs ont accès à ces paramètres",
+    "company": {
+      "title": "Informations entreprise",
+      "subtitle": "Gérez les informations de votre boutique",
+      "general_info": "Informations générales",
+      "company_name": "Nom de l'entreprise",
+      "city": "Ville",
+      "address": "Adresse",
+      "phone": "Téléphone",
+      "email": "Email",
+      "website": "Site web",
+      "logo": "Logo de l'entreprise",
+      "no_logo": "Aucun logo",
+      "choose_image": "Choisir une image",
+      "save_success": "Paramètres enregistrés avec succès",
+      "load_error": "Impossible de charger les paramètres",
+      "banking": "Coordonnées bancaires",
+      "bank_name": "Banque",
+      "rib": "RIB",
+      "payment_terms": "Conditions de paiement",
+      "default_terms": "Délai de paiement par défaut (jours)",
+      "default_terms_desc": "Utilisé pour calculer automatiquement la date d'échéance de chaque nouvelle facture.",
+      "late_penalty": "Mention légale — pénalités de retard",
+      "late_penalty_placeholder": "Tout retard de paiement entraîne l'application de pénalités au taux légal en vigueur...",
+      "late_penalty_desc": "Ce texte apparaît en bas de chaque facture non entièrement payée.",
+      "save": "Enregistrer les paramètres"
+    },
+    "users": {
+      "title": "Gestion des caissiers",
+      "subtitle": "Gérez les caissiers et leurs accès",
+      "add_cashier": "Ajouter un caissier",
+      "total_cashiers": "Total caissiers",
+      "active": "Actifs",
+      "inactive": "Inactifs",
+      "connected": "Connectés actuellement",
+      "search_placeholder": "Rechercher un caissier...",
+      "no_results": "Aucun caissier trouvé",
+      "confirm_delete": "Supprimer {{name}} ?",
+      "new_cashier": "Nouveau caissier",
+      "edit_cashier": "Modifier le caissier",
+      "create_cashier": "Créer le caissier"
+    }
+  },
+  "debts": {
+    "title": "Gestion des dettes",
+    "urgency": {
+      "recent": "Récent",
+      "old": "Ancien",
+      "very_old": "Très ancien",
+      "critical": "Critique",
+      "not_due": "Non échue"
+    },
+    "kpi": {
+      "total_debt": "Dette totale",
+      "active_debtors": "Débiteurs actifs",
+      "overdue_debt": "Dette en retard"
+    },
+    "table": {
+      "client": "Client",
+      "total_amount": "Montant total",
+      "remaining": "Restant",
+      "oldest_debt": "Plus ancienne dette",
+      "status": "Statut"
+    },
+    "filter_placeholder": "Filtrer par client...",
+    "no_debts": "Aucune créance impayée trouvée."
+  },
+  "clients": {
+    "new": {
+      "title": "Nouveau client",
+      "name_required": "Le nom est obligatoire",
+      "credit_limit_positive": "La limite de crédit doit être un nombre positif",
+      "create_success": "Client créé avec succès",
+      "create_error": "Erreur lors de la création",
+      "full_name": "Nom complet",
+      "phone": "Numéro de téléphone",
+      "credit_limit": "Limite de crédit (MAD)",
+      "notes": "Notes",
+      "address": "Adresse"
+    },
+    "showing": "Affichage",
+    "clients": "clients",
+    "total": "Total clients",
+    "active": "Clients actifs",
+    "total_debt": "Dettes",
+    "debtors": "Endettés",
+    "title": "Clients",
+    "subtitle": "Gérez vos clients, suivez leurs achats et leurs fidélités.",
+    "search": "Rechercher...",
+    "export": "Exporter",
+    "add": "Ajouter client",
+    "no_data": "Aucun client"
+  },
+  "pos": {
+    "title": "Point de vente",
+    "subtitle": "Sélectionnez des produits et passez la commande",
+    "walkin_client": "Client de passage",
+    "cart": "Panier",
+    "clear_cart": "Vider",
+    "empty_cart": "Panier vide",
+    "empty_cart_desc": "Ajoutez des produits depuis la grille",
+    "subtotal": "Sous-total",
+    "tax": "TVA",
+    "total": "Total",
+    "continue": "Continuer",
+    "checkout_title": "Récapitulatif de la commande",
+    "customer": "Client",
+    "add_client": "Ajouter un client",
+    "discount": "Remise (%)",
+    "payment_status": "Statut de paiement",
+    "paid": "Payé",
+    "partial": "Partiel",
+    "unpaid": "Impayé",
+    "paid_amount": "Montant payé",
+    "confirm_checkout": "Confirmer",
+    "search_products": "Rechercher un produit, code-barres ou référence...",
+    "scanner": "Scanner",
+    "filter_category": "Toutes les catégories",
+    "all_categories": "Toutes les catégories",
+    "no_products": "Aucun produit trouvé",
+    "in_stock": "en stock"
+  },
+  "expenses": {
+    "chart": {
+      "tooltip": {
+        "income": "Revenu total :",
+        "expenses": "Dépenses :",
+        "net": "Chiffre d\\"
+      },
+      "title": "Chiffre d",
+      "period": {
+        "7d": "7 jours",
+        "30d": "30 jours"
+      },
+      "summary": {
+        "net": "Chiffre d\\",
+        "income": "Revenu total",
+        "expenses": "Total des dépenses"
+      }
+    },
+    "errors": {
+      "required": "Veuillez remplir les champs obligatoires",
+      "invalid_amount": "Veuillez entrer un montant valide"
+    },
+    "messages": {
+      "added": "Dépense ajoutée avec succès",
+      "deleted": "Dépense supprimée avec succès",
+      "exported": "CSV exporté avec succès !"
+    },
+    "confirm": {
+      "delete": "Êtes-vous sûr de vouloir supprimer cette dépense ?"
+    },
+    "title": "Dépenses",
+    "subtitle": "Gérez les coûts opérationnels, les factures et les sorties de trésorerie de l\\",
+    "export": "Exporter",
+    "add": "Ajouter une dépense",
+    "filter": {
+      "all": "Tout",
+      "pending": "En attente",
+      "settled": "Réglé"
+    },
+    "search_placeholder": "Rechercher une catégorie, un fournisseur, des notes...",
+    "table": {
+      "date": "Date",
+      "category": "Catégorie",
+      "vendor": "Fournisseur/Source",
+      "notes": "Notes",
+      "status": "Statut",
+      "amount": "Montant",
+      "empty": "Aucune dépense trouvée correspondant aux critères"
+    },
+    "status": {
+      "settled": "Réglé",
+      "pending": "En attente"
+    },
+    "summary": {
+      "count": "Affichage de {{count}} entrées",
+      "total": "Montant total :"
+    },
+    "modal": {
+      "title": "Ajouter une nouvelle dépense",
+      "date": "Date",
+      "category": "Catégorie",
+      "vendor": "Fournisseur/Source",
+      "amount": "Montant (MAD)",
+      "notes": "Notes",
+      "status": "Statut",
+      "cancel": "Annuler",
+      "save": "Enregistrer"
+    },
+    "placeholder": {
+      "category": "ex. Loyer, Services publics, Fourniture de stock",
+      "vendor": "ex. Distribution Sidi Ali, nom du propriétaire",
+      "notes": "Décrivez les détails de la dépense..."
+    }
+  },
+  "invoices": {
+    "showing": "Affichage",
+    "invoices": "factures",
+    "total_invoiced": "Total facturé",
+    "paid_total": "Payées",
+    "pending_total": "En attente",
+    "unpaid_total": "Impayées",
+    "title": "Factures",
+    "subtitle": "Gérez vos factures, suivez les paiements et vos relances.",
+    "search": "Rechercher...",
+    "export": "Exporter",
+    "new": "Nouvelle facture",
+    "no_data": "Aucune facture",
+    "number": "N° facture",
+    "client": "Client",
+    "date": "Date",
+    "status": "Statut",
+    "total_ht": "Total HT",
+    "total_ttc": "Total TTC",
+    "actions": "Actions",
+    "anonymous": "Anonyme",
+    "filter_status": "Statut",
+    "all_status": "Toutes",
+    "paid": "Payées",
+    "partial": "Partielles",
+    "unpaid": "Impayées"
+  },
+  "reports": {
+    "business": {
+      "sales_revenue": "Revenu de vente",
+      "debt_settlement": "Règlement de dette",
+      "title": "Rapports d\\",
+      "subtitle": "Analysez les marges bénéficiaires brutes, les coûts d\\",
+      "profit_margin": "Marge bénéficiaire brute",
+      "total_expenses": "Total des dépenses",
+      "exp_count": "Sur {{count}} opérations de dépenses",
+      "ledger_title": "Grand livre des flux de trésorerie",
+      "date": "Date",
+      "type": "Type",
+      "category": "Catégorie",
+      "amount": "Montant"
+    },
+    "export": "Exporter",
+    "customer": {
+      "title": "Rapports clients",
+      "subtitle": "Analysez les tendances des clients actifs, les volumes de commande et les soldes de dettes restants",
+      "active_clients": "Total des clients actifs",
+      "unpaid_debt": "Dette totale impayée",
+      "debt_notice": "Nécessite des actions de rappel",
+      "analysis_title": "Profil de commandes & dettes par client",
+      "name": "Nom du client",
+      "phone": "Téléphone",
+      "orders_count": "Total Commandes",
+      "debt_bal": "Dette restante"
+    },
+    "inventory": {
+      "title": "Rapports d",
+      "subtitle": "Évaluez les articles en stock, suivez les niveaux faibles et gérez les limites de réapprovisionnement",
+      "total_val": "Valeur totale du stock",
+      "sku_count": "Sur {{count}} références de produits",
+      "low_stock": "Alertes de stock faible",
+      "need_reorder": "Articles nécessitant un réapprovisionnement rapide",
+      "stock_levels_title": "Statut des niveaux de stock",
+      "product": "Produit",
+      "current_stock": "Stock actuel",
+      "threshold": "Seuil d",
+      "value": "Valeur (Coût)"
+    },
+    "categories": {
+      "sales": "Rapports de ventes",
+      "inventory": "Rapports d\\",
+      "business": "Rapports d\\",
+      "tax": "Rapports de taxes & factures",
+      "customers": "Rapports clients",
+      "revenue": "Rapports de revenus"
+    },
+    "desc": {
+      "sales": "Suivez les revenus, la valeur moyenne des commandes et la performance des produits.",
+      "inventory": "Surveillez les niveaux de stock, la valeur des marchandises et les alertes de réapprovisionnement.",
+      "business": "Aperçu des marges bénéficiaires, des dépenses et du grand livre des flux de trésorerie.",
+      "tax": "Exportez les résumés des taxes collectées et l\\",
+      "customers": "Analysez les niveaux de crédit des clients, les dettes impayées et les meilleurs clients.",
+      "revenue": "Consultez les rapports sur les ventes régulières et les revenus des événements externes."
+    },
+    "badges": {
+      "popular": "Populaire"
+    },
+    "title": "Rapports",
+    "subtitle": "Accédez aux résumés, statistiques de vente et indicateurs d\\",
+    "view": "Voir le rapport",
+    "revenue": {
+      "title": "Rapports de revenus",
+      "subtitle": "Suivez les revenus issus des ventes régulières et des événements externes",
+      "total_revenue": "Revenu Total",
+      "regular_sales": "Ventes Régulières",
+      "based_on_invoices": "{{count}} factures émises",
+      "external_sales": "Ventes / Revenus Externes",
+      "based_on_events": "{{count}} événements enregistrés",
+      "regular_sales_tab": "Ventes Régulières",
+      "external_sales_tab": "Revenus Externes",
+      "regular_details": "Détails des Ventes",
+      "external_details": "Détails des Revenus Externes",
+      "invoice_id": "N° Facture",
+      "client": "Client",
+      "date": "Date",
+      "payment_method": "Paiement",
+      "status": "Statut",
+      "amount": "Montant",
+      "tx_id": "ID Transaction",
+      "description": "Description"
+    },
+    "sales": {
+      "title": "Rapports de ventes",
+      "subtitle": "Suivez les chiffres d\\",
+      "total_revenue": "Revenu total",
+      "aov": "Valeur moyenne des commandes",
+      "based_on_orders": "Basé sur {{count}} commandes",
+      "performance_title": "Performance des produits",
+      "item_name": "Nom du produit",
+      "sku": "SKU",
+      "qty_sold": "Quantité vendue",
+      "total_sales": "Ventes totales"
+    },
+    "tax": {
+      "title": "Rapports de taxes & factures",
+      "subtitle": "Examinez les taxes sur les ventes accumulées, les soldes impayés et l\\",
+      "total_collected": "Total des taxes collectées",
+      "fiscal_year": "Taxes calculées sur toutes les factures",
+      "outstanding": "Factures en attente",
+      "unpaid_warn": "Factures non réglées ou partielles",
+      "history_title": "Historique des facturations",
+      "invoice_id": "N° Facture",
+      "client": "Client",
+      "date": "Date",
+      "tax_amt": "Taxe",
+      "total_amt": "Montant Total",
+      "status": "Statut"
+    }
+  },
+  "notifications": {
+    "title": "Notifications",
+    "empty": "Aucune notification"
+  },
+  "stock_alerts": {
+    "title": "Alertes & notifications",
+    "empty_title": "Aucune alerte",
+    "empty_description": "Vous serez notifié ici des événements importants.",
+    "view_all": "Voir toutes les alertes",
+    "remaining": "Stock restant",
+    "critical": "Critique",
+    "low": "Faible"
+  },
+  "voice": {
+    "toggle_assistant": "Assistant vocal",
+    "no_input": "Veuillez saisir une commande.",
+    "not_understood": "Désolé, je n",
+    "no_pending_confirmation": "Je n\\",
+    "action_cancelled": "Action annulée.",
+    "nothing_to_repeat": "Je n\\",
+    "confirm_default": "Voulez-vous confirmer cette action ?",
+    "type_command": "Tapez votre commande..."
+  },
+  "revenue_page": {
+    "restricted_title": "Accès limité aux revenus",
+    "restricted_desc": "Vous n'avez pas la permission de voir les revenus.",
+    "evolution": "Évolution des ventes",
+    "subtitle": "Analysez votre chiffre d'affaires, vos encaissements et vos créances.",
+    "add_revenue": "Ajouter un revenu",
+    "export": "Exporter",
+    "payment_distribution": "Répartition par mode de paiement",
+    "no_data_period": "Aucune donnée pour cette période",
+    "top_products_ca": "Top produits par CA",
+    "no_products_sold": "Aucun produit vendu sur cette période",
+    "aging_balance": "Balance âgée des créances",
+    "no_unpaid_claims": "Aucune créance impayée",
+    "transaction_details": "Détail des transactions",
+    "all": "Tous",
+    "paid": "Payée",
+    "pending": "En attente",
+    "unpaid": "Impayée",
+    "cash": "Espèces",
+    "tpe": "TPE",
+    "mobile": "Mobile",
+    "mixed": "Mixte",
+    "no_transactions": "Aucune transaction pour cette période.",
+    "invoice_number": "N° facture",
+    "date": "Date",
+    "client": "Client",
+    "payment": "Paiement",
+    "status": "Statut",
+    "amount_ttc": "Montant TTC",
+    "external": "Externe",
+    "add_external_revenue": "Ajouter un revenu externe",
+    "external_desc_1": "Enregistre un encaissement qui ne provient pas d'une facture (vente occasionnelle, remboursement, autre revenu...). Ce montant sera ajouté à l'",
+    "external_desc_collected": "encaissé",
+    "external_desc_2": " (pas au chiffre d'affaires).",
+    "amount_label": "Montant (MAD)",
+    "payment_method": "Mode de paiement",
+    "cancel": "Annuler",
+    "period_vs": "vs période préc."
+  },
+  "products_page": {
+    "restricted_title": "Accès limité aux produits",
+    "restricted_desc": "Vous n'avez pas les permissions nécessaires pour accéder aux produits.",
+    "no_permission_view": "Vous n'avez pas la permission de voir les produits.",
+    "add_product": "Ajouter un produit",
+    "product": "Produit",
+    "sku": "SKU",
+    "category": "Catégorie",
+    "stock": "Stock",
+    "price_mad": "Prix (MAD)",
+    "purchase": "Achat",
+    "status": "Statut",
+    "actions": "Actions",
+    "edit": "Modifier",
+    "replenish": "Réapprovisionner",
+    "history": "Historique",
+    "delete": "Supprimer",
+    "no_image": "Aucune image",
+    "inactive": "Inactif",
+    "out_of_stock": "Rupture",
+    "low_stock": "Stock bas",
+    "title": "Produits",
+    "subtitle": "Gérez vos produits, votre inventaire et vos tarifs.",
+    "filtered_for": "Affichage filtré pour le produit :",
+    "clear_filter": "Effacer le filtre",
+    "all_categories": "Toutes les catégories",
+    "all_statuses": "Tous les statuts",
+    "in_stock": "En stock",
+    "scan": "Scanner",
+    "confirm_delete": "Confirmer la suppression",
+    "cancel": "Annuler"
+  },
+  "debts_page": {
+    "restricted_title": "Accès limité aux dettes",
+    "restricted_desc": "Vous n'avez pas la permission de voir les dettes.",
+    "title": "Gestion des dettes",
+    "subtitle": "Suivez les créances clients, gérez les règlements et anticipez les risques.",
+    "filtered_for": "Affichage filtré pour le client :",
+    "clear_filter": "Effacer le filtre",
+    "distribution_due": "Répartition par échéance",
+    "no_debt": "Aucune dette",
+    "debt_evolution": "Évolution de la dette",
+    "loading": "Chargement...",
+    "no_data": "Aucune donnée",
+    "indebted_clients": "Clients endettés",
+    "decreasing_amount": "Montant décroissant",
+    "decreasing_delay": "Retard décroissant",
+    "client": "Client",
+    "phone": "Téléphone",
+    "amount_due": "Montant dû",
+    "unpaid_invoices": "Factures impayées",
+    "due_date": "Échéance",
+    "limit_date": "Date limite",
+    "credit_limit": "Limite crédit",
+    "actions": "Actions",
+    "whatsapp": "WhatsApp",
+    "settle": "Régler",
+    "recent_settlements": "Règlements récents",
+    "date": "Date",
+    "amount": "Montant",
+    "method": "Mode",
+    "record_payment": "Enregistrer un paiement",
+    "client_label": "Client :",
+    "total_due_balance": "Solde dû total :",
+    "choose_debt": "Choisir la dette à régler",
+    "amount_label": "Montant (MAD)",
+    "pay_balance": "Payer le solde",
+    "payment_method": "Mode de paiement",
+    "cash": "Espèces",
+    "tpe": "TPE",
+    "mobile": "Mobile",
+    "cancel": "Annuler",
+    "save_payment": "Enregistrer le paiement"
   }
 }

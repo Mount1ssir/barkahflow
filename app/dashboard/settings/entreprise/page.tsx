@@ -13,11 +13,13 @@ import { Textarea } from '@/components/ui/textarea'
 import { toast } from 'sonner'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getCompanySettings, updateCompanySettings, type CompanySettings } from '@/lib/company-settings'
+import { useTranslation } from 'react-i18next'
 
 const BLUE = '#3B82F6'
 
 function EntrepriseSettingsContent() {
   const router = useRouter()
+  const { t } = useTranslation()
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [settings, setSettings] = useState<CompanySettings | null>(null)
@@ -37,7 +39,7 @@ function EntrepriseSettingsContent() {
       }
     } catch (error) {
       console.error('Erreur chargement paramètres:', error)
-      toast.error('Erreur chargement paramètres')
+      toast.error(t('settings.company.load_error', 'Impossible de charger les paramètres'))
     } finally {
       setLoading(false)
     }
@@ -52,11 +54,11 @@ function EntrepriseSettingsContent() {
     const file = e.target.files?.[0]
     if (!file) return
     if (!file.type.startsWith('image/')) {
-      toast.error('Veuillez sélectionner une image')
+      toast.error(t('validation.image', 'Veuillez sélectionner une image'))
       return
     }
     if (file.size > 5 * 1024 * 1024) {
-      toast.error("L'image ne doit pas dépasser 5 Mo")
+      toast.error(t('validation.size', { size: 5120 }))
       return
     }
     const reader = new FileReader()
@@ -79,10 +81,10 @@ function EntrepriseSettingsContent() {
       if (updated.logoUrl) {
         setLogoPreview(updated.logoUrl)
       }
-      toast.success('Paramètres enregistrés avec succès')
+      toast.success(t('settings.company.save_success', 'Paramètres enregistrés avec succès'))
     } catch (error: any) {
       console.error(error)
-      toast.error("Erreur lors de l'enregistrement : " + (error?.message || 'inconnue'))
+      toast.error(t('common.error') + ": " + (error?.message || ''))
     } finally {
       setSaving(false)
     }
@@ -100,7 +102,7 @@ function EntrepriseSettingsContent() {
   if (!settings) {
     return (
       <div className="max-w-4xl mx-auto p-6 text-center">
-        <h2 className="text-xl font-bold text-red-500">Impossible de charger les paramètres</h2>
+        <h2 className="text-xl font-bold text-red-500">{t('settings.company.load_error')}</h2>
       </div>
     )
   }
@@ -111,15 +113,15 @@ function EntrepriseSettingsContent() {
       <div className="flex items-center gap-3 mb-6">
         <Button variant="ghost" onClick={() => router.push('/dashboard/settings')} className="gap-2 rounded-xl">
           <ArrowLeft className="h-4 w-4" />
-          Retour aux paramètres
+          {t('settings.company.back_to_settings', 'Retour aux paramètres')}
         </Button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
             <Building2 className="h-6 w-6" style={{ color: BLUE }} />
-            Informations entreprise
+            {t('settings.company.title')}
           </h1>
           <p className="text-sm text-gray-400 mt-0.5">
-            Gérez les informations de votre boutique
+            {t('settings.company.subtitle')}
           </p>
         </div>
       </div>
@@ -129,13 +131,13 @@ function EntrepriseSettingsContent() {
         <CardHeader>
           <CardTitle className="text-base font-semibold flex items-center gap-2">
             <FileText className="h-5 w-5 text-gray-500" />
-            Informations générales
+            {t('settings.company.general_info')}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label className="text-sm font-medium">Nom de l'entreprise</Label>
+              <Label className="text-sm font-medium">{t('settings.company.company_name')}</Label>
               <Input
                 value={settings.companyName}
                 onChange={(e) => handleChange('companyName', e.target.value)}
@@ -143,7 +145,7 @@ function EntrepriseSettingsContent() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-sm font-medium">Ville</Label>
+              <Label className="text-sm font-medium">{t('settings.company.city')}</Label>
               <Input
                 value={settings.city}
                 onChange={(e) => handleChange('city', e.target.value)}
@@ -155,7 +157,7 @@ function EntrepriseSettingsContent() {
           <div className="space-y-1.5">
             <Label className="text-sm font-medium flex items-center gap-2">
               <FileText className="h-4 w-4 text-gray-400" />
-              Adresse
+              {t('settings.company.address')}
             </Label>
             <Input
               value={settings.address}
@@ -168,7 +170,7 @@ function EntrepriseSettingsContent() {
             <div className="space-y-1.5">
               <Label className="text-sm font-medium flex items-center gap-2">
                 <FileText className="h-4 w-4 text-gray-400" />
-                Téléphone
+                {t('settings.company.phone')}
               </Label>
               <Input
                 value={settings.phone}
@@ -179,7 +181,7 @@ function EntrepriseSettingsContent() {
             <div className="space-y-1.5">
               <Label className="text-sm font-medium flex items-center gap-2">
                 <FileText className="h-4 w-4 text-gray-400" />
-                Email
+                {t('settings.company.email')}
               </Label>
               <Input
                 value={settings.email}
@@ -192,7 +194,7 @@ function EntrepriseSettingsContent() {
           <div className="space-y-1.5">
             <Label className="text-sm font-medium flex items-center gap-2">
               <FileText className="h-4 w-4 text-gray-400" />
-              Site web
+              {t('settings.company.website')}
             </Label>
             <Input
               value={settings.website}
@@ -203,14 +205,14 @@ function EntrepriseSettingsContent() {
 
           {/* Upload du logo */}
           <div className="space-y-1.5">
-            <Label className="text-sm font-medium">Logo de l'entreprise</Label>
+            <Label className="text-sm font-medium">{t('settings.company.logo')}</Label>
             <div className="flex items-center gap-4">
               <div className="relative w-24 h-24 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center overflow-hidden bg-gray-50 dark:bg-gray-800">
                 {logoPreview ? (
                   <img src={logoPreview} alt="Logo" className="w-full h-full object-contain" />
                 ) : (
                   <div className="text-center text-gray-400">
-                    <span className="text-xs">Aucun logo</span>
+                    <span className="text-xs">{t('settings.company.no_logo')}</span>
                   </div>
                 )}
               </div>
@@ -223,7 +225,7 @@ function EntrepriseSettingsContent() {
                   onChange={handleLogoUpload}
                 />
                 <Button variant="outline" className="rounded-xl" onClick={() => fileInputRef.current?.click()}>
-                  Choisir une image
+                  {t('settings.company.choose_image')}
                 </Button>
                 {logoPreview && (
                   <Button
@@ -234,7 +236,7 @@ function EntrepriseSettingsContent() {
                       if (settings) setSettings({ ...settings, logoUrl: '' })
                     }}
                   >
-                    Supprimer
+                    {t('common.delete', 'Supprimer')}
                   </Button>
                 )}
                 <p className="text-xs text-gray-400 mt-1">PNG, JPG, WEBP - Max 5 Mo</p>
@@ -249,13 +251,13 @@ function EntrepriseSettingsContent() {
         <CardHeader>
           <CardTitle className="text-base font-semibold flex items-center gap-2">
             <CreditCard className="h-5 w-5 text-gray-500" />
-            Coordonnées bancaires
+            {t('settings.company.banking')}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label className="text-sm font-medium">Banque</Label>
+              <Label className="text-sm font-medium">{t('settings.company.bank_name')}</Label>
               <Input
                 value={settings.bankName}
                 onChange={(e) => handleChange('bankName', e.target.value)}
@@ -263,7 +265,7 @@ function EntrepriseSettingsContent() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-sm font-medium">RIB</Label>
+              <Label className="text-sm font-medium">{t('settings.company.rib')}</Label>
               <Input
                 value={settings.rib}
                 onChange={(e) => handleChange('rib', e.target.value)}
@@ -279,12 +281,12 @@ function EntrepriseSettingsContent() {
         <CardHeader>
           <CardTitle className="text-base font-semibold flex items-center gap-2">
             <Calendar className="h-5 w-5 text-gray-500" />
-            Conditions de paiement
+            {t('settings.company.payment_terms')}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-1.5">
-            <Label className="text-sm font-medium">Délai de paiement par défaut (jours)</Label>
+            <Label className="text-sm font-medium">{t('settings.company.default_terms')}</Label>
             <Input
               type="number"
               min="0"
@@ -293,24 +295,24 @@ function EntrepriseSettingsContent() {
               className="rounded-xl h-11 max-w-[200px]"
             />
             <p className="text-xs text-gray-400">
-              Utilisé pour calculer automatiquement la date d'échéance de chaque nouvelle facture.
+              {t('settings.company.default_terms_desc')}
             </p>
           </div>
 
           <div className="space-y-1.5">
             <Label className="text-sm font-medium flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 text-gray-400" />
-              Mention légale — pénalités de retard
+              {t('settings.company.late_penalty')}
             </Label>
             <Textarea
               value={settings.latePaymentPenaltyText}
               onChange={(e) => handleChange('latePaymentPenaltyText', e.target.value)}
               rows={2}
               className="rounded-xl resize-none"
-              placeholder="Tout retard de paiement entraîne l'application de pénalités au taux légal en vigueur..."
+              placeholder={t('settings.company.late_penalty_placeholder', "Tout retard de paiement entraîne l'application de pénalités au taux légal en vigueur...")}
             />
             <p className="text-xs text-gray-400">
-              Ce texte apparaît en bas de chaque facture non entièrement payée.
+              {t('settings.company.late_penalty_desc')}
             </p>
           </div>
         </CardContent>
@@ -323,7 +325,7 @@ function EntrepriseSettingsContent() {
           className="rounded-xl text-white px-8 h-11"
           style={{ backgroundColor: BLUE }}
         >
-          {saving ? 'Enregistrement...' : 'Enregistrer les paramètres'}
+          {saving ? t('common.saving', 'Enregistrement...') : t('settings.company.save')}
         </Button>
       </div>
     </div>
