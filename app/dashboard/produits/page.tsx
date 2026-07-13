@@ -215,8 +215,6 @@ function ProduitsContent() {
   const canDeactivate = can(PERMISSIONS.PRODUCTS_DEACTIVATE)
   const canHistory = can(PERMISSIONS.PRODUCTS_HISTORY)
 
-  // ─── Si l'utilisateur n'a ni "Voir" ni "Ajouter" ────────────────
-  // On affiche un message d'accès limité
   if (!canView && !canAdd) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center max-w-7xl mx-auto">
@@ -233,7 +231,6 @@ function ProduitsContent() {
     )
   }
 
-  // ─── Reste du code ──────────────────────────────────────────────
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
@@ -482,32 +479,64 @@ function ProduitsContent() {
     router.push(`/dashboard/produits/nouveau?id=${product.id}`)
   }
 
+  // ─── HANDLE SCAN ──────────────────────────────────────────────────
   const handleScan = async (barcode: string) => {
     try {
-      const product = await findBySkuOrBarcode(barcode)
+      console.log('🔍 Scan du code-barres:', barcode)
+      
+      const cleanBarcode = barcode.trim()
+      
+      // Recherche en base locale avec toutes les variantes
+      const product = await findBySkuOrBarcode(cleanBarcode)
+
       if (product) {
+        // ✅ PRODUIT TROUVÉ
         const name = product.nameFr || product.nameAr
+        console.log('✅ Produit trouvé en base locale:', name, 'ID:', product.id)
+
+        setProducts([product])
+        setStats(computeStats([product]))
+        setProductIdFilter(product.id)
+        setProductNameFilter(name)
         setQuery(name)
-        toast.success(`Produit trouvé : ${name}`)
-      } else {
-        toast.error('Aucun produit trouvé', {
-          description: 'Voulez-vous l\'ajouter ?',
-          action: {
-            label: 'Ajouter',
-            onClick: () => {
-              router.push(`/dashboard/produits/nouveau?barcode=${encodeURIComponent(barcode)}`)
-            },
-          },
+        setLoading(false)
+
+        toast.success(`Produit trouvé : ${name}`, {
+          description: `SKU: ${product.sku} | Stock: ${product.stockQty} ${product.unit}`,
         })
+
+        setTimeout(() => {
+          const el = document.getElementById(`product-${product.id}`)
+          if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            el.style.transition = 'background-color 0.5s, box-shadow 0.5s'
+            el.style.backgroundColor = 'rgba(212, 160, 23, 0.15)'
+            el.style.boxShadow = '0 0 0 3px #D4A017'
+            setTimeout(() => {
+              el.style.backgroundColor = 'transparent'
+              el.style.boxShadow = 'none'
+            }, 2500)
+          }
+        }, 200)
+
+      } else {
+        // ❌ PRODUIT NON TROUVÉ
+        console.log('ℹ️ Produit non trouvé en base locale')
+        
+        toast.info('Produit non trouvé', {
+          description: 'Création d\'un nouveau produit...',
+          duration: 3000,
+        })
+        
+        router.push(`/dashboard/produits/nouveau?barcode=${encodeURIComponent(cleanBarcode)}`)
       }
     } catch (error) {
-      console.error(error)
-      toast.error('Erreur lors du scan')
+      console.error('❌ Erreur lors du scan:', error)
+      toast.error('Erreur lors du scan du code-barres')
     }
   }
 
   const renderProducts = () => {
-    // Si l'utilisateur n'a pas "Voir", on ne montre pas la liste
     if (!canView) {
       return (
         <Card className="rounded-2xl border shadow-sm">
@@ -591,7 +620,11 @@ function ProduitsContent() {
                   const status = getProductStatus(product)
                   const statusInfo = statusConfig[status]
                   return (
-                    <TableRow key={product.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                    <TableRow 
+                      key={product.id} 
+                      id={`product-${product.id}`}
+                      className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                    >
                       <TableCell>
                         <div className="flex items-center gap-3">
                           <div className="w-11 h-11 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center overflow-hidden flex-shrink-0">
@@ -679,7 +712,11 @@ function ProduitsContent() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {products.map((product) => {
           return (
-            <Card key={product.id} className="rounded-2xl overflow-hidden border shadow-sm hover:shadow-md transition-shadow">
+            <Card 
+              key={product.id} 
+              id={`product-${product.id}`}
+              className="rounded-2xl overflow-hidden border shadow-sm hover:shadow-md transition-shadow"
+            >
               <div className="h-40 bg-gradient-to-br from-amber-50/50 to-blue-50/50 dark:from-amber-900/10 dark:to-blue-900/10 flex items-center justify-center relative overflow-hidden">
                 {product.imagePath ? (
                   <ProductImage3D src={getDisplayUrl(product.imagePath)} alt={product.nameAr} />
@@ -781,16 +818,18 @@ function ProduitsContent() {
 
       {/* Bandeau filtre produit unique */}
       {productIdFilter && (
-        <div className="flex items-center gap-3 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl">
-          <AlertTriangle className="h-4 w-4 text-blue-500 shrink-0" />
+        <div className="flex items-center gap-3 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl shadow-sm">
+          <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center flex-shrink-0">
+            <Package className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+          </div>
           <p className="text-sm text-blue-700 dark:text-blue-300 flex-1">
-            Affichage filtré pour le produit : <strong>{productNameFilter || productIdFilter}</strong>
+            Produit filtré : <strong className="text-blue-800 dark:text-blue-200">{productNameFilter || productIdFilter}</strong>
           </p>
           <Button
             variant="ghost"
             size="sm"
             onClick={clearProductFilter}
-            className="text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded-lg h-7 px-2 gap-1"
+            className="text-blue-600 hover:text-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/30 rounded-lg h-8 px-3 gap-1.5 font-medium"
           >
             <X className="h-3.5 w-3.5" /> Effacer le filtre
           </Button>
@@ -798,7 +837,6 @@ function ProduitsContent() {
       )}
 
       {/* ─── STATS ────────────────────────────────────────────────────── */}
-      {/* Les stats sont visibles uniquement si l'utilisateur a "Voir" */}
       {canView && (
         <>
           {loading ? (
@@ -817,12 +855,16 @@ function ProduitsContent() {
       )}
 
       {/* ─── FILTRES ──────────────────────────────────────────────────── */}
-      {/* Les filtres sont visibles uniquement si l'utilisateur a "Voir" */}
       {canView && (
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative flex-1 min-w-[180px] max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <Input placeholder="Rechercher un produit..." value={query} onChange={(e) => setQuery(e.target.value)} className="pl-9 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 h-10 text-sm" />
+            <Input 
+              placeholder="Rechercher un produit..." 
+              value={query} 
+              onChange={(e) => setQuery(e.target.value)} 
+              className="pl-9 rounded-xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 h-10 text-sm" 
+            />
           </div>
           <Select value={categoryFilter} onValueChange={setCategoryFilter}>
             <SelectTrigger className="w-40 rounded-xl h-10 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"><SelectValue placeholder="Catégorie" /></SelectTrigger>

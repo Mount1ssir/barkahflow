@@ -16,6 +16,7 @@ import {
   type AppUserRow,
 } from '@/lib/user-data'
 import type { AppUser } from '@/context/UserContext'
+import { usePin } from '@/components/pin/pin-context'
 
 interface CashierLockScreenProps {
   onSuccess: (user: AppUser) => void
@@ -26,6 +27,7 @@ interface CashierLockScreenProps {
 type Overlay = 'none' | 'locked' | 'forgot-code' | 'forgot-newpin'
 
 export function CashierLockScreen({ onSuccess, onCancel, preselectedCashier }: CashierLockScreenProps) {
+  const { pauseInactivity, resumeInactivity } = usePin()
   const [cashiers, setCashiers] = useState<AppUserRow[]>([])
   const [loadingCashiers, setLoadingCashiers] = useState(true)
   const [selected, setSelected] = useState<AppUserRow | null>(preselectedCashier || null)
@@ -41,6 +43,16 @@ export function CashierLockScreen({ onSuccess, onCancel, preselectedCashier }: C
   const [resetError, setResetError] = useState('')
   const [newPin, setNewPin] = useState('')
   const [confirmNewPin, setConfirmNewPin] = useState('')
+
+  // ─── PAUSER L'INACTIVITÉ QUAND CashierLockScreen EST OUVERT ───
+  useEffect(() => {
+    console.log('🔒 [CashierLockScreen] Inactivité PAUSÉE')
+    pauseInactivity()
+    return () => {
+      console.log('🔒 [CashierLockScreen] Inactivité REPRISE')
+      resumeInactivity()
+    }
+  }, [pauseInactivity, resumeInactivity])
 
   useEffect(() => {
     if (!preselectedCashier) {
@@ -440,6 +452,12 @@ export function CashierLockScreen({ onSuccess, onCancel, preselectedCashier }: C
       {/* ─── Nouveau PIN ────────────────────────────────────────────── */}
       {overlay === 'forgot-newpin' && selected && (
         <div className="w-full max-w-sm space-y-4">
+          <button
+            onClick={() => { setOverlay('none'); setNewPin(''); setConfirmNewPin('') }}
+            className="flex items-center gap-1 text-sm text-gray-400 hover:text-gray-600"
+          >
+            <ArrowLeft className="w-4 h-4" /> Retour
+          </button>
           <h2 className="text-lg font-bold text-center text-gray-900 dark:text-white">
             Nouveau code PIN
           </h2>

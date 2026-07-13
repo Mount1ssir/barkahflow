@@ -1,3 +1,5 @@
+// lib/sales-distribution-data.ts
+
 import { dbSelect } from '@/src/lib/db'
 
 export interface SalesSlice {
@@ -63,38 +65,69 @@ export async function getSalesDistribution(
 
   console.log('📊 getSalesDistribution - Période:', { start, end })
 
-  // 1️⃣ Vérifier s'il y a des lignes dans la période
-  const countLines = await dbSelect<{ total: number }>(
-    `SELECT COUNT(*) as total
-     FROM line_items li
-     JOIN invoices i ON i.id = li.invoice_id
-     WHERE i.status != 'CANCELLED'
-       AND date(i.created_at, 'localtime') BETWEEN date(?) AND date(?)`,
-    [start, end]
-  )
-  const nbLines = countLines[0]?.total || 0
-  console.log(`📊 Lignes de factures dans la période : ${nbLines}`)
-
-  const sql = `
-    SELECT
-      COALESCE(c.name_fr, 'Sans catégorie') as category_name,
-      COALESCE(c.color, '#6B7280') as color,
-      SUM(li.subtotal) as total_amount
-    FROM line_items li
-    JOIN invoices i ON i.id = li.invoice_id
-    JOIN products p ON p.id = li.product_id
-    LEFT JOIN categories c ON c.id = p.category_id
-    WHERE i.status != 'CANCELLED'
-      AND date(i.created_at, 'localtime') BETWEEN date(?) AND date(?)
-    GROUP BY COALESCE(c.name_fr, 'Sans catégorie')
-    ORDER BY total_amount DESC
-  `
-
   try {
+    // ─── Vérifier si la table invoices existe ────────────────────────
+    try {
+      const checkResult = await dbSelect<{ name: string }>(
+        `SELECT name FROM sqlite_master WHERE type='table' AND name = 'invoices'`
+      )
+      
+      if (checkResult.length === 0) {
+        console.warn('⚠️ Table invoices n\'existe pas encore')
+        return []
+      }
+    } catch (checkError) {
+      console.warn('⚠️ Impossible de vérifier l\'existence de la table invoices:', checkError)
+      return []
+    }
+
+    // ─── Vérifier si la table line_items existe ──────────────────────
+    try {
+      const checkResult = await dbSelect<{ name: string }>(
+        `SELECT name FROM sqlite_master WHERE type='table' AND name = 'line_items'`
+      )
+      
+      if (checkResult.length === 0) {
+        console.warn('⚠️ Table line_items n\'existe pas encore')
+        return []
+      }
+    } catch (checkError) {
+      console.warn('⚠️ Impossible de vérifier l\'existence de la table line_items:', checkError)
+      return []
+    }
+
+    // 1️⃣ Vérifier s'il y a des lignes dans la période
+    const countLines = await dbSelect<{ total: number }>(
+      `SELECT COUNT(*) as total
+       FROM line_items li
+       JOIN invoices i ON i.id = li.invoice_id
+       WHERE i.status != 'CANCELLED'
+         AND date(i.created_at) BETWEEN date(?) AND date(?)`,
+      [start, end]
+    )
+    const nbLines = countLines[0]?.total || 0
+    console.log(`📊 Lignes de factures dans la période : ${nbLines}`)
+
     if (nbLines === 0) {
       console.warn('⚠️ Aucune vente dans cette période.')
       return []
     }
+
+    // ✅ MODIFICATION: Utiliser name_fr au lieu de name_ar
+    const sql = `
+      SELECT
+        COALESCE(c.name_fr, 'Sans catégorie') as category_name,
+        COALESCE(c.color, '#6B7280') as color,
+        SUM(li.subtotal) as total_amount
+      FROM line_items li
+      JOIN invoices i ON i.id = li.invoice_id
+      JOIN products p ON p.id = li.product_id
+      LEFT JOIN categories c ON c.id = p.category_id
+      WHERE i.status != 'CANCELLED'
+        AND date(i.created_at) BETWEEN date(?) AND date(?)
+      GROUP BY COALESCE(c.name_fr, 'Sans catégorie')
+      ORDER BY total_amount DESC
+    `
 
     const rows = await dbSelect<any>(sql, [start, end])
 

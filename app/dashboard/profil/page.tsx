@@ -8,6 +8,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  CardDescription,
 } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,7 +16,8 @@ import { Label } from '@/components/ui/label'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
-import { ArrowLeft, Save, Mail, ShieldCheck } from 'lucide-react'
+import { ArrowLeft, Save, Mail, ShieldCheck, Key, Eye, EyeOff } from 'lucide-react'
+import { hasPinDefined, setPinCode, checkPinMatches } from '@/lib/pin-storage'
 
 const PRIMARY = '#2C3E50'
 
@@ -27,8 +29,17 @@ export default function ProfilePage() {
   const [fullName, setFullName] = useState('')
   const [phone, setPhone] = useState('')
 
+  // ─── Section code PIN ───────────────────────────────────────────
+  const [pinDefined, setPinDefined] = useState(false)
+  const [oldPin, setOldPin] = useState('')
+  const [newPin, setNewPin] = useState('')
+  const [confirmPin, setConfirmPin] = useState('')
+  const [showPins, setShowPins] = useState(false)
+  const [savingPin, setSavingPin] = useState(false)
+
   useEffect(() => {
     loadUser()
+    setPinDefined(hasPinDefined())
   }, [])
 
   const loadUser = async () => {
@@ -71,6 +82,56 @@ export default function ProfilePage() {
       toast.error(error?.message || 'Erreur lors de la mise à jour')
     } finally {
       setSaving(false)
+    }
+  }
+
+  // ─── Créer / changer le code PIN ─────────────────────────────────
+  const resetPinFields = () => {
+    setOldPin('')
+    setNewPin('')
+    setConfirmPin('')
+  }
+
+  const handleSubmitPin = async () => {
+    if (pinDefined) {
+      if (!/^\d{4,6}$/.test(oldPin)) {
+        toast.error('Entrez votre code PIN actuel')
+        return
+      }
+      const matches = await checkPinMatches(oldPin)
+      if (!matches) {
+        toast.error('Code PIN actuel incorrect')
+        return
+      }
+    }
+
+    if (!/^\d{4,6}$/.test(newPin)) {
+      toast.error('Le nouveau PIN doit contenir entre 4 et 6 chiffres')
+      return
+    }
+    if (newPin !== confirmPin) {
+      toast.error('Les deux nouveaux codes ne correspondent pas')
+      return
+    }
+    if (pinDefined && newPin === oldPin) {
+      toast.error("Le nouveau PIN doit être différent de l'ancien")
+      return
+    }
+
+    setSavingPin(true)
+    try {
+      await setPinCode(newPin)
+      setPinDefined(true)
+      resetPinFields()
+      toast.success(
+        pinDefined
+          ? 'Votre code PIN a été mis à jour'
+          : "Code PIN défini. Activez le verrouillage dans Paramètres pour l'utiliser."
+      )
+    } catch (error: any) {
+      toast.error(error?.message || 'Erreur lors de la mise à jour du PIN')
+    } finally {
+      setSavingPin(false)
     }
   }
 
@@ -131,7 +192,7 @@ export default function ProfilePage() {
         </CardContent>
       </Card>
 
-      <Card className="rounded-2xl border shadow-sm">
+      <Card className="rounded-2xl border shadow-sm mb-6">
         <CardHeader>
           <CardTitle className="text-base font-semibold">Informations personnelles</CardTitle>
         </CardHeader>
@@ -182,6 +243,84 @@ export default function ProfilePage() {
             <Save className="h-4 w-4 mr-2" />
             {saving ? 'Enregistrement...' : 'Enregistrer les modifications'}
           </Button>
+        </CardContent>
+      </Card>
+
+      {/* ─── SECTION CODE PIN ─────────────────────────────────────── */}
+      <Card className="rounded-2xl border shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <Key className="h-5 w-5 text-gray-500" />
+            {pinDefined ? 'Changer mon code PIN' : 'Définir un code PIN'}
+          </CardTitle>
+          <CardDescription>
+            {pinDefined
+              ? "Ce code sert à verrouiller l'application. L'activation du verrouillage se fait dans Paramètres."
+              : "Définissez un code PIN pour pouvoir activer le verrouillage de l'application dans Paramètres."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {pinDefined && (
+            <div className="space-y-1.5">
+              <Label>Code PIN actuel</Label>
+              <div className="relative">
+                <Input
+                  type={showPins ? 'text' : 'password'}
+                  inputMode="numeric"
+                  maxLength={6}
+                  value={oldPin}
+                  onChange={(e) => setOldPin(e.target.value.replace(/\D/g, ''))}
+                  className="rounded-xl h-11 tracking-widest pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPins((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {showPins ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <Label>{pinDefined ? 'Nouveau code PIN' : 'Code PIN'}</Label>
+            <Input
+              type={showPins ? 'text' : 'password'}
+              inputMode="numeric"
+              maxLength={6}
+              value={newPin}
+              onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ''))}
+              className="rounded-xl h-11 tracking-widest"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>{pinDefined ? 'Confirmer le nouveau code PIN' : 'Confirmer le code PIN'}</Label>
+            <Input
+              type={showPins ? 'text' : 'password'}
+              inputMode="numeric"
+              maxLength={6}
+              value={confirmPin}
+              onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ''))}
+              className="rounded-xl h-11 tracking-widest"
+            />
+          </div>
+
+          <Button
+            onClick={handleSubmitPin}
+            disabled={savingPin}
+            className="w-full rounded-xl text-white h-11"
+            style={{ backgroundColor: PRIMARY }}
+          >
+            {savingPin ? 'Enregistrement...' : pinDefined ? 'Mettre à jour mon PIN' : 'Définir mon PIN'}
+          </Button>
+
+          {pinDefined && (
+            <p className="text-xs text-gray-400 text-center">
+              PIN oublié ? Utilisez "Réinitialiser par email" depuis l'écran de verrouillage.
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>

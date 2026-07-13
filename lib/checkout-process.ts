@@ -3,6 +3,7 @@ import { generateInvoiceNumber } from './invoice-number'
 import { logAudit } from './audit-log'
 import { getCompanySettings } from './company-settings'
 import { calculateDueDate } from './invoice-data'
+import { nowLocal } from './datetime'
 
 export interface CartItem {
   productId: string
@@ -22,6 +23,7 @@ export interface CheckoutInput {
   cashierId?: string | null
   ipAddress?: string
   userAgent?: string
+  globalDiscountPercent?: number
 }
 
 async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, delay = 300): Promise<T> {
@@ -58,19 +60,35 @@ export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId
     }
   }
 
+  // ─── VÉRIFICATION DU STOCK AVANT TOUTE OPÉRATION ───
+  const stockErrors: string[] = []
+  
   for (const item of input.cart) {
-    const product = await dbSelect<{ stock_qty: number; reserved_stock: number; name_ar: string }>(
-      `SELECT stock_qty, reserved_stock, name_ar FROM products WHERE id = ?`,
+    const product = await dbSelect<{ stock_qty: number; reserved_stock: number; name_ar: string; sku: string }>(
+      `SELECT stock_qty, reserved_stock, name_ar, sku FROM products WHERE id = ?`,
       [item.productId]
     )
-    if (product.length === 0) throw new Error(`Produit introuvable : ${item.productId}`)
+    
+    if (product.length === 0) {
+      throw new Error(`Produit introuvable : ${item.productId}`)
+    }
+    
     const available = (product[0].stock_qty ?? 0) - (product[0].reserved_stock ?? 0)
+    
     if (available < item.quantity) {
-      throw new Error(`Stock insuffisant pour ${product[0].name_ar}. Disponible : ${available}`)
+      stockErrors.push(
+        `${product[0].name_ar} (${product[0].sku || 'N/A'}) - Demandé: ${item.quantity}, Disponible: ${available}`
+      )
     }
   }
 
-  // Réserver le stock
+  if (stockErrors.length > 0) {
+    throw new Error(
+      `Stock insuffisant pour les produits suivants:\n${stockErrors.join('\n')}`
+    )
+  }
+
+  // ─── RÉSERVER LE STOCK ───
   for (const item of input.cart) {
     await dbExecute(
       `UPDATE products SET reserved_stock = COALESCE(reserved_stock, 0) + ? WHERE id = ?`,
@@ -78,7 +96,7 @@ export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId
     )
   }
 
-  // Calcul des totaux
+  // ─── CALCUL DES TOTAUX ───
   let subtotal = 0
   let totalTax = 0
   let totalDiscount = 0
@@ -110,19 +128,24 @@ export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId
     })
   }
 
+  // Appliquer la remise globale si présente
+  let globalDiscountAmount = 0
+  if (input.globalDiscountPercent && input.globalDiscountPercent > 0) {
+    globalDiscountAmount = (subtotal * input.globalDiscountPercent) / 100
+    totalDiscount += globalDiscountAmount
+  }
+
   const total = subtotal - totalDiscount + totalTax
   const invoiceNumber = await generateInvoiceNumber('INV')
   const invoiceId = `inv_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
-  const now = new Date().toISOString()
+  const now = nowLocal()
   const paymentMethod = input.paymentMethod || 'cash'
 
   const companySettings = await getCompanySettings()
   const dueDate = calculateDueDate(now, companySettings.defaultPaymentTermsDays || 30)
   const poNumber = input.poNumber || null
 
-  // ─── ✅ CORRECTION : Ajout de user_id dans l'INSERT ───
-
-  // 1. Insérer la facture avec des paramètres liés
+  // ─── 1. INSÉRER LA FACTURE ───
   await dbExecute(
     `INSERT INTO invoices (
       id, invoice_number, client_id, subtotal, tax, discount, total,
@@ -140,13 +163,13 @@ export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId
       paymentMethod,
       dueDate,
       poNumber,
-      input.userId || null,  // ✅ AJOUTÉ : l'ID du caissier
+      input.userId || null,
       now,
       now,
     ]
   )
 
-  // 2. Insérer les lignes de facture
+  // ─── 2. INSÉRER LES LIGNES DE FACTURE ───
   for (const item of lineItems) {
     const lineId = `line_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
     await dbExecute(
@@ -165,18 +188,18 @@ export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId
     )
   }
 
-  // 3. Mettre à jour le stock
+  // ─── 3. DÉDUIRE LE STOCK ET RÉINITIALISER LA RÉSERVATION ───
   for (const item of input.cart) {
     await dbExecute(
       `UPDATE products SET
         stock_qty = stock_qty - ?,
-        reserved_stock = COALESCE(reserved_stock, 0) - ?
+        reserved_stock = MAX(0, COALESCE(reserved_stock, 0) - ?)
       WHERE id = ?`,
       [item.quantity, item.quantity, item.productId]
     )
   }
 
-  // 4. Gérer le paiement
+  // ─── 4. GÉRER LE PAIEMENT ───
   if (input.paymentStatus === 'PAID') {
     const txId = `tx_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
     await dbExecute(
@@ -192,10 +215,6 @@ export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId
         now,
         now,
       ]
-    )
-    await dbExecute(
-      `UPDATE invoices SET status = 'PAID' WHERE id = ?`,
-      [invoiceId]
     )
   } else if (input.paymentStatus === 'PARTIAL' || input.paymentStatus === 'UNPAID') {
     const debtId = `debt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
@@ -235,7 +254,7 @@ export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId
     }
   }
 
-  // 5. Audit log avec paramètres liés
+  // ─── 5. AUDIT LOG ───
   const auditId = `audit_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
   await dbExecute(
     `INSERT INTO audit_logs (
@@ -248,7 +267,7 @@ export async function processCheckout(input: CheckoutInput): Promise<{ invoiceId
       'invoice',
       invoiceId,
       null,
-      JSON.stringify({ invoiceNumber, total }),
+      JSON.stringify({ invoiceNumber, total, discount: totalDiscount }),
       input.ipAddress || '0.0.0.0',
       input.userAgent || '',
       now,

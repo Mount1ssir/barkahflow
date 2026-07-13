@@ -18,17 +18,49 @@ const SOURCES = [
   { name: 'Open Beauty Facts', base: 'https://world.openbeautyfacts.org/api/v2/product' },
 ]
 
-async function tryFetch(base: string, barcode: string, signal: AbortSignal) {
-  const res = await fetch(`${base}/${barcode}.json`, { method: 'GET', signal })
-  if (!res.ok) return null
-  const data = await res.json()
-  if (data.status !== 1 || !data.product) return null
-  return data.product
+// Génère les variantes EAN-13 <-> UPC-A
+export function barcodeVariants(barcode: string): string[] {
+  const clean = barcode.trim().replace(/\s+/g, '')
+  const variants = new Set<string>([clean])
+  
+  // UPC-A (12 chiffres) → EAN-13 avec zéro de tête
+  if (clean.length === 12) variants.add('0' + clean)
+  // EAN-13 commençant par 0 → UPC-A
+  if (clean.length === 13 && clean.startsWith('0')) variants.add(clean.slice(1))
+  
+  return Array.from(variants)
 }
 
-// Normalise pour comparaison : minuscules + suppression des accents
-// (les tags OFF sont souvent en anglais sans accent, tes catégories
-// FR ont des accents — sans ça la comparaison échoue tout le temps)
+// 🔥 CORRIGÉ : Gestion des aborts silencieuse
+async function tryFetch(base: string, barcode: string, signal: AbortSignal, sourceName: string) {
+  try {
+    console.log(`[barcode-lookup] Tentative ${sourceName} pour ${barcode}`)
+    const res = await fetch(`${base}/${barcode}.json`, { method: 'GET', signal })
+    
+    if (!res.ok) {
+      console.warn(`[barcode-lookup] ${sourceName} → HTTP ${res.status}`)
+      return null
+    }
+    
+    const data = await res.json()
+    if (data.status !== 1 || !data.product) {
+      console.info(`[barcode-lookup] ${sourceName} → produit non référencé`)
+      return null
+    }
+    
+    console.log(`[barcode-lookup] ${sourceName} → trouvé !`)
+    return data.product
+  } catch (err: any) {
+    // Ne pas logger comme erreur si c'est un abort (timeout normal)
+    if (err?.name === 'AbortError') {
+      console.log(`[barcode-lookup] ${sourceName} → timeout (requête annulée)`)
+      throw err
+    }
+    console.error(`[barcode-lookup] ${sourceName} → ERREUR RÉSEAU:`, err?.message || err)
+    throw err
+  }
+}
+
 function normalize(str: string): string {
   return str
     .toLowerCase()
@@ -38,14 +70,12 @@ function normalize(str: string): string {
 }
 
 function guessUnit(p: any): string | undefined {
-  // 1. Champ dédié le plus fiable
   const rawUnit = (p.product_quantity_unit || '').toLowerCase()
   if (rawUnit === 'kg') return 'kg'
   if (rawUnit === 'g') return 'g'
   if (rawUnit === 'l') return 'l'
   if (rawUnit === 'ml') return 'ml'
 
-  // 2. Parsing du texte libre "quantity" (ex: "500 g", "1L", "6x250ml")
   const quantity: string = p.quantity || p.product_quantity || ''
   const q = quantity.toLowerCase()
   if (/\bkg\b/.test(q)) return 'kg'
@@ -53,24 +83,18 @@ function guessUnit(p: any): string | undefined {
   if (/\bl\b/.test(q) && !/ml/.test(q)) return 'l'
   if (/\bml\b/.test(q)) return 'ml'
 
-  // 3. Par défaut : la majorité des produits scannés en boutique
-  // (conserves, paquets, bouteilles individuelles) se vendent à la
-  // pièce — mieux vaut une valeur par défaut sensée que de bloquer
-  // le formulaire sur un champ obligatoire vide
   return 'piece'
 }
 
-// Extrait un mot-clé de catégorie exploitable depuis les tags OFF,
-// en testant TOUS les tags (pas seulement le premier) du plus
-// spécifique au plus général, normalisé sans accents
 function extractCategoryKeywords(p: any): string[] {
   const tags: string[] = p.categories_tags || []
   return tags
     .map((t) => t.replace(/^\w+:/, '').replace(/-/g, ' '))
     .map(normalize)
-    .reverse() // du plus spécifique (souvent en fin de liste) au plus général
+    .reverse()
 }
 
+// 🔥 CORRIGÉ : Timeout augmenté à 15 secondes et gestion des aborts
 export async function lookupProductByBarcode(
   barcode: string
 ): Promise<ExternalProductData> {
@@ -78,37 +102,71 @@ export async function lookupProductByBarcode(
   if (!clean) return { found: false }
 
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    console.warn('[barcode-lookup] navigator.onLine = false')
     return { found: false, offline: true }
   }
 
-  for (const source of SOURCES) {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 4000)
+  const variants = barcodeVariants(clean)
+  console.log(`[barcode-lookup] Variantes du code-barres:`, variants)
 
-    try {
-      const p = await tryFetch(source.base, clean, controller.signal)
-      clearTimeout(timeout)
+  let hadNetworkError = false
+  let hadAbortError = false
 
-      if (!p) continue
+  for (const variant of variants) {
+    for (const source of SOURCES) {
+      const controller = new AbortController()
+      // 🔥 Timeout augmenté à 15 secondes
+      const timeout = setTimeout(() => {
+        console.log(`[barcode-lookup] Timeout pour ${source.name} (15s)`);
+        controller.abort();
+      }, 15000)
 
-      const categoryKeywords = extractCategoryKeywords(p)
+      try {
+        const p = await tryFetch(source.base, variant, controller.signal, source.name)
+        clearTimeout(timeout)
 
-      return {
-        found: true,
-        source: source.name,
-        nameFr: p.product_name_fr || p.product_name || undefined,
-        brand: p.brands || undefined,
-        categoryGuess: categoryKeywords[0] || undefined,
-        categoryTags: categoryKeywords,
-        imageUrl: p.image_front_url || p.image_url || undefined,
-        unitGuess: guessUnit(p),
+        if (!p) continue
+
+        const categoryKeywords = extractCategoryKeywords(p)
+
+        return {
+          found: true,
+          source: source.name,
+          nameFr: p.product_name_fr || p.product_name || undefined,
+          brand: p.brands || undefined,
+          categoryGuess: categoryKeywords[0] || undefined,
+          categoryTags: categoryKeywords,
+          imageUrl: p.image_front_url || p.image_url || undefined,
+          unitGuess: guessUnit(p),
+        }
+      } catch (err: any) {
+        clearTimeout(timeout)
+        const isAbort = err?.name === 'AbortError'
+        if (isAbort) {
+          hadAbortError = true
+          // C'est normal, on continue vers la prochaine source
+          console.log(`[barcode-lookup] ${source.name} timeout, passage à la suivante`)
+          continue
+        }
+        // Erreur réseau (probablement un blocage Tauri)
+        hadNetworkError = true
+        console.log(`[barcode-lookup] ${source.name} erreur réseau, passage à la suivante`)
+        continue
       }
-    } catch (err: any) {
-      clearTimeout(timeout)
-      const isOffline = err?.name === 'AbortError' && typeof navigator !== 'undefined' && !navigator.onLine
-      if (isOffline) return { found: false, offline: true }
-      continue
     }
+  }
+
+  // Si on a eu au moins un abort mais pas d'erreur réseau, c'est juste un timeout
+  if (hadAbortError && !hadNetworkError) {
+    console.log('[barcode-lookup] ⚠️ Timeout sur toutes les sources (connexion lente)')
+    return { found: false }
+  }
+
+  if (hadNetworkError) {
+    console.warn(
+      '[barcode-lookup] ⚠️ Erreurs réseau sur toutes les sources.\n' +
+      'Vérifie ta connexion internet et les permissions réseau.'
+    )
   }
 
   return { found: false }
@@ -116,6 +174,7 @@ export async function lookupProductByBarcode(
 
 export async function urlToFile(url: string, filename = 'product.jpg'): Promise<File | null> {
   try {
+    console.log('[barcode-lookup] Téléchargement image:', url)
     const res = await fetch(url)
     if (!res.ok) return null
     const blob = await res.blob()

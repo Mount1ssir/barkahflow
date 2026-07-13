@@ -8,7 +8,7 @@ import i18n, { initI18n } from '@/lib/i18n/config'
 import {
   Menu, Search, Moon, Sun, Settings, LogOut, ChevronDown,
   User, Store, HelpCircle, LayoutDashboard, ShoppingCart, Package,
-  FileText, Users, Wallet, BarChart3, ArrowLeftRight,
+  FileText, Users, Wallet, BarChart3, ArrowLeftRight, Lock,
 } from 'lucide-react'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import {
@@ -22,6 +22,7 @@ import { VoiceAssistantButton } from '@/components/voice/VoiceAssistantButton'
 import { Notifications } from '@/components/dashboard/notifications'
 import { useUserContext } from '@/context/UserContext'
 import UserSwitchScreen from '@/components/pin/UserSwitchScreen'
+import { usePin } from '@/components/pin/pin-context'
 import { PERMISSIONS } from '@/lib/rbac'
 import type { AppUser } from '@/context/UserContext'
 
@@ -220,6 +221,7 @@ export function TopBar({ user }: TopBarProps) {
   const { theme, setTheme } = useTheme()
   const { t } = useTranslation()
   const { setCurrentUser, isRole, can } = useUserContext()
+  const { lockApp } = usePin()
   const [mounted, setMounted] = useState(false)
   const [switchOpen, setSwitchOpen] = useState(false)
 
@@ -235,15 +237,20 @@ export function TopBar({ user }: TopBarProps) {
     const isAdmin = isRole('admin')
     const isCashier = isRole('cashier')
 
-    await supabase.auth.signOut()
+    // ─── IMPORTANT : on ne détruit la session Supabase QUE pour l'admin.
+    // Si c'est un caissier qui se déconnecte, la session Google de l'admin
+    // reste active en arrière-plan, pour permettre à l'admin de reprendre
+    // la main depuis l'écran de sélection via son code PIN (sans repasser
+    // par Google) grâce au bouton "Administrateur".
+    if (isAdmin) {
+      await supabase.auth.signOut()
+    }
     sessionStorage.clear()
 
     if (isCashier) {
-      // Caissier → retour à la sélection des caissiers avec paramètre
       setCurrentUser(null)
       router.push('/dashboard?showSwitch=true')
     } else {
-      // Admin → page de login
       window.location.href = '/'
     }
   }
@@ -290,6 +297,15 @@ export function TopBar({ user }: TopBarProps) {
             {isDark ? <Sun size={17} /> : <Moon size={17} />}
           </button>
         )}
+
+        {/* Bouton verrouillage manuel — visible pour admin ET caissier */}
+        <button
+          onClick={() => lockApp()}
+          className="w-9 h-9 flex items-center justify-center rounded-xl text-gray-400 hover:bg-gray-100 dark:hover:bg-zinc-800 hover:text-gray-700 transition-colors"
+          title="Verrouiller l'application"
+        >
+          <Lock size={16} />
+        </button>
 
         {/* Switch User button — admin only */}
         {isAdmin && (

@@ -1,3 +1,4 @@
+// lib/company-settings.ts
 import { dbSelect, dbExecute } from '@/src/lib/db'
 
 export interface CompanySettings {
@@ -19,8 +20,8 @@ export interface CompanySettings {
   invoicePrefix: string
   invoiceFooter: string
   currency: string
-  defaultPaymentTermsDays: number      // ajout : délai de paiement par défaut (en jours)
-  latePaymentPenaltyText: string        // ajout : mention légale pénalités de retard
+  defaultPaymentTermsDays: number
+  latePaymentPenaltyText: string
   createdAt: string
   updatedAt: string
 }
@@ -80,21 +81,78 @@ function mapRow(row: any): CompanySettings {
   }
 }
 
+async function tableExists(tableName: string): Promise<boolean> {
+  try {
+    const result = await dbSelect<{ name: string }>(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name = ?`,
+      [tableName]
+    )
+    return result.length > 0
+  } catch {
+    return false
+  }
+}
+
 /**
  * Récupère les paramètres de l'entreprise.
  * Si la ligne n'existe pas, elle est créée automatiquement avec des valeurs vides.
  */
 export async function getCompanySettings(): Promise<CompanySettings> {
   try {
-    // On s'assure que la table existe (déjà créée par db.ts, mais sécurité)
-    await ensureTableExists()
+    // ✅ Vérifier si la table existe
+    const exists = await tableExists('company_settings')
+    
+    if (!exists) {
+      console.log('📦 Création de la table company_settings')
+      await dbExecute(`
+        CREATE TABLE company_settings (
+          id TEXT PRIMARY KEY DEFAULT 'single',
+          company_name TEXT,
+          address TEXT,
+          city TEXT,
+          phone TEXT,
+          email TEXT,
+          website TEXT,
+          logo_url TEXT,
+          ice TEXT,
+          rc TEXT,
+          if_number TEXT,
+          cnss TEXT,
+          rib TEXT,
+          bank_name TEXT,
+          tva_rate REAL,
+          invoice_prefix TEXT,
+          invoice_footer TEXT,
+          currency TEXT,
+          default_payment_terms_days INTEGER DEFAULT 30,
+          late_payment_penalty_text TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `)
+      
+      // Créer la ligne vide
+      await dbExecute(`
+        INSERT INTO company_settings (id, company_name, default_payment_terms_days, late_payment_penalty_text, created_at, updated_at)
+        VALUES ('single', '', 30, ?, datetime('now'), datetime('now'))
+      `, [
+        'Tout retard de paiement entraîne l\'application de pénalités au taux légal en vigueur, sans mise en demeure préalable.'
+      ])
+      console.log('✅ Table et ligne créées dans company_settings')
+    }
 
     // Lecture de la ligne unique
     const rows = await dbSelect<any>('SELECT * FROM company_settings LIMIT 1')
 
     if (rows.length === 0) {
       // Aucune ligne : on en crée une avec des valeurs vides
-      await createEmptySettings()
+      await dbExecute(`
+        INSERT INTO company_settings (id, company_name, default_payment_terms_days, late_payment_penalty_text, created_at, updated_at)
+        VALUES ('single', '', 30, ?, datetime('now'), datetime('now'))
+      `, [
+        'Tout retard de paiement entraîne l\'application de pénalités au taux légal en vigueur, sans mise en demeure préalable.'
+      ])
+      
       const newRows = await dbSelect<any>('SELECT * FROM company_settings LIMIT 1')
       return mapRow(newRows[0])
     }
@@ -114,7 +172,44 @@ export async function updateCompanySettings(settings: Partial<CompanySettings>):
   try {
     console.log('📝 updateCompanySettings appelé avec :', settings)
 
-    await ensureTableExists()
+    // ✅ Vérifier que la table existe
+    const exists = await tableExists('company_settings')
+    if (!exists) {
+      // Créer la table et la ligne vide
+      await dbExecute(`
+        CREATE TABLE company_settings (
+          id TEXT PRIMARY KEY DEFAULT 'single',
+          company_name TEXT,
+          address TEXT,
+          city TEXT,
+          phone TEXT,
+          email TEXT,
+          website TEXT,
+          logo_url TEXT,
+          ice TEXT,
+          rc TEXT,
+          if_number TEXT,
+          cnss TEXT,
+          rib TEXT,
+          bank_name TEXT,
+          tva_rate REAL,
+          invoice_prefix TEXT,
+          invoice_footer TEXT,
+          currency TEXT,
+          default_payment_terms_days INTEGER DEFAULT 30,
+          late_payment_penalty_text TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `)
+      
+      await dbExecute(`
+        INSERT INTO company_settings (id, company_name, default_payment_terms_days, late_payment_penalty_text, created_at, updated_at)
+        VALUES ('single', '', 30, ?, datetime('now'), datetime('now'))
+      `, [
+        'Tout retard de paiement entraîne l\'application de pénalités au taux légal en vigueur, sans mise en demeure préalable.'
+      ])
+    }
 
     // Construire dynamiquement la requête UPDATE
     const fields: [string, any][] = []
@@ -175,70 +270,24 @@ export async function updateCompanySettings(settings: Partial<CompanySettings>):
   }
 }
 
-// ─── Fonctions internes ──────────────────────────────────────────
+// ─── Fonctions utilitaires ──────────────────────────────────────────
 
-async function ensureTableExists(): Promise<void> {
+// Fonction utilitaire pour obtenir la TVA par défaut
+export async function getDefaultTaxRate(): Promise<number> {
   try {
-    const tables = await dbSelect<{ name: string }>(
-      `SELECT name FROM sqlite_master WHERE type='table' AND name='company_settings'`
-    )
-    if (tables.length === 0) {
-      console.log('📦 Création de la table company_settings')
-      await dbExecute(`
-        CREATE TABLE company_settings (
-          id TEXT PRIMARY KEY DEFAULT 'single',
-          company_name TEXT,
-          address TEXT,
-          city TEXT,
-          phone TEXT,
-          email TEXT,
-          website TEXT,
-          logo_url TEXT,
-          ice TEXT,
-          rc TEXT,
-          if_number TEXT,
-          cnss TEXT,
-          rib TEXT,
-          bank_name TEXT,
-          tva_rate REAL,
-          invoice_prefix TEXT,
-          invoice_footer TEXT,
-          currency TEXT,
-          default_payment_terms_days INTEGER DEFAULT 30,
-          late_payment_penalty_text TEXT,
-          created_at TEXT NOT NULL DEFAULT (datetime('now')),
-          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-        )
-      `)
-      await createEmptySettings()
-    } else {
-      // ── Migration douce pour les bases déjà existantes ──────────
-      await ensureColumnExists('default_payment_terms_days', 'INTEGER DEFAULT 30')
-      await ensureColumnExists('late_payment_penalty_text', 'TEXT')
-    }
-  } catch (error) {
-    console.error('❌ Erreur ensureTableExists:', error)
-    throw error
+    const settings = await getCompanySettings()
+    return settings.tvaRate || 0
+  } catch {
+    return 0
   }
 }
 
-async function ensureColumnExists(columnName: string, columnDef: string): Promise<void> {
+// Fonction utilitaire pour obtenir les délais de paiement par défaut
+export async function getDefaultPaymentTerms(): Promise<number> {
   try {
-    await dbExecute(`ALTER TABLE company_settings ADD COLUMN ${columnName} ${columnDef}`)
-  } catch (e: any) {
-    // Colonne déjà existante : on ignore silencieusement
-    if (!e?.message?.includes('duplicate column name')) {
-      console.warn(`⚠️ Migration company_settings.${columnName}:`, e?.message)
-    }
+    const settings = await getCompanySettings()
+    return settings.defaultPaymentTermsDays || 30
+  } catch {
+    return 30
   }
-}
-
-async function createEmptySettings(): Promise<void> {
-  await dbExecute(`
-    INSERT INTO company_settings (id, company_name, default_payment_terms_days, late_payment_penalty_text, created_at, updated_at)
-    VALUES ('single', '', 30, ?, datetime('now'), datetime('now'))
-  `, [
-    'Tout retard de paiement entraîne l\'application de pénalités au taux légal en vigueur, sans mise en demeure préalable.'
-  ])
-  console.log('✅ Ligne vide créée dans company_settings')
 }

@@ -1,5 +1,6 @@
 // lib/products-data.ts
 import { dbExecute, dbSelect, dbExecuteWithRetry } from '@/src/lib/db'
+import { normalizeBarcode, generateBarcodeVariants, isValidChecksum } from './barcode-utils'
 
 export interface Product {
   id: string
@@ -133,19 +134,45 @@ export async function isBarcodeTaken(barcode: string, excludeId?: string): Promi
   }
 }
 
+// ─── FIND BY SKU OR BARCODE (VERSION 3 SCANS) ────────────────────
 export async function findBySkuOrBarcode(value: string): Promise<Product | null> {
+  const normalized = normalizeBarcode(value)
+  if (!normalized) return null
+
+  console.log('🔍 [findBySkuOrBarcode] Recherche pour:', normalized)
+  console.log('📏 Longueur:', normalized.length)
+
+  // Vérifier le checksum (alerte mais ne bloque pas)
+  if (!isValidChecksum(normalized)) {
+    console.warn('⚠️ [findBySkuOrBarcode] Checksum invalide pour:', normalized)
+  }
+
+  const variants = generateBarcodeVariants(normalized)
+  console.log('🔍 [findBySkuOrBarcode] Variantes:', variants)
+
   try {
-    const rows = await dbSelect<ProductRow>(
-      `SELECT p.*, c.name_fr as category_name, c.color as category_color
-       FROM products p
-       LEFT JOIN categories c ON c.id = p.category_id
-       WHERE p.sku = ? OR p.barcode = ?
-       LIMIT 1`,
-      [value, value]
-    )
-    return rows.length > 0 ? mapRow(rows[0]) : null
+    const all = await getAllProducts()
+    console.log('🔍 [findBySkuOrBarcode] Produits en base:', all.length)
+
+    // RECHERCHE EXACTE avec toutes les variantes
+    for (const variant of variants) {
+      const exact = all.find((p) => {
+        const sku = normalizeBarcode(p.sku)
+        const barcode = normalizeBarcode(p.barcode)
+        return sku === variant || barcode === variant
+      })
+      
+      if (exact) {
+        console.log('✅ [findBySkuOrBarcode] Match exact trouvé:', exact.sku, '/', exact.barcode)
+        return exact
+      }
+    }
+
+    console.log('❌ [findBySkuOrBarcode] Aucun match pour:', normalized)
+    return null
+    
   } catch (error) {
-    console.error('Erreur findBySkuOrBarcode:', error)
+    console.error('❌ Erreur findBySkuOrBarcode:', error)
     return null
   }
 }
@@ -166,7 +193,7 @@ export async function getAllProducts(activeOnly = false, showInPosOnly = false):
       query += ` AND p.show_in_pos = 1`
     }
     query += ` ORDER BY p.is_favorite DESC, p.updated_at DESC`
-    
+
     const rows = await dbSelect<ProductRow>(query, params)
     return rows.map(mapRow)
   } catch (error) {
@@ -185,7 +212,7 @@ export async function searchProducts(query: string): Promise<Product[]> {
        LEFT JOIN categories c ON c.id = p.category_id
        WHERE p.name_ar LIKE ? OR p.name_fr LIKE ?
           OR p.sku LIKE ? OR p.barcode LIKE ?
-       ORDER BY p.is_favorite DESC, p.name_fr ASC
+       ORDER BY p.is_favorite DESC, p.name_ar ASC
        LIMIT 20`,
       [q, q, q, q]
     )
@@ -368,24 +395,21 @@ export async function toggleProductStatus(id: string, isActive: boolean): Promis
 
 export async function updateStock(id: string, newQty: number, reason?: string): Promise<void> {
   const now = new Date().toISOString()
-  
-  // Récupérer le produit pour connaître l'ancienne quantité et track_stock
+
   const product = await getProductById(id)
   if (!product) throw new Error('Produit non trouve')
-  
+
   const oldQty = product.stockQty
-  
-  // Mettre à jour le stock
+
   await dbExecute(
     `UPDATE products SET stock_qty = ?, updated_at = ? WHERE id = ?`,
     [newQty, now, id]
   )
-  
-  // Enregistrer le mouvement SEULEMENT si track_stock est activé
+
   if (product.trackStock) {
     const movementId = `mov_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
     const type = newQty > oldQty ? 'IN' : newQty < oldQty ? 'OUT' : 'ADJUSTMENT'
-    
+
     await dbExecute(
       `INSERT INTO stock_movements 
        (id, product_id, type, quantity, previous_qty, new_qty, reason, created_at)

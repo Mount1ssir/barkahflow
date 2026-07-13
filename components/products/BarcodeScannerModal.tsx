@@ -12,6 +12,8 @@ import {
   BarcodeScanner,
   BarcodeFormat as MlkitFormat,
 } from '@capacitor-mlkit/barcode-scanning'
+import { isValidChecksum } from '@/lib/barcode-utils'
+import { processScan, clearPendingScans } from '@/lib/scan-validator'
 
 interface BarcodeScannerModalProps {
   open: boolean
@@ -20,21 +22,30 @@ interface BarcodeScannerModalProps {
 }
 
 const IS_NATIVE = Capacitor.isNativePlatform()
+const REQUIRED_COUNT = 3
 
 export function BarcodeScannerModal({ open, onOpenChange, onScan }: BarcodeScannerModalProps) {
   const [status, setStatus] = useState<'loading' | 'scanning' | 'detected' | 'error'>('loading')
   const [errorMsg, setErrorMsg] = useState('')
   const [torchOn, setTorchOn] = useState(false)
   const [torchSupported, setTorchSupported] = useState(false)
+  const [scanCount, setScanCount] = useState(0)
+  const [detectedCode, setDetectedCode] = useState('')
+  const [scanProgress, setScanProgress] = useState(0)
 
   const videoRef = useRef<HTMLVideoElement>(null)
-  const controlsRef = useRef<IScannerControls | null>(null) // ZXing
-  const mlkitListenerRef = useRef<any>(null) // ML Kit
+  const controlsRef = useRef<IScannerControls | null>(null)
+  const mlkitListenerRef = useRef<any>(null)
   const detectedRef = useRef(false)
   const mountedRef = useRef(false)
+  const scanTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // ─── Arrêt propre des deux moteurs ─────────────────────────────
   const stopScanner = async () => {
+    if (scanTimeoutRef.current) {
+      clearTimeout(scanTimeoutRef.current)
+      scanTimeoutRef.current = null
+    }
     if (controlsRef.current) {
       try { controlsRef.current.stop() } catch (_) {}
       controlsRef.current = null
@@ -56,6 +67,7 @@ export function BarcodeScannerModal({ open, onOpenChange, onScan }: BarcodeScann
     return () => {
       mountedRef.current = false
       stopScanner()
+      clearPendingScans()
     }
   }, [])
 
@@ -67,24 +79,84 @@ export function BarcodeScannerModal({ open, onOpenChange, onScan }: BarcodeScann
       setErrorMsg('')
       setTorchOn(false)
       setTorchSupported(false)
+      setScanCount(0)
+      setDetectedCode('')
+      setScanProgress(0)
+      clearPendingScans()
       return
     }
 
     let cancelled = false
 
+    // ─── HANDLE DETECTED ─────────────────────────────────────────────
     const handleDetected = (code: string) => {
       if (detectedRef.current || !mountedRef.current || cancelled) return
-      detectedRef.current = true
-      setStatus('detected')
-      stopScanner()
-      toast.success(`Code détecté : ${code}`)
-      onScan(code)
-      setTimeout(() => {
-        if (mountedRef.current) onOpenChange(false)
-      }, 150)
+      
+      const cleanCode = code.trim()
+      
+      // Afficher le code réellement lu
+      console.log('📸 Code scanné (RAW):', JSON.stringify(code))
+      console.log('📸 Code scanné (clean):', cleanCode)
+      
+      // Mettre à jour l'interface
+      setDetectedCode(cleanCode)
+      
+      // Vérifier le checksum mais seulement pour informer
+      if (!isValidChecksum(cleanCode)) {
+        console.warn('⚠️ Checksum invalide pour:', cleanCode)
+      }
+      
+      // Traiter le scan avec le validateur (3 scans)
+      const result = processScan(cleanCode)
+      
+      // Mettre à jour l'interface
+      setScanCount(result.count)
+      setScanProgress(result.count / REQUIRED_COUNT)
+      
+      if (result.validated) {
+        // ✅ Scan validé après 3 lectures identiques
+        console.log(`✅ Scan validé après ${result.count} scans (${result.elapsed}ms)`)
+        
+        detectedRef.current = true
+        setStatus('detected')
+        
+        // Arrêter le scanner
+        stopScanner()
+        
+        // Vibration double pour confirmer
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          navigator.vibrate([200, 100, 200])
+        }
+        
+        toast.success(`Code validé !`, {
+          description: `${result.barcode}`,
+          duration: 1500
+        })
+        
+        // Appeler onScan
+        scanTimeoutRef.current = setTimeout(() => {
+          if (mountedRef.current) {
+            onScan(result.barcode)
+            onOpenChange(false)
+          }
+        }, 400)
+        
+      } else {
+        // ⏳ En attente de plus de scans
+        const remaining = REQUIRED_COUNT - result.count
+        toast.info(`Scan #${result.count}/${REQUIRED_COUNT}`, {
+          description: `Scannez à nouveau (${remaining} scan${remaining > 1 ? 's' : ''} restant${remaining > 1 ? 's' : ''})`,
+          duration: 1200
+        })
+        
+        // Vibration courte pour indiquer qu'il faut rescanner
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          navigator.vibrate(50)
+        }
+      }
     }
 
-    // ─── Moteur natif : ML Kit (Android/iOS via Capacitor) ────────
+    // ─── Moteur natif : ML Kit ────────────────────────────────
     const initMlkit = async () => {
       const { camera } = await BarcodeScanner.requestPermissions()
       if (camera !== 'granted' && camera !== 'limited') {
@@ -94,8 +166,6 @@ export function BarcodeScannerModal({ open, onOpenChange, onScan }: BarcodeScann
       const { supported } = await BarcodeScanner.isSupported()
       if (!supported) throw new Error('Scan non supporté sur cet appareil')
 
-      // Fond transparent pour laisser la preview caméra native
-      // s'afficher derrière la WebView (mode plein écran natif)
       document.body.classList.add('mlkit-scanning')
 
       if (!cancelled && mountedRef.current) setStatus('scanning')
@@ -130,7 +200,7 @@ export function BarcodeScannerModal({ open, onOpenChange, onScan }: BarcodeScann
       } catch (_) {}
     }
 
-    // ─── Moteur web/desktop : ZXing (Tauri, navigateur) ───────────
+    // ─── Moteur web/desktop : ZXing ───────────────────────────────
     const initZxing = async () => {
       const hints = new Map<DecodeHintType, any>()
       hints.set(DecodeHintType.POSSIBLE_FORMATS, [
@@ -148,7 +218,7 @@ export function BarcodeScannerModal({ open, onOpenChange, onScan }: BarcodeScann
 
       const reader = new BrowserMultiFormatReader(hints, {
         delayBetweenScanAttempts: 50,
-        delayBetweenScanSuccess: 200,
+        delayBetweenScanSuccess: 100,
       } as any)
 
       const devices = await BrowserMultiFormatReader.listVideoInputDevices()
@@ -185,7 +255,7 @@ export function BarcodeScannerModal({ open, onOpenChange, onScan }: BarcodeScann
             return
           }
           if (err && !(err instanceof NotFoundException)) {
-            console.warn('Erreur de décodage frame:', err)
+            // Ignorer silencieusement les erreurs de décodage
           }
         }
       )
@@ -228,7 +298,7 @@ export function BarcodeScannerModal({ open, onOpenChange, onScan }: BarcodeScann
       cancelled = true
       stopScanner()
     }
-  }, [open])
+  }, [open, onScan, onOpenChange])
 
   const toggleTorch = async () => {
     try {
@@ -253,12 +323,20 @@ export function BarcodeScannerModal({ open, onOpenChange, onScan }: BarcodeScann
     setStatus('loading')
     setErrorMsg('')
     detectedRef.current = false
+    setScanCount(0)
+    setDetectedCode('')
+    setScanProgress(0)
+    clearPendingScans()
     onOpenChange(false)
     setTimeout(() => onOpenChange(true), 150)
   }
 
   const handleClose = () => {
     stopScanner()
+    clearPendingScans()
+    setScanCount(0)
+    setDetectedCode('')
+    setScanProgress(0)
     onOpenChange(false)
   }
 
@@ -299,12 +377,29 @@ export function BarcodeScannerModal({ open, onOpenChange, onScan }: BarcodeScann
           </div>
         </div>
 
+        {/* Indicateur de progression des scans */}
+        {scanCount > 0 && scanCount < REQUIRED_COUNT && status === 'scanning' && (
+          <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/20">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs text-amber-400 font-medium">
+                Scan #{scanCount}/{REQUIRED_COUNT}
+              </span>
+              <div className="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-amber-400 rounded-full transition-all duration-300"
+                  style={{ width: `${scanProgress * 100}%` }}
+                />
+              </div>
+              <span className="text-xs text-gray-400 font-mono">
+                {detectedCode.slice(0, 4)}...{detectedCode.slice(-4)}
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Camera area */}
         <div className="relative bg-black" style={{ height: '300px' }}>
 
-          {/* Sur mobile natif (ML Kit), la preview caméra est gérée
-              nativement en plein écran derrière la WebView — pas de
-              <video>. On garde juste l'overlay visuel ici. */}
           {!IS_NATIVE && (
             <video
               ref={videoRef}
@@ -354,7 +449,7 @@ export function BarcodeScannerModal({ open, onOpenChange, onScan }: BarcodeScann
               <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center">
                 <CheckCircle2 className="h-10 w-10 text-green-400" />
               </div>
-              <p className="text-white text-base font-extrabold">Code détecté !</p>
+              <p className="text-white text-base font-extrabold">Code validé !</p>
             </div>
           )}
 
@@ -378,7 +473,9 @@ export function BarcodeScannerModal({ open, onOpenChange, onScan }: BarcodeScann
         }`}>
           <p className="text-center text-gray-400 text-xs font-semibold">
             {status === 'scanning'
-              ? 'Alignez le code-barres dans le cadre doré'
+              ? scanCount > 0 && scanCount < REQUIRED_COUNT
+                ? `Scannez à nouveau pour valider (${REQUIRED_COUNT - scanCount} restant${REQUIRED_COUNT - scanCount > 1 ? 's' : ''})`
+                : 'Alignez le code-barres dans le cadre doré'
               : status === 'loading'
               ? 'Veuillez autoriser l\'accès à la caméra…'
               : status === 'detected'
@@ -402,8 +499,6 @@ export function BarcodeScannerModal({ open, onOpenChange, onScan }: BarcodeScann
           animation: scanLine 2s ease-in-out infinite;
           position: absolute;
         }
-        /* Rend le body/html transparents pendant le scan ML Kit natif,
-           pour laisser apparaître la preview caméra native en fond */
         body.mlkit-scanning,
         body.mlkit-scanning * {
           background: transparent !important;

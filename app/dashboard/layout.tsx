@@ -19,25 +19,33 @@ import type { AppUser } from '@/context/UserContext'
 function DashboardContent({ children }: { children: React.ReactNode }) {
   const { setCurrentUser, setIsLoading, currentUser } = useUserContext()
   const [checking, setChecking] = useState(true)
-  const { isLocked, unlockApp } = usePin()
+  const { isLocked, unlockApp, pauseInactivity, resumeInactivity } = usePin()
   const searchParams = useSearchParams()
-  
+
   // Vérifier si on doit afficher le switch (paramètre URL ou localStorage)
   const showSwitchParam = searchParams.get('showSwitch') === 'true'
   const [showSwitch, setShowSwitch] = useState(() => {
-    // Vérifier le localStorage au chargement initial
     if (typeof window !== 'undefined') {
       return localStorage.getItem('barkahflow_show_switch') === 'true'
     }
     return false
   })
 
+  // ─── PAUSER L'INACTIVITÉ QUAND showSwitch EST ACTIF ───
   useEffect(() => {
-    // Si le paramètre URL est présent, le sauvegarder dans localStorage
+    if (showSwitch) {
+      console.log('🔒 [layout] Inactivité PAUSÉE (écran de switch)')
+      pauseInactivity()
+    } else {
+      console.log('🔒 [layout] Inactivité REPRISE')
+      resumeInactivity()
+    }
+  }, [showSwitch, pauseInactivity, resumeInactivity])
+
+  useEffect(() => {
     if (showSwitchParam) {
       localStorage.setItem('barkahflow_show_switch', 'true')
       setShowSwitch(true)
-      // Nettoyer l'URL
       window.history.replaceState({}, '', '/dashboard')
     }
   }, [showSwitchParam])
@@ -49,20 +57,22 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
           !process.env.NEXT_PUBLIC_SUPABASE_URL ||
           process.env.NEXT_PUBLIC_SUPABASE_URL.includes('placeholder')
 
-        // ─── SI LE MODE SWITCH EST ACTIF ───
+        // ─── 🔴 PRIORITÉ 1 : Le flag showSwitch est-il actif ? ───
         if (showSwitch) {
+          sessionStorage.removeItem('barkahflow_active_user_role')
+          sessionStorage.removeItem('barkahflow_active_user_id')
+          sessionStorage.removeItem('barkahflow_active_session')
+          
           setIsLoading(false)
           setChecking(false)
-          // On reste sur l'écran de switch sans faire de redirection
           return
         }
 
-        // ─── 1. Vérifier si un caissier est déjà actif ───
+        // ─── 2. Un caissier est-il déjà actif ? ───
         const activeRole = sessionStorage.getItem('barkahflow_active_user_role')
         const activeId = sessionStorage.getItem('barkahflow_active_user_id')
         const activeSession = sessionStorage.getItem('barkahflow_active_session')
 
-        // Si un caissier est actif et la session est valide
         if (activeRole === 'cashier' && activeId && activeSession === 'active') {
           try {
             const cashier = await getUserById(activeId)
@@ -93,25 +103,21 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
           }
         }
 
-        // ─── 2. Récupérer la session Supabase ───
+        // ─── 3. Vérifier la vraie session Supabase ───
         const { data } = await supabase.auth.getSession()
-
-        // ─── SI PAS DE SESSION → REDIRIGER VERS LOGIN ───
-        if (!data.session && !isPlaceholder) {
-          sessionStorage.clear()
-          window.location.href = '/'
-          return
-        }
-
-        // ─── 3. Récupérer l'utilisateur Supabase ───
         const supabaseUser = data.session?.user || (isPlaceholder
           ? { id: 'dev-admin', email: 'dev@barkahflow.com', user_metadata: { full_name: 'Developer' } }
           : null)
 
         if (supabaseUser) {
+          localStorage.removeItem('barkahflow_show_switch')
+          sessionStorage.removeItem('barkahflow_active_user_role')
+          sessionStorage.removeItem('barkahflow_active_user_id')
+          sessionStorage.removeItem('barkahflow_active_session')
+          if (showSwitch) setShowSwitch(false)
+
           try {
             const adminRow = await upsertAdminFromSupabase(supabaseUser as any)
-            
             setCurrentUser({
               id: adminRow.id,
               name: adminRow.name,
@@ -123,12 +129,6 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
               supabaseUser: supabaseUser,
               active: true,
             })
-            
-            if (sessionStorage.getItem('barkahflow_active_user_role') === 'cashier') {
-              sessionStorage.removeItem('barkahflow_active_user_role')
-              sessionStorage.removeItem('barkahflow_active_user_id')
-              sessionStorage.removeItem('barkahflow_active_session')
-            }
           } catch (error) {
             console.error('Erreur upsert admin:', error)
             setCurrentUser({
@@ -143,6 +143,18 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
               active: true,
             })
           }
+
+          setIsLoading(false)
+          setChecking(false)
+          return
+        }
+
+        // ─── 4. Ni session, ni switch, ni caissier actif → retour au login ───
+        if (!isPlaceholder) {
+          sessionStorage.clear()
+          localStorage.removeItem('barkahflow_show_switch')
+          window.location.href = '/'
+          return
         }
       } catch (error) {
         console.error('Erreur initialisation session:', error)
@@ -169,8 +181,9 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
     )
   }
 
-  // ─── 🔴 AFFICHER L'ÉCRAN DE SWITCH ───
-  if (showSwitch || !currentUser) {
+  // ─── 🔴 PRIORITÉ ABSOLUE : ÉCRAN DE SWITCH ───
+  // Si showSwitch est actif, on retourne UNIQUEMENT UserSwitchScreen
+  if (showSwitch) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <UserSwitchScreen
@@ -178,9 +191,13 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
           onOpenChange={() => {}}
           onSuccess={(user: AppUser) => {
             setCurrentUser(user)
-            // Désactiver le mode switch
             localStorage.removeItem('barkahflow_show_switch')
             setShowSwitch(false)
+            if (user.role === 'cashier') {
+              sessionStorage.setItem('barkahflow_active_user_role', 'cashier')
+              sessionStorage.setItem('barkahflow_active_user_id', user.id)
+              sessionStorage.setItem('barkahflow_active_session', 'active')
+            }
             window.history.replaceState({}, '', '/dashboard')
           }}
         />
@@ -188,19 +205,42 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
     )
   }
 
-  // ─── Écran de verrouillage selon le rôle ───
-  const showLockScreen = isPinEnabled() && isLocked && currentUser
+  // ─── Si pas de currentUser, on affiche aussi le switch ───
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <UserSwitchScreen
+          open={true}
+          onOpenChange={() => {}}
+          onSuccess={(user: AppUser) => {
+            setCurrentUser(user)
+            localStorage.removeItem('barkahflow_show_switch')
+            setShowSwitch(false)
+            if (user.role === 'cashier') {
+              sessionStorage.setItem('barkahflow_active_user_role', 'cashier')
+              sessionStorage.setItem('barkahflow_active_user_id', user.id)
+              sessionStorage.setItem('barkahflow_active_session', 'active')
+            }
+            window.history.replaceState({}, '', '/dashboard')
+          }}
+        />
+      </div>
+    )
+  }
 
-  // ─── ADMIN → PinLockScreen (PIN local) ──────────────────────────────
+  // ─── MAINTENANT SEULEMENT, on est dans le dashboard ───
+  // On est sûr que showSwitch = false et currentUser existe
+  const showLockScreen = isPinEnabled() && isLocked
+
   if (showLockScreen && currentUser?.role === 'admin') {
     return <PinLockScreen onSuccess={unlockApp} />
   }
 
-  // ─── CAISSIER → CashierLockScreen (PIN en base de données) ──────────
   if (showLockScreen && currentUser?.role === 'cashier') {
     return (
       <CashierLockScreen
-        onSuccess={() => {
+        onSuccess={(user: AppUser) => {
+          setCurrentUser(user)
           unlockApp()
         }}
         preselectedCashier={currentUser as AppUserRow}

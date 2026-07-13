@@ -89,6 +89,15 @@ const STEPS = [
   { id: 5, label: 'Options', icon: Activity },
 ]
 
+// ─── Fonction normalize pour la comparaison de catégories ──────────
+const normalize = (str: string): string => {
+  return str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+}
+
 // ─── Upload d'image simplifié ──────────────────────────────────
 function SimpleImageUpload({ src, onUpload, onRemove }: {
   src?: string | null
@@ -404,90 +413,102 @@ export default function NewProductPage() {
     setAutoFilling(true)
     toast.info('Recherche des informations produit…')
 
-    const result = await lookupProductByBarcode(barcode)
+    try {
+      const result = await lookupProductByBarcode(barcode)
 
-    if (!result.found) {
-      if (result.offline) {
-        toast.warning('Pas de connexion Internet, remplissage manuel requis')
-      } else {
-        toast.info('Produit non trouvé, veuillez remplir manuellement')
+      if (!result.found) {
+        if (result.offline) {
+          toast.warning('Pas de connexion Internet, remplissage manuel requis')
+        } else {
+          toast.info('Produit non trouvé dans les API externes, veuillez remplir manuellement')
+        }
+        setAutoFilling(false)
+        return
       }
+
+      // Teste chaque tag de catégorie (du plus spécifique au plus général)
+      let matchedCategoryId = ''
+      if (result.categoryTags && result.categoryTags.length > 0 && categories.length > 0) {
+        for (const tag of result.categoryTags) {
+          const match = categories.find((c) => {
+            const catName = normalize(c.nameFr)
+            return catName.includes(tag) || tag.includes(catName)
+          })
+          if (match) {
+            matchedCategoryId = match.id
+            break
+          }
+        }
+      }
+
+      if (result.imageUrl) {
+        const file = await urlToFile(result.imageUrl, `${barcode}.jpg`)
+        if (file) {
+          const reader = new FileReader()
+          reader.onload = () => {
+            setForm((f) => ({ ...f, imageFile: file, imagePreview: reader.result as string }))
+          }
+          reader.readAsDataURL(file)
+        }
+      }
+
+      setForm((prev) => ({
+        ...prev,
+        nameFr: result.nameFr || prev.nameFr,
+        categoryId: matchedCategoryId || prev.categoryId,
+        unit: (result.unitGuess as Unit) || prev.unit || 'piece',
+        supplierRef: result.brand || prev.supplierRef,
+      }))
+
       setAutoFilling(false)
-      return
-    }
 
-    // Teste chaque tag de catégorie (du plus spécifique au plus général)
-    // contre le nom de chaque catégorie locale, comparaison normalisée
-    // (sans accents, insensible à la casse) dans les deux sens
-    let matchedCategoryId = ''
-    if (result.categoryTags && result.categoryTags.length > 0) {
-      for (const tag of result.categoryTags) {
-        const match = categories.find((c) => {
-          const catName = c.nameFr
-            .toLowerCase()
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '')
-          return catName.includes(tag) || tag.includes(catName)
-        })
-        if (match) {
-          matchedCategoryId = match.id
-          break
-        }
+      if (!matchedCategoryId) {
+        toast.warning('Nom et infos récupérés ! Sélectionnez juste la catégorie manquante.')
+        setCurrentStep(1)
+      } else {
+        toast.success(`Informations récupérées (${result.source}) ! Complétez le prix et le stock.`)
+        setCurrentStep(3)
       }
-    }
-
-    if (result.imageUrl) {
-      const file = await urlToFile(result.imageUrl, `${barcode}.jpg`)
-      if (file) {
-        const reader = new FileReader()
-        reader.onload = () => {
-          setForm((f) => ({ ...f, imageFile: file, imagePreview: reader.result as string }))
-        }
-        reader.readAsDataURL(file)
-      }
-    }
-
-    setForm((prev) => ({
-      ...prev,
-      nameFr: result.nameFr || prev.nameFr,
-      categoryId: matchedCategoryId || prev.categoryId,
-      unit: (result.unitGuess as Unit) || prev.unit,
-      supplierRef: result.brand || prev.supplierRef,
-    }))
-
-    setAutoFilling(false)
-
-    // Si la catégorie n'a pas pu être devinée, on reste à l'étape 1
-    // pour que le commerçant la sélectionne lui-même — plutôt que de
-    // sauter à l'étape Prix avec un champ obligatoire vide
-    if (!matchedCategoryId) {
-      toast.warning('Nom et infos récupérés ! Sélectionnez juste la catégorie manquante.')
-      setCurrentStep(1)
-    } else {
-      toast.success(`Informations récupérées (${result.source}) ! Complétez le prix et le stock.`)
-      setCurrentStep(3)
+    } catch (error) {
+      console.error('Erreur autoFillFromBarcode:', error)
+      toast.error('Erreur lors de la recherche externe')
+      setAutoFilling(false)
     }
   }, [categories])
 
   // ─── Vérifie d'abord la base locale avant tout lookup externe ─
   const handleBarcodeDetected = useCallback(async (barcode: string) => {
     // Si on est déjà en train de modifier CE produit, pas besoin
-    // de vérifier — on évite une redirection inutile vers soi-même
-    if (isEditMode && form.barcode === barcode) return
-
-    setAutoFilling(true)
-
-    const existing = await findBySkuOrBarcode(barcode)
-
-    if (existing) {
-      setAutoFilling(false)
-      toast.info(`Produit déjà existant : ${existing.nameFr || existing.sku}, redirection…`)
-      router.push(`/dashboard/produits/nouveau?id=${existing.id}`)
+    if (isEditMode && form.barcode === barcode) {
+      toast.info('Vous modifiez déjà ce produit')
       return
     }
 
-    // Rien en local : on tente la récupération automatique externe
-    await autoFillFromBarcode(barcode)
+    setAutoFilling(true)
+
+    try {
+      console.log('🔍 Recherche du code-barres en base locale:', barcode)
+      
+      // ✅ Recherche dans la base locale
+      const existing = await findBySkuOrBarcode(barcode)
+
+      if (existing) {
+        console.log('✅ Produit trouvé en base locale:', existing.nameFr || existing.sku)
+        setAutoFilling(false)
+        toast.info(`Produit déjà existant : ${existing.nameFr || existing.sku}, redirection…`)
+        router.push(`/dashboard/produits/nouveau?id=${existing.id}`)
+        return
+      }
+
+      console.log('ℹ️ Produit non trouvé en base locale, recherche dans les API externes...')
+      
+      // Rien en local : on tente la récupération automatique externe
+      await autoFillFromBarcode(barcode)
+    } catch (error) {
+      console.error('❌ Erreur handleBarcodeDetected:', error)
+      toast.error('Erreur lors de la recherche du produit')
+      setAutoFilling(false)
+    }
   }, [isEditMode, form.barcode, router, autoFillFromBarcode])
 
   // ─── Déclenchement automatique si on arrive avec ?barcode=... ─

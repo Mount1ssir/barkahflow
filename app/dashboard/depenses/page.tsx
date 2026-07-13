@@ -33,7 +33,7 @@ import {
   ResponsiveContainer
 } from 'recharts'
 import { fetchExpenses, addExpenseToDb, deleteExpenseFromDb } from '@/lib/expenses-data'
-import { getRevenueChartData } from '@/lib/revenue-chart-data'
+import { getRevenueChartData } from '@/lib/revenue-data'
 
 interface Expense {
   id: string

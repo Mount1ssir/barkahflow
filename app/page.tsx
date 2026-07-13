@@ -7,7 +7,7 @@ import { ShimmerButton } from "@/components/ui/shimmer-button";
 import { useTranslation } from "react-i18next";
 import { initI18n } from "@/lib/i18n/config";
 import "@/lib/i18n/config";
-import ShapeGrid from "@/components/ShapeGrid"; // ✅ Import du composant installé
+import ShapeGrid from "@/components/ShapeGrid";
 
 const slides = [
   {

@@ -1,3 +1,4 @@
+// lib/stock-data.ts
 import { dbExecute, dbSelect } from '@/src/lib/db'
 
 export interface StockMovement {
@@ -70,18 +71,44 @@ export async function addStock(
   unitPrice?: number
 ): Promise<void> {
   if (quantity <= 0) throw new Error('La quantité doit être positive')
+  
   const id = `mov_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
   const now = new Date().toISOString()
+  
   try {
-    await dbExecute(
-      `INSERT INTO stock_movements (id, product_id, type, quantity, unit_price, reason, created_at)
-       VALUES (?, ?, 'in', ?, ?, ?, ?)`,
-      [id, productId, quantity, unitPrice || null, reason || null, now]
+    // Récupérer le stock actuel du produit
+    const product = await dbSelect<{ stock_qty: number }>(
+      `SELECT stock_qty FROM products WHERE id = ?`,
+      [productId]
     )
+    
+    if (product.length === 0) {
+      throw new Error('Produit non trouvé')
+    }
+    
+    const currentQty = product[0].stock_qty
+    const newQty = currentQty + quantity
+    
+    // Insérer le mouvement de stock
     await dbExecute(
-      `UPDATE products SET stock_qty = stock_qty + ?, updated_at = ? WHERE id = ?`,
-      [quantity, now, productId]
+      `INSERT INTO stock_movements (
+        id, product_id, type, quantity, unit_price, previous_qty, new_qty, reason, created_at
+      ) VALUES (?, ?, 'IN', ?, ?, ?, ?, ?, ?)`,
+      [id, productId, quantity, unitPrice || null, currentQty, newQty, reason || null, now]
     )
+    
+    // Mettre à jour le stock du produit
+    await dbExecute(
+      `UPDATE products SET stock_qty = ?, updated_at = ? WHERE id = ?`,
+      [newQty, now, productId]
+    )
+    
+    // ✅ Déclencher l'événement pour rafraîchir les notifications
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('barkahflow:notifications-changed'))
+      window.dispatchEvent(new Event('barkahflow:stock-updated'))
+    }
+    
   } catch (error) {
     console.error('Erreur addStock:', error)
     throw new Error('Erreur lors de l\'ajout de stock')
@@ -95,24 +122,39 @@ export async function removeStock(
   unitPrice?: number
 ): Promise<void> {
   if (quantity <= 0) throw new Error('La quantité doit être positive')
+  
   const product = await dbSelect<{ stock_qty: number }>(
     `SELECT stock_qty FROM products WHERE id = ?`,
     [productId]
   )
+  
   if (product.length === 0) throw new Error('Produit non trouvé')
   if (product[0].stock_qty < quantity) throw new Error('Stock insuffisant')
+  
   const id = `mov_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
   const now = new Date().toISOString()
+  const currentQty = product[0].stock_qty
+  const newQty = currentQty - quantity
+  
   try {
     await dbExecute(
-      `INSERT INTO stock_movements (id, product_id, type, quantity, unit_price, reason, created_at)
-       VALUES (?, ?, 'out', ?, ?, ?, ?)`,
-      [id, productId, quantity, unitPrice || null, reason || null, now]
+      `INSERT INTO stock_movements (
+        id, product_id, type, quantity, unit_price, previous_qty, new_qty, reason, created_at
+      ) VALUES (?, ?, 'OUT', ?, ?, ?, ?, ?, ?)`,
+      [id, productId, quantity, unitPrice || null, currentQty, newQty, reason || null, now]
     )
+    
     await dbExecute(
-      `UPDATE products SET stock_qty = stock_qty - ?, updated_at = ? WHERE id = ?`,
-      [quantity, now, productId]
+      `UPDATE products SET stock_qty = ?, updated_at = ? WHERE id = ?`,
+      [newQty, now, productId]
     )
+    
+    // ✅ Déclencher l'événement pour rafraîchir les notifications
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('barkahflow:notifications-changed'))
+      window.dispatchEvent(new Event('barkahflow:stock-updated'))
+    }
+    
   } catch (error) {
     console.error('Erreur removeStock:', error)
     throw new Error('Erreur lors du retrait de stock')

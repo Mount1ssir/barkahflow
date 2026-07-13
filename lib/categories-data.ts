@@ -57,9 +57,9 @@ export async function createCategory(
   }
 
   await dbExecute(
-    `INSERT INTO categories (id, name_fr, name_ar, color, created_at)
-     VALUES (?, ?, ?, ?, ?)`,
-    [id, nameFr, nameAr || null, color || null, now]
+    `INSERT INTO categories (id, name_fr, name_ar, color, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [id, nameFr, nameAr || null, color || null, now, now]
   )
   return id
 }

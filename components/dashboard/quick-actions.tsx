@@ -4,7 +4,11 @@ import { useTranslation } from 'react-i18next'
 import { useRouter } from 'next/navigation'
 import { Plus, Package, UserPlus, FileText } from 'lucide-react'
 
-export function QuickActions() {
+interface QuickActionsProps {
+  onInvoiceClick?: () => void // Uniquement pour la facture
+}
+
+export function QuickActions({ onInvoiceClick }: QuickActionsProps) {
   const { t } = useTranslation()
   const router = useRouter()
 
@@ -43,6 +47,17 @@ export function QuickActions() {
     },
   ]
 
+  const handleClick = (action: typeof actions[0]) => {
+    // 🔥 Action spéciale pour la facture - redirection sans message
+    if (action.key === 'invoice' && onInvoiceClick) {
+      onInvoiceClick()
+      return
+    }
+    
+    // Navigation par défaut pour les autres actions
+    router.push(action.href)
+  }
+
   return (
     <div className="rounded-2xl bg-[#faf9f6] dark:bg-zinc-900 border border-[#EAECEF] dark:border-zinc-800 shadow-sm px-6 py-5">
       <div className="flex flex-col md:flex-row items-center gap-6">
@@ -75,7 +90,7 @@ export function QuickActions() {
             return (
               <button
                 key={action.href}
-                onClick={() => router.push(action.href)}
+                onClick={() => handleClick(action)}
                 className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border text-[13px] font-semibold transition-all duration-150 hover:shadow-md hover:-translate-y-px whitespace-nowrap"
                 style={{
                   borderColor: action.border,

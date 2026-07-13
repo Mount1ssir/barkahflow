@@ -1,10 +1,12 @@
-import { dbSelect } from '@/src/lib/db'
+// lib/notifications-data.ts
+
+import { dbSelect, dbExecute } from '@/src/lib/db'
 
 export type NotificationSeverity = 'critical' | 'warning' | 'info'
 
 export interface Notification {
   id: string
-  type: 'stock' | 'debt' | 'overdue'
+  type: 'stock' | 'debt' | 'overdue' | 'pin_reset'
   severity: NotificationSeverity
   title: string
   message: string
@@ -16,6 +18,8 @@ export interface Notification {
   amount?: number
   productId?: string
   read: boolean
+  cashierId?: string
+  cashierName?: string
 }
 
 interface LowStockProduct {
@@ -97,23 +101,45 @@ function pruneStoredIds(currentIds: Set<string>) {
   }
 }
 
+// ─── Vérification de l'existence des tables ────────────────────────
+async function tableExists(tableName: string): Promise<boolean> {
+  try {
+    const result = await dbSelect<{ name: string }>(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name = ?`,
+      [tableName]
+    )
+    return result.length > 0
+  } catch {
+    return false
+  }
+}
+
 // ─── Actions individuelles ──────────────────────────────────────────
 export function dismissNotification(id: string) {
   const ids = getStoredIds(DISMISSED_KEY)
   ids.add(id)
   setStoredIds(DISMISSED_KEY, ids)
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('barkahflow:notifications-changed'))
+  }
 }
 
 export function markAsRead(id: string) {
   const ids = getStoredIds(READ_KEY)
   ids.add(id)
   setStoredIds(READ_KEY, ids)
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('barkahflow:notifications-changed'))
+  }
 }
 
 export function markAsUnread(id: string) {
   const ids = getStoredIds(READ_KEY)
   ids.delete(id)
   setStoredIds(READ_KEY, ids)
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('barkahflow:notifications-changed'))
+  }
 }
 
 export function toggleRead(id: string, currentlyRead: boolean) {
@@ -126,121 +152,214 @@ export function markAllAsRead(ids: string[]) {
   const stored = getStoredIds(READ_KEY)
   for (const id of ids) stored.add(id)
   setStoredIds(READ_KEY, stored)
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('barkahflow:notifications-changed'))
+  }
 }
 
 export function dismissAllNotifications(ids: string[]) {
   const stored = getStoredIds(DISMISSED_KEY)
   for (const id of ids) stored.add(id)
   setStoredIds(DISMISSED_KEY, stored)
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('barkahflow:notifications-changed'))
+  }
+}
+
+// ─── Envoi de notification de réinitialisation PIN ──────────────────
+export async function sendPinResetNotification(cashierId: string, cashierName: string): Promise<void> {
+  const notification: Notification = {
+    id: `pin-reset-${cashierId}-${Date.now()}`,
+    type: 'pin_reset',
+    severity: 'warning',
+    title: 'Demande de réinitialisation PIN',
+    message: `${cashierName} demande la réinitialisation de son code PIN`,
+    time: "à l'instant",
+    createdAt: new Date().toISOString(),
+    cashierId: cashierId,
+    cashierName: cashierName,
+    read: false,
+  }
+
+  if (typeof window !== 'undefined') {
+    const existing = localStorage.getItem('barkahflow-pin-reset-notifications')
+    let notifications: Notification[] = existing ? JSON.parse(existing) : []
+    notifications = [notification, ...notifications]
+    localStorage.setItem('barkahflow-pin-reset-notifications', JSON.stringify(notifications))
+    window.dispatchEvent(new Event('barkahflow:notifications-changed'))
+  }
+}
+
+// ─── Récupérer les notifications de réinitialisation PIN ────────────
+export function getPinResetNotifications(): Notification[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const data = localStorage.getItem('barkahflow-pin-reset-notifications')
+    return data ? JSON.parse(data) : []
+  } catch {
+    return []
+  }
+}
+
+// ─── Supprimer une notification de réinitialisation PIN ─────────────
+export function dismissPinResetNotification(id: string) {
+  if (typeof window === 'undefined') return
+  try {
+    const data = localStorage.getItem('barkahflow-pin-reset-notifications')
+    if (data) {
+      const notifications: Notification[] = JSON.parse(data)
+      const filtered = notifications.filter(n => n.id !== id)
+      localStorage.setItem('barkahflow-pin-reset-notifications', JSON.stringify(filtered))
+      window.dispatchEvent(new Event('barkahflow:notifications-changed'))
+    }
+  } catch {
+    // ignore
+  }
 }
 
 // ─── Récupération des notifications ───────────────────────────────
 export async function getNotifications(): Promise<Notification[]> {
   const notifications: Omit<Notification, 'read'>[] = []
 
-  // 1. Stock bas
-  const lowStockProducts = await dbSelect<LowStockProduct>(
-    `SELECT id, name_ar, stock_qty, alert_threshold, updated_at
-     FROM products
-     WHERE stock_qty <= alert_threshold
-     ORDER BY updated_at DESC
-     LIMIT 10`
-  )
+  // Vérifier si les tables existent
+  const [hasProducts, hasInvoices, hasDebtLedger, hasClients] = await Promise.all([
+    tableExists('products'),
+    tableExists('invoices'),
+    tableExists('debt_ledger'),
+    tableExists('clients')
+  ])
 
-  for (const product of lowStockProducts) {
-    const isOut = product.stock_qty <= 0
-    notifications.push({
-      id: `stock-${product.id}`,
-      type: 'stock',
-      severity: isOut ? 'critical' : 'warning',
-      title: isOut ? 'Rupture de stock' : 'Stock bas',
-      message: isOut
-        ? `${product.name_ar} — rupture de stock`
-        : `${product.name_ar} — il ne reste que ${product.stock_qty} unité(s)`,
-      time: timeAgo(product.updated_at),
-      createdAt: product.updated_at,
-      productId: product.id,
-    })
+  // 1. Stock bas (uniquement si products existe)
+  if (hasProducts) {
+    try {
+      const lowStockProducts = await dbSelect<LowStockProduct>(
+        `SELECT id, name_ar, stock_qty, alert_threshold, updated_at
+         FROM products
+         WHERE stock_qty <= alert_threshold
+         ORDER BY updated_at DESC
+         LIMIT 10`
+      )
+
+      for (const product of lowStockProducts) {
+        const isOut = product.stock_qty <= 0
+        notifications.push({
+          id: `stock-${product.id}`,
+          type: 'stock',
+          severity: isOut ? 'critical' : 'warning',
+          title: isOut ? 'Rupture de stock' : 'Stock bas',
+          message: isOut
+            ? `${product.name_ar} — rupture de stock`
+            : `${product.name_ar} — il ne reste que ${product.stock_qty} unité(s)`,
+          time: timeAgo(product.updated_at),
+          createdAt: product.updated_at,
+          productId: product.id,
+        })
+      }
+    } catch (error) {
+      console.warn('Erreur chargement stock bas:', error)
+    }
   }
 
-  // 2. Échéances dépassées
-  const overdueDebts = await dbSelect<OverdueDebt>(
-    `SELECT 
-       dl.id,
-       dl.contact_id,
-       dl.remaining_debt,
-       dl.updated_at,
-       c.full_name,
-       c.phone,
-       i.due_date,
-       CAST(julianday('now') - julianday(i.due_date) AS INTEGER) as days_overdue
-     FROM debt_ledger dl
-     JOIN clients c ON c.id = dl.contact_id
-     JOIN invoices i ON i.id = dl.invoice_id
-     WHERE dl.status IN ('ACTIVE', 'PARTIAL')
-       AND dl.remaining_debt > 0
-       AND i.due_date IS NOT NULL
-       AND i.due_date < date('now')
-       AND c.id != 'client_walkin'
-     ORDER BY days_overdue DESC
-     LIMIT 10`
-  )
+  // 2. Échéances dépassées (uniquement si toutes les tables existent)
+  if (hasInvoices && hasDebtLedger && hasClients) {
+    try {
+      const overdueDebts = await dbSelect<OverdueDebt>(
+        `SELECT 
+           dl.id,
+           dl.contact_id,
+           dl.remaining_debt,
+           dl.updated_at,
+           c.full_name,
+           c.phone,
+           i.due_date,
+           CAST(julianday('now') - julianday(i.due_date) AS INTEGER) as days_overdue
+         FROM debt_ledger dl
+         JOIN clients c ON c.id = dl.contact_id
+         JOIN invoices i ON i.id = dl.invoice_id
+         WHERE dl.status IN ('ACTIVE', 'PARTIAL')
+           AND dl.remaining_debt > 0
+           AND i.due_date IS NOT NULL
+           AND i.due_date < date('now')
+           AND c.id != 'client_walkin'
+         ORDER BY days_overdue DESC
+         LIMIT 10`
+      )
 
-  const overdueClientIds = new Set<string>()
+      const overdueClientIds = new Set<string>()
 
-  for (const debt of overdueDebts) {
-    overdueClientIds.add(debt.contact_id)
-    notifications.push({
-      id: `overdue-${debt.id}`,
-      type: 'overdue',
-      severity: debt.days_overdue >= OVERDUE_CRITICAL_DAYS ? 'critical' : 'warning',
-      title: 'Échéance dépassée',
-      message: `${debt.full_name} — ${(debt.remaining_debt / 100).toFixed(2)} MAD (${debt.days_overdue}j de retard)`,
-      time: timeAgo(debt.updated_at),
-      createdAt: debt.updated_at,
-      clientId: debt.contact_id,
-      clientName: debt.full_name,
-      phone: debt.phone || undefined,
-      amount: debt.remaining_debt,
-    })
+      for (const debt of overdueDebts) {
+        overdueClientIds.add(debt.contact_id)
+        notifications.push({
+          id: `overdue-${debt.id}`,
+          type: 'overdue',
+          severity: debt.days_overdue >= OVERDUE_CRITICAL_DAYS ? 'critical' : 'warning',
+          title: 'Échéance dépassée',
+          message: `${debt.full_name} — ${(debt.remaining_debt / 100).toFixed(2)} MAD (${debt.days_overdue}j de retard)`,
+          time: timeAgo(debt.updated_at),
+          createdAt: debt.updated_at,
+          clientId: debt.contact_id,
+          clientName: debt.full_name,
+          phone: debt.phone || undefined,
+          amount: debt.remaining_debt,
+        })
+      }
+
+      // 3. Limite de crédit dépassée
+      const overLimitClients = await dbSelect<OverLimitClient>(
+        `SELECT 
+           c.id as contact_id,
+           c.full_name,
+           c.phone,
+           c.credit_limit,
+           SUM(dl.remaining_debt) as total_debt,
+           MAX(dl.updated_at) as updated_at
+         FROM debt_ledger dl
+         JOIN clients c ON c.id = dl.contact_id
+         WHERE dl.status IN ('ACTIVE', 'PARTIAL')
+           AND dl.remaining_debt > 0
+           AND dl.type = 'RECEIVABLE'
+           AND c.id != 'client_walkin'
+           AND c.credit_limit IS NOT NULL
+         GROUP BY c.id
+         HAVING SUM(dl.remaining_debt) > c.credit_limit
+         ORDER BY total_debt DESC
+         LIMIT 10`
+      )
+
+      for (const client of overLimitClients) {
+        if (overdueClientIds.has(client.contact_id)) continue
+        notifications.push({
+          id: `debt-${client.contact_id}`,
+          type: 'debt',
+          severity: 'warning',
+          title: 'Limite de crédit dépassée',
+          message: `${client.full_name} doit ${(client.total_debt / 100).toFixed(2)} MAD (limite ${(client.credit_limit / 100).toFixed(2)} MAD)`,
+          time: timeAgo(client.updated_at),
+          createdAt: client.updated_at,
+          clientId: client.contact_id,
+          clientName: client.full_name,
+          phone: client.phone || undefined,
+          amount: client.total_debt,
+        })
+      }
+    } catch (error) {
+      console.warn('Erreur chargement dettes/échéances:', error)
+    }
   }
 
-  // 3. Limite de crédit dépassée (exclut ceux déjà en échéance)
-  const overLimitClients = await dbSelect<OverLimitClient>(
-    `SELECT 
-       c.id as contact_id,
-       c.full_name,
-       c.phone,
-       c.credit_limit,
-       SUM(dl.remaining_debt) as total_debt,
-       MAX(dl.updated_at) as updated_at
-     FROM debt_ledger dl
-     JOIN clients c ON c.id = dl.contact_id
-     WHERE dl.status IN ('ACTIVE', 'PARTIAL')
-       AND dl.remaining_debt > 0
-       AND dl.type = 'RECEIVABLE'
-       AND c.id != 'client_walkin'
-       AND c.credit_limit IS NOT NULL
-     GROUP BY c.id
-     HAVING SUM(dl.remaining_debt) > c.credit_limit
-     ORDER BY total_debt DESC
-     LIMIT 10`
-  )
-
-  for (const client of overLimitClients) {
-    if (overdueClientIds.has(client.contact_id)) continue
+  // 4. Ajouter les notifications de réinitialisation PIN
+  const pinResetNotifications = getPinResetNotifications()
+  for (const notif of pinResetNotifications) {
     notifications.push({
-      id: `debt-${client.contact_id}`,
-      type: 'debt',
+      id: notif.id,
+      type: 'pin_reset',
       severity: 'warning',
-      title: 'Limite de crédit dépassée',
-      message: `${client.full_name} doit ${(client.total_debt / 100).toFixed(2)} MAD (limite ${(client.credit_limit / 100).toFixed(2)} MAD)`,
-      time: timeAgo(client.updated_at),
-      createdAt: client.updated_at,
-      clientId: client.contact_id,
-      clientName: client.full_name,
-      phone: client.phone || undefined,
-      amount: client.total_debt,
+      title: notif.title,
+      message: notif.message,
+      time: notif.time,
+      createdAt: notif.createdAt,
+      cashierId: notif.cashierId,
+      cashierName: notif.cashierName,
     })
   }
 

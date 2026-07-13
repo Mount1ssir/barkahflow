@@ -30,8 +30,18 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // ─── Chargement initial + écoute des changements ──────────────
   useEffect(() => {
     loadNotifications()
+    
+    // ✅ Écouter l'événement custom pour rafraîchir les notifications
+    const handler = () => {
+      console.log('📢 Événement notifications-changed reçu, rechargement...')
+      loadNotifications()
+    }
+    
+    window.addEventListener('barkahflow:notifications-changed', handler)
+    return () => window.removeEventListener('barkahflow:notifications-changed', handler)
   }, [])
 
   const refresh = async () => {

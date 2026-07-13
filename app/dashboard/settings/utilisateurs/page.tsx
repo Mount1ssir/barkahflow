@@ -5,86 +5,60 @@ import { PERMISSIONS } from '@/lib/rbac'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Plus, Users, UserCheck, UserX, Activity } from 'lucide-react'
-import { getAllUsers, type AppUserRow } from '@/lib/user-data'
+import { ArrowLeft, Plus, Users, Search } from 'lucide-react'
+import { getAllUsers, type AppUserRow, getPresenceStatus } from '@/lib/user-data'
 import { UserListTable } from '@/components/users/UserListTable'
 import { ResetPinDialog } from '@/components/users/ResetPinDialog'
 import { useUserContext } from '@/context/UserContext'
+import { Input } from '@/components/ui/input'
 
-// ─── Couleurs ──────────────────────────────────────────────────────
 const BLUE_MAIN = '#0A2A5E'
-const BLUE = '#3B82F6'
-const BLUE_DARK = '#1D4ED8'
-const BLUE_SOFT = '#93C5FD'
-
-// ─── KPI Card ──────────────────────────────────────────────────────
-interface KpiCardProps {
-  label: string
-  value: number
-  icon: React.ReactNode
-  color: string
-  bgColor: string
-  progress: number
-  delay: number
-  isLoaded: boolean
-}
-
-function KpiCard({ label, value, icon, color, bgColor, progress, delay, isLoaded }: KpiCardProps) {
-  const pct = Math.min(100, Math.max(0, progress))
-  return (
-    <div
-      className="rounded-2xl bg-white dark:bg-zinc-900 border border-gray-100 dark:border-zinc-800 p-5 relative overflow-hidden transition-all duration-700 ease-out"
-      style={{
-        transform: isLoaded ? 'translateY(0)' : 'translateY(-40px)',
-        opacity: isLoaded ? 1 : 0,
-        transitionDelay: `${delay}ms`,
-      }}
-    >
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-3xl font-bold text-gray-800 dark:text-white">{value}</p>
-          <p className="text-xs text-gray-400 mt-0.5">{label}</p>
-        </div>
-        <div className={`p-2.5 rounded-xl ${bgColor}`}>
-          <span style={{ color }}>{icon}</span>
-        </div>
-      </div>
-      <div className="mt-3 h-1 w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-        <div
-          className="h-full rounded-full transition-all duration-1000 ease-out"
-          style={{
-            width: isLoaded ? `${pct}%` : '0%',
-            backgroundColor: color,
-            transitionDelay: `${delay + 200}ms`,
-          }}
-        />
-      </div>
-    </div>
-  )
-}
 
 function UtilisateursSettingsContent() {
   const router = useRouter()
   const { currentUser } = useUserContext()
+  const [, forceUpdate] = useState({})
 
   const [users, setUsers] = useState<AppUserRow[]>([])
+  const [filteredUsers, setFilteredUsers] = useState<AppUserRow[]>([])
   const [loading, setLoading] = useState(true)
   const [resetPinTarget, setResetPinTarget] = useState<AppUserRow | null>(null)
-  const [isLoaded, setIsLoaded] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      forceUpdate({})
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [])
 
   useEffect(() => {
     loadUsers()
-    const timer = setTimeout(() => setIsLoaded(true), 150)
-    return () => clearTimeout(timer)
   }, [])
+
+  // Filtrer les utilisateurs par recherche
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setFilteredUsers(users)
+      return
+    }
+
+    const query = searchQuery.toLowerCase().trim()
+    const filtered = users.filter((user) => {
+      const nameMatch = user.name.toLowerCase().includes(query)
+      const emailMatch = user.email?.toLowerCase().includes(query) || false
+      return nameMatch || emailMatch
+    })
+    setFilteredUsers(filtered)
+  }, [searchQuery, users])
 
   const loadUsers = async () => {
     setLoading(true)
     try {
       const allUsers = await getAllUsers()
-      // ✅ Filtrer : ne garder que les caissiers (role !== 'admin')
       const cashiers = allUsers.filter(u => u.role === 'cashier')
       setUsers(cashiers)
+      setFilteredUsers(cashiers)
     } catch (error) {
       console.error('Erreur chargement utilisateurs:', error)
     } finally {
@@ -92,6 +66,13 @@ function UtilisateursSettingsContent() {
     }
   }
 
+  // 🔥 CORRECTION : Rediriger vers la page de détails de l'utilisateur
+  const handleViewDetails = (user: AppUserRow) => {
+    console.log('🔍 Redirection vers:', `/dashboard/settings/utilisateurs/${user.id}`)
+    router.push(`/dashboard/settings/utilisateurs/${user.id}`)
+  }
+
+  // 🔥 CORRECTION : Rediriger vers la page d'édition
   const handleEdit = (user: AppUserRow) => {
     router.push(`/dashboard/settings/utilisateurs/editer/${user.id}`)
   }
@@ -104,49 +85,11 @@ function UtilisateursSettingsContent() {
     setResetPinTarget(user)
   }
 
-  const totalUsers = users.length
-  const activeUsers = users.filter((u) => u.active).length
-  const inactiveUsers = users.filter((u) => !u.active).length
-  const connectedUsers = 0
-
-  const kpiData = [
-    {
-      label: 'Total caissiers',
-      value: totalUsers,
-      icon: <Users className="h-5 w-5" />,
-      color: BLUE_MAIN,
-      bgColor: 'bg-blue-50 dark:bg-blue-950/20',
-      progress: 100,
-    },
-    {
-      label: 'Actifs',
-      value: activeUsers,
-      icon: <UserCheck className="h-5 w-5" />,
-      color: '#059669',
-      bgColor: 'bg-emerald-50 dark:bg-emerald-950/20',
-      progress: totalUsers > 0 ? (activeUsers / totalUsers) * 100 : 0,
-    },
-    {
-      label: 'Inactifs',
-      value: inactiveUsers,
-      icon: <UserX className="h-5 w-5" />,
-      color: '#6B7280',
-      bgColor: 'bg-gray-50 dark:bg-gray-800/20',
-      progress: totalUsers > 0 ? (inactiveUsers / totalUsers) * 100 : 0,
-    },
-    {
-      label: 'Connectés actuellement',
-      value: connectedUsers,
-      icon: <Activity className="h-5 w-5" />,
-      color: '#0D9488',
-      bgColor: 'bg-teal-50 dark:bg-teal-950/20',
-      progress: totalUsers > 0 ? (connectedUsers / totalUsers) * 100 : 0,
-    },
-  ]
+  const totalUsers = filteredUsers.length
 
   return (
     <div className="max-w-7xl mx-auto p-6">
-      {/* Header */}
+      {/* ─── Header ────────────────────────────────────────────────── */}
       <div className="flex items-center gap-3 mb-6">
         <Button 
           variant="ghost" 
@@ -161,7 +104,7 @@ function UtilisateursSettingsContent() {
             Gestion des caissiers
           </h1>
           <p className="text-sm text-gray-400 mt-0.5">
-            Gérez les caissiers et leurs accès
+            Gérez les caissiers et suivez leur présence en temps réel
           </p>
         </div>
         <Button
@@ -173,41 +116,57 @@ function UtilisateursSettingsContent() {
         </Button>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
-        {kpiData.map((kpi, index) => (
-          <KpiCard
-            key={kpi.label}
-            label={kpi.label}
-            value={kpi.value}
-            icon={kpi.icon}
-            color={kpi.color}
-            bgColor={kpi.bgColor}
-            progress={kpi.progress}
-            delay={index * 100}
-            isLoaded={isLoaded}
+      {/* ─── Total + Barre de recherche ───────────────────────────── */}
+      <div className="flex items-center justify-between gap-4 mb-6 bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 px-5 py-3">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/20">
+            <Users className="h-5 w-5" style={{ color: BLUE_MAIN }} />
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-gray-800 dark:text-white">{totalUsers}</p>
+            <p className="text-xs text-gray-400">
+              {totalUsers === 1 ? 'caissier' : 'caissiers'}
+              {searchQuery && ` (filtré)`}
+            </p>
+          </div>
+        </div>
+
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Input
+            placeholder="Rechercher par nom ou email..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9 rounded-xl bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700 h-10"
           />
-        ))}
+        </div>
       </div>
 
-      {/* User list */}
+      {/* ─── Tableau ────────────────────────────────────────────────── */}
       <UserListTable
-        users={users}
+        users={filteredUsers}
         loading={loading}
         currentAdminId={currentUser?.id || ''}
         onEdit={handleEdit}
-        onViewDetails={() => {}}
+        onViewDetails={handleViewDetails} // 🔥 CORRECTION : fonction passée correctement
         onResetPin={handleResetPin}
         onRefresh={loadUsers}
       />
 
-      {/* Dialog de réinitialisation du PIN */}
       <ResetPinDialog
         open={!!resetPinTarget}
         onOpenChange={() => setResetPinTarget(null)}
         user={resetPinTarget}
         onRefresh={loadUsers}
       />
+
+      <style>{`
+        @keyframes pulse {
+          0% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.4; transform: scale(0.8); }
+          100% { opacity: 1; transform: scale(1); }
+        }
+      `}</style>
     </div>
   )
 }

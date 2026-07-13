@@ -40,6 +40,14 @@ export interface AgedReceivable {
   color: string
 }
 
+export interface DailyRevenuePoint {
+  fullDate: string
+  date: string
+  ventes: number
+  depenses: number
+  solde: number
+}
+
 // ─── Couleurs pour les modes de paiement ─────────────────────────
 const PAYMENT_COLORS: Record<string, string> = {
   cash: '#22C55E',
@@ -382,10 +390,58 @@ export async function addExternalRevenue(params: AddExternalRevenueParams): Prom
   const id = `tx_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
   const now = new Date().toISOString()
 
-  // ✅ Utilisation de datetime('now', 'localtime') pour la date locale
   await dbExecute(
     `INSERT INTO transactions (id, type, amount, source_type, source_id, category, notes, payment_method, transaction_date, created_at)
      VALUES (?, 'INCOME', ?, 'manual', NULL, 'external_revenue', ?, ?, datetime('now', 'localtime'), ?)`,
     [id, params.amount, params.description || null, params.paymentMethod, now]
   )
+}
+
+// ─── 7. Données journalières pour le graphique (Ventes / Dépenses / Solde net) ───
+// Utilisée par la page Dépenses pour le graphique "Chiffre d'affaires net".
+// IMPORTANT : on utilise date(transaction_date) SANS 'localtime' ici, car
+// transaction_date est stocké soit comme 'YYYY-MM-DD' (dépenses manuelles,
+// venant d'un <input type="date">), soit comme ISO string (factures/revenus
+// externes). Appliquer 'localtime' sur une date sans heure la traiterait à
+// tort comme un instant UTC et la décalerait d'un jour selon le fuseau du
+// serveur — ce qui faisait sortir les nouvelles dépenses de la fenêtre
+// affichée par le graphique.
+export async function getRevenueChartData(
+  offsetDays: number = 0,
+  days: number = 7
+): Promise<DailyRevenuePoint[]> {
+  const result: DailyRevenuePoint[] = []
+  const today = new Date()
+
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(today)
+    d.setDate(d.getDate() - i - offsetDays)
+    const dayStr = formatLocalDate(d)
+
+    const incomeRows = await dbSelect<{ total: number }>(
+      `SELECT COALESCE(SUM(amount), 0) as total
+       FROM transactions
+       WHERE type = 'INCOME' AND date(transaction_date) = date(?)`,
+      [dayStr]
+    )
+    const expenseRows = await dbSelect<{ total: number }>(
+      `SELECT COALESCE(SUM(amount), 0) as total
+       FROM transactions
+       WHERE type = 'EXPENSE' AND date(transaction_date) = date(?)`,
+      [dayStr]
+    )
+
+    const ventes = (incomeRows[0]?.total || 0) / 100
+    const depenses = (expenseRows[0]?.total || 0) / 100
+
+    result.push({
+      fullDate: dayStr,
+      date: d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' }),
+      ventes,
+      depenses,
+      solde: ventes - depenses,
+    })
+  }
+
+  return result
 }

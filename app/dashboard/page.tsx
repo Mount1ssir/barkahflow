@@ -13,16 +13,16 @@ import { TopProducts } from '@/components/dashboard/top-products'
 import { SalesDistribution } from '@/components/dashboard/sales-distribution'
 import { RecentInvoices } from '@/components/dashboard/recent-invoices'
 import { InsightToast } from '@/components/dashboard/insight-toast'
-import { LayoutDashboard } from 'lucide-react'  // ← AJOUTÉ
+import { LayoutDashboard } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 
 function DashboardContent() {
   const { currentUser } = useUserContext()
+  const router = useRouter()
   
-  // Vérification des permissions du tableau de bord
   const canViewStats = usePermission(PERMISSIONS.DASHBOARD_VIEW_STATS)
   const canViewCharts = usePermission(PERMISSIONS.DASHBOARD_VIEW_CHARTS)
 
-  // Si l'utilisateur n'a ni stats ni graphiques, afficher un message
   if (!canViewStats && !canViewCharts) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center max-w-7xl mx-auto">
@@ -39,6 +39,12 @@ function DashboardContent() {
     )
   }
 
+  // 🔥 Gestionnaire pour l'action "Nouvelle facture"
+  const handleInvoiceClick = () => {
+    // Redirection directe vers les factures sans message
+    router.push('/dashboard/factures')
+  }
+
   return (
     <div className="flex flex-col gap-6 max-w-7xl mx-auto w-full relative">
       <InsightToast />
@@ -48,7 +54,7 @@ function DashboardContent() {
       {canViewStats && (
         <>
           <Stats />
-          <QuickActions />
+          <QuickActions onInvoiceClick={handleInvoiceClick} />
         </>
       )}
 

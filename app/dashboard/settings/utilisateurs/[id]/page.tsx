@@ -7,7 +7,6 @@ import { PERMISSIONS } from '@/lib/rbac'
 import { Guard } from '@/components/rbac/Guard'
 import { getUserById, type AppUserRow } from '@/lib/user-data'
 import { getInvoicesByUser, type Invoice } from '@/lib/invoice-data'
-import { StatusDot } from '@/components/users/StatusDot'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -18,7 +17,7 @@ import { cn } from '@/lib/utils'
 // ─── Couleurs ──────────────────────────────────────────────────────
 const BLUE = '#3B82F6'
 const BLUE_DARK = '#1D4ED8'
-const ONLINE_GREEN = '#31A24C' // Vert Messenger/WhatsApp
+const ONLINE_GREEN = '#31A24C'
 
 function UserDetailsPage() {
   const router = useRouter()
@@ -111,24 +110,68 @@ function UserDetailsPage() {
     } catch { return 'Date invalide' }
   }
 
-  const formatRelative = (date: string | null) => {
-    if (!date) return 'Jamais'
+  // ─── Format "Dernière connexion : il y a X ..." comme WhatsApp ───
+  const formatLastSeen = (date: string | null): string => {
+    if (!date) return 'Jamais connecté'
+    
     try {
       const d = new Date(date)
       const now = new Date()
-      const time = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-      if (d.toDateString() === now.toDateString()) return `Aujourd'hui ${time}`
-      const yesterday = new Date(now)
-      yesterday.setDate(now.getDate() - 1)
-      if (d.toDateString() === yesterday.toDateString()) return `Hier ${time}`
-      return `${d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })} ${time}`
-    } catch { return 'Date invalide' }
+      const diffMs = now.getTime() - d.getTime()
+      const diffSec = Math.floor(diffMs / 1000)
+      const diffMin = Math.floor(diffSec / 60)
+      const diffHours = Math.floor(diffMin / 60)
+      const diffDays = Math.floor(diffHours / 24)
+
+      // Moins d'1 minute
+      if (diffSec < 60) {
+        return 'Dernière connexion : à l\'instant'
+      }
+      
+      // Moins d'1 heure
+      if (diffMin < 60) {
+        return `Dernière connexion : il y a ${diffMin} minute${diffMin > 1 ? 's' : ''}`
+      }
+      
+      // Moins de 24 heures
+      if (diffHours < 24) {
+        return `Dernière connexion : il y a ${diffHours} heure${diffHours > 1 ? 's' : ''}`
+      }
+      
+      // Moins de 48 heures (hier)
+      if (diffDays === 1) {
+        const time = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+        return `Dernière connexion : hier à ${time}`
+      }
+      
+      // Plus de 2 jours
+      return `Dernière connexion : ${d.toLocaleDateString('fr-FR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })}`
+      
+    } catch {
+      return 'Date invalide'
+    }
   }
 
-  const formatTime = (date: string) => {
-    try { return new Date(date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) }
-    catch { return '--:--' }
+  // Vérifier si l'utilisateur est en ligne (moins de 5 minutes)
+  const isOnline = (): boolean => {
+    if (!user.lastActivity) return false
+    try {
+      const lastActivity = new Date(user.lastActivity).getTime()
+      const now = Date.now()
+      const diffSeconds = (now - lastActivity) / 1000
+      return diffSeconds < 300 // 5 minutes
+    } catch {
+      return false
+    }
   }
+
+  const online = isOnline()
 
   return (
     <div className="max-w-4xl mx-auto p-6">
@@ -162,43 +205,31 @@ function UserDetailsPage() {
       {/* ─── Profil ────────────────────────────────────────────────── */}
       <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 p-6 mb-6">
         <div className="flex items-start gap-6">
-          <div className="relative">
-            <Avatar className="h-20 w-20">
-              {user.avatarUrl && <AvatarImage src={user.avatarUrl} />}
-              <AvatarFallback
-                className="text-2xl font-bold text-white"
-                style={{
-                  background: isAdmin
-                    ? 'linear-gradient(135deg, #f59e0b, #d97706)'
-                    : `linear-gradient(135deg, ${BLUE_DARK}, ${BLUE})`,
-                }}
-              >
-                {initials}
-              </AvatarFallback>
-            </Avatar>
-            {/* ─── StatusDot WhatsApp style ─────────────────────────── */}
-            {user.active && (
-              <StatusDot active={user.active} size="lg" pulse />
-            )}
-          </div>
+          <Avatar className="h-20 w-20">
+            {user.avatarUrl && <AvatarImage src={user.avatarUrl} />}
+            <AvatarFallback
+              className="text-2xl font-bold text-white"
+              style={{
+                background: isAdmin
+                  ? 'linear-gradient(135deg, #f59e0b, #d97706)'
+                  : `linear-gradient(135deg, ${BLUE_DARK}, ${BLUE})`,
+              }}
+            >
+              {initials}
+            </AvatarFallback>
+          </Avatar>
           <div className="flex-1">
             <h2 className="text-xl font-bold text-gray-900 dark:text-white">{user.name}</h2>
 
-            {/* ─── Statut en ligne / dernière connexion, style WhatsApp ── */}
-            <p className="text-xs mt-0.5 flex items-center gap-1.5">
-              {user.active ? (
-                <>
-                  <span
-                    className="inline-block h-2 w-2 rounded-full"
-                    style={{ backgroundColor: ONLINE_GREEN }}
-                  />
-                  <span className="font-medium" style={{ color: ONLINE_GREEN }}>
-                    En ligne
-                  </span>
-                </>
+            {/* ─── Statut comme WhatsApp ─────────────────────────────── */}
+            <p className="text-xs mt-0.5">
+              {online ? (
+                <span className="font-medium" style={{ color: ONLINE_GREEN }}>
+                  En ligne
+                </span>
               ) : (
                 <span className="text-gray-400">
-                  Vu {formatRelative(user.lastLogin).toLowerCase()}
+                  {formatLastSeen(user.lastActivity)}
                 </span>
               )}
             </p>
@@ -253,7 +284,9 @@ function UserDetailsPage() {
         </div>
         <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 p-4 text-center">
           <p className="text-xs text-gray-400 uppercase tracking-wider font-medium">Dernière connexion</p>
-          <p className="text-sm font-semibold text-gray-900 dark:text-white mt-1">{formatRelative(user.lastLogin)}</p>
+          <p className="text-sm font-semibold text-gray-900 dark:text-white mt-1">
+            {online ? 'En ligne' : formatDate(user.lastLogin)}
+          </p>
         </div>
       </div>
 

@@ -7,6 +7,12 @@
  *  - admin   : linked to Supabase (pin_hash = NULL, supabase_uid = <uid>)
  *  - cashier : local-only (pin_hash = SHA-256 of PIN, no Supabase uid)
  *
+ * Présence (is_online) :
+ *  - Mise à jour de façon EXPLICITE (login réussi → 1, changement de
+ *    profil/déconnexion → 0 via markUserOffline), avec un garde-fou basé
+ *    sur last_activity au cas où l'app crash sans jamais appeler
+ *    markUserOffline (ex: coupure de courant).
+ *
  * PIN lockout (cashiers only):
  *  - 3 failed attempts  → soft lock, 30 seconds
  *  - 5 failed attempts  → hard lock, 5 minutes, AND a temp code is emailed
@@ -19,6 +25,7 @@
 import { dbSelect, dbExecute } from '@/src/lib/db'
 import { supabase } from '@/src/lib/supabase'
 import { DEFAULT_CASHIER_PERMISSIONS, type Permission } from '@/lib/rbac'
+import { nowLocal, parseFlexibleTimestamp } from '@/lib/datetime'
 
 // ─── Lockout tuning ─────────────────────────────────────────────────────────
 
@@ -43,6 +50,8 @@ export interface AppUserRow {
   failedPinAttempts: number
   lockedUntil: string | null
   lastLogin: string | null
+  lastActivity: string | null
+  isOnline: boolean
   createdAt: string
   updatedAt: string
 }
@@ -87,6 +96,8 @@ function mapRow(row: any): AppUserRow {
     failedPinAttempts: row.failed_pin_attempts ?? 0,
     lockedUntil: row.locked_until ?? null,
     lastLogin: row.last_login ?? null,
+    lastActivity: row.last_activity ?? null,
+    isOnline: row.is_online === 1 || row.is_online === true,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -152,17 +163,19 @@ export async function upsertAdminFromSupabase(supabaseUser: {
 }): Promise<AppUserRow> {
   const existing = await getUserBySupabaseUid(supabaseUser.id)
   if (existing) {
+    const ts = nowLocal()
     await dbExecute(
       `UPDATE users SET
          name       = ?,
          email      = ?,
          avatar_url = ?,
-         updated_at = datetime('now')
+         updated_at = ?
        WHERE supabase_uid = ?`,
       [
         supabaseUser.user_metadata?.full_name || existing.name,
         supabaseUser.email || existing.email,
         supabaseUser.user_metadata?.avatar_url || existing.avatarUrl,
+        ts,
         supabaseUser.id,
       ]
     )
@@ -170,15 +183,12 @@ export async function upsertAdminFromSupabase(supabaseUser: {
   }
 
   const id = generateId()
-  const now = new Date().toISOString()
-  
-  // ✅ Pour l'admin, on met une valeur fictive dans pin_hash
-  // car la colonne a une contrainte NOT NULL dans le schéma actuel
+  const ts = nowLocal()
   const adminPinPlaceholder = 'admin_placeholder'
-  
+
   await dbExecute(
-    `INSERT INTO users (id, name, email, phone, role, active, permissions, avatar_url, supabase_uid, pin_hash, failed_pin_attempts, locked_until, last_login, created_at, updated_at)
-     VALUES (?, ?, ?, NULL, 'admin', 1, '[]', ?, ?, ?, 0, NULL, NULL, ?, ?)`,
+    `INSERT INTO users (id, name, email, phone, role, active, permissions, avatar_url, supabase_uid, pin_hash, failed_pin_attempts, locked_until, last_login, is_online, created_at, updated_at)
+     VALUES (?, ?, ?, NULL, 'admin', 1, '[]', ?, ?, ?, 0, NULL, NULL, 0, ?, ?)`,
     [
       id,
       supabaseUser.user_metadata?.full_name || supabaseUser.email || 'Admin',
@@ -186,8 +196,8 @@ export async function upsertAdminFromSupabase(supabaseUser: {
       supabaseUser.user_metadata?.avatar_url || null,
       supabaseUser.id,
       adminPinPlaceholder,
-      now,
-      now,
+      ts,
+      ts,
     ]
   )
   return (await getUserById(id))!
@@ -197,7 +207,7 @@ export async function upsertAdminFromSupabase(supabaseUser: {
 
 export interface CreateCashierInput {
   name: string
-  pin: string                        // plain-text, will be hashed
+  pin: string
   email?: string | null
   phone?: string | null
   avatarUrl?: string | null
@@ -214,12 +224,12 @@ export async function createCashier(input: CreateCashierInput): Promise<AppUserR
 
   const pinHash = await sha256(input.pin)
   const id = generateId()
-  const now = new Date().toISOString()
+  const ts = nowLocal()
   const permissions = input.permissions ?? DEFAULT_CASHIER_PERMISSIONS
 
   await dbExecute(
-    `INSERT INTO users (id, name, email, phone, role, active, permissions, avatar_url, supabase_uid, pin_hash, failed_pin_attempts, locked_until, last_login, created_at, updated_at)
-     VALUES (?, ?, ?, ?, 'cashier', 1, ?, ?, NULL, ?, 0, NULL, NULL, ?, ?)`,
+    `INSERT INTO users (id, name, email, phone, role, active, permissions, avatar_url, supabase_uid, pin_hash, failed_pin_attempts, locked_until, last_login, is_online, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'cashier', 1, ?, ?, NULL, ?, 0, NULL, NULL, 0, ?, ?)`,
     [
       id,
       input.name.trim(),
@@ -228,8 +238,8 @@ export async function createCashier(input: CreateCashierInput): Promise<AppUserR
       JSON.stringify(permissions),
       input.avatarUrl || null,
       pinHash,
-      now,
-      now,
+      ts,
+      ts,
     ]
   )
 
@@ -239,7 +249,7 @@ export async function createCashier(input: CreateCashierInput): Promise<AppUserR
 export interface UpdateCashierInput {
   name?: string
   email?: string | null
-  pin?: string | null                // if provided, update the PIN
+  pin?: string | null
   phone?: string | null
   avatarUrl?: string | null
   permissions?: Permission[]
@@ -284,14 +294,15 @@ export async function updateCashier(id: string, input: UpdateCashierInput): Prom
     const pinHash = await sha256(input.pin)
     fields.push('pin_hash = ?')
     values.push(pinHash)
-    // Changing the PIN also clears any active lockout
     fields.push('failed_pin_attempts = 0')
     fields.push('locked_until = NULL')
   }
 
   if (fields.length === 0) return current
 
-  fields.push("updated_at = datetime('now')")
+  const ts = nowLocal()
+  fields.push('updated_at = ?')
+  values.push(ts)
   values.push(id)
 
   await dbExecute(
@@ -306,13 +317,12 @@ export async function deactivateCashier(id: string): Promise<void> {
   if (!current) throw new Error('Utilisateur introuvable')
   if (current.role === 'admin') throw new Error('Impossible de désactiver le compte admin')
 
+  const ts = nowLocal()
   await dbExecute(
-    `UPDATE users SET active = 0, updated_at = datetime('now') WHERE id = ?`,
-    [id]
+    `UPDATE users SET active = 0, is_online = 0, last_activity = ?, updated_at = ? WHERE id = ?`,
+    [ts, ts, id]
   )
 }
-
-// ─── NOUVELLE FONCTION: Supprimer un caissier ──────────────────────────────
 
 export async function deleteCashier(id: string): Promise<void> {
   const current = await getUserById(id)
@@ -325,32 +335,24 @@ export async function deleteCashier(id: string): Promise<void> {
   )
 }
 
-// ─── NOUVELLE FONCTION: Mettre à jour lastLogin ─────────────────────────────
-
 export async function updateLastLogin(id: string): Promise<void> {
+  const ts = nowLocal()
   await dbExecute(
-    `UPDATE users SET last_login = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
-    [id]
+    `UPDATE users SET last_login = ?, updated_at = ? WHERE id = ?`,
+    [ts, ts, id]
   )
 }
 
-// ─── PIN verification + lockout (per-user, DB-backed) ─────────────────────────
+// ─── PIN verification + lockout ─────────────────────────────────────────────
 
-/**
- * Verifies a cashier's PIN. Handles the full lockout lifecycle:
- *  - checks for an existing lock before even looking at the PIN
- *  - on failure, increments the counter and applies the appropriate tier
- *  - on success, resets the counter
- */
 export async function verifyCashierPin(userId: string, pin: string): Promise<VerifyPinResult> {
   const user = await getUserById(userId)
   if (!user || !user.active || !user.pinHash) {
     return { status: 'invalid', remainingAttempts: 0 }
   }
 
-  // Already locked?
   if (user.lockedUntil) {
-    const lockedUntilMs = new Date(user.lockedUntil).getTime()
+    const lockedUntilMs = parseFlexibleTimestamp(user.lockedUntil)
     const remaining = Math.ceil((lockedUntilMs - Date.now()) / 1000)
     if (remaining > 0) {
       return {
@@ -359,37 +361,41 @@ export async function verifyCashierPin(userId: string, pin: string): Promise<Ver
         remainingSeconds: remaining,
       }
     }
-    // Lock expired naturally — fall through and let this attempt count fresh
   }
 
   const inputHash = await sha256(pin)
 
   if (inputHash === user.pinHash) {
+    // Connexion réussie : marquage explicite "en ligne", en heure LOCALE
+    // pour rester cohérent avec le calcul de présence côté client.
+    const ts = nowLocal()
     await dbExecute(
-      `UPDATE users SET failed_pin_attempts = 0, locked_until = NULL, last_login = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
-      [userId]
+      `UPDATE users SET failed_pin_attempts = 0, locked_until = NULL, last_login = ?, last_activity = ?, is_online = 1, updated_at = ? WHERE id = ?`,
+      [ts, ts, ts, userId]
     )
-    return { status: 'success', user }
+    return { status: 'success', user: { ...user, isOnline: true, lastActivity: ts } }
   }
 
-  // Wrong PIN — increment and apply tier
   const newAttempts = user.failedPinAttempts + 1
   let lockedUntil: string | null = null
   let lockType: 'soft' | 'hard' | null = null
   let emailSent = false
 
   if (newAttempts >= HARD_LOCK_THRESHOLD) {
-    lockedUntil = new Date(Date.now() + HARD_LOCK_SECONDS * 1000).toISOString()
+    const lockUntilDate = new Date(Date.now() + HARD_LOCK_SECONDS * 1000)
+    lockedUntil = nowLocal()
     lockType = 'hard'
     emailSent = await sendCashierUnlockEmail()
   } else if (newAttempts >= SOFT_LOCK_THRESHOLD) {
-    lockedUntil = new Date(Date.now() + SOFT_LOCK_SECONDS * 1000).toISOString()
+    const lockUntilDate = new Date(Date.now() + SOFT_LOCK_SECONDS * 1000)
+    lockedUntil = nowLocal()
     lockType = 'soft'
   }
 
+  const ts = nowLocal()
   await dbExecute(
-    `UPDATE users SET failed_pin_attempts = ?, locked_until = ?, updated_at = datetime('now') WHERE id = ?`,
-    [newAttempts, lockedUntil, userId]
+    `UPDATE users SET failed_pin_attempts = ?, locked_until = ?, updated_at = ? WHERE id = ?`,
+    [newAttempts, lockedUntil, ts, userId]
   )
 
   if (lockType) {
@@ -408,10 +414,26 @@ export async function verifyCashierPin(userId: string, pin: string): Promise<Ver
 }
 
 /**
- * Verifies the temp code the admin received by email and, if valid,
- * clears the lockout on the given cashier so they can retry their own PIN.
- * Does NOT change the cashier's pin_hash.
+ * ⚠️ Appelé par UserContext.setCurrentUser dès qu'on quitte le profil
+ * d'un caissier (changement de profil, retour admin, ou déconnexion).
+ * C'est ce qui corrige le bug de présence qui restait figée sur "en ligne".
  */
+export async function markUserOffline(userId: string): Promise<void> {
+  const ts = nowLocal()
+  await dbExecute(
+    `UPDATE users SET is_online = 0, last_activity = ?, updated_at = ? WHERE id = ?`,
+    [ts, ts, userId]
+  )
+}
+
+export async function markUserOnline(userId: string): Promise<void> {
+  const ts = nowLocal()
+  await dbExecute(
+    `UPDATE users SET is_online = 1, last_activity = ?, updated_at = ? WHERE id = ?`,
+    [ts, ts, userId]
+  )
+}
+
 export async function unlockCashierWithEmailCode(
   userId: string,
   code: string
@@ -435,9 +457,10 @@ export async function unlockCashierWithEmailCode(
     const user = await getUserById(userId)
     if (!user) return { success: false, error: 'Utilisateur introuvable' }
 
+    const ts = nowLocal()
     await dbExecute(
-      `UPDATE users SET failed_pin_attempts = 0, locked_until = NULL, updated_at = datetime('now') WHERE id = ?`,
-      [userId]
+      `UPDATE users SET failed_pin_attempts = 0, locked_until = NULL, updated_at = ? WHERE id = ?`,
+      [ts, userId]
     )
 
     return { success: true }
@@ -446,9 +469,6 @@ export async function unlockCashierWithEmailCode(
   }
 }
 
-/**
- * Returns all active cashiers (for the user-switch screen).
- */
 export async function getActiveCashiers(): Promise<AppUserRow[]> {
   const rows = await dbSelect<any>(
     `SELECT * FROM users WHERE role = 'cashier' AND active = 1 ORDER BY name ASC`
@@ -456,22 +476,10 @@ export async function getActiveCashiers(): Promise<AppUserRow[]> {
   return rows.map(mapRow)
 }
 
-// ─── NOUVEAU : Flux "PIN oublié" volontaire (pas seulement après hard-lock) ──
-
-/**
- * Déclenche volontairement l'envoi du code de réinitialisation à l'admin,
- * via le lien "PIN oublié ?" (indépendamment d'un hard-lock automatique).
- * Réutilise le même mécanisme que sendCashierUnlockEmail.
- */
 export async function requestCashierPinResetEmail(): Promise<boolean> {
   return sendCashierUnlockEmail()
 }
 
-/**
- * Vérifie le code reçu par l'admin, sans toucher au verrouillage ni au PIN.
- * Première étape du flux "PIN oublié" volontaire — si valide, l'appelant
- * doit ensuite proposer au caissier de définir un nouveau PIN via updateCashier.
- */
 export async function verifyCashierResetCode(
   code: string
 ): Promise<{ success: boolean; error?: string }> {
@@ -497,14 +505,6 @@ export async function verifyCashierResetCode(
   }
 }
 
-// ─── NOUVELLE FONCTION: Changer son propre PIN (self-service) ──────────────
-
-/**
- * Permet à un caissier de changer lui-même son PIN, à condition de
- * connaître l'ancien. Contrairement à updateCashier (réservé à l'admin,
- * pas de vérification de l'ancien PIN), cette fonction est destinée à
- * être appelée depuis la page "Mon profil" du caissier lui-même.
- */
 export async function changeCashierOwnPin(
   userId: string,
   oldPin: string,
@@ -525,10 +525,162 @@ export async function changeCashierOwnPin(
   }
 
   const newHash = await sha256(newPin)
+  const ts = nowLocal()
   await dbExecute(
-    `UPDATE users SET pin_hash = ?, failed_pin_attempts = 0, locked_until = NULL, updated_at = datetime('now') WHERE id = ?`,
-    [newHash, userId]
+    `UPDATE users SET pin_hash = ?, failed_pin_attempts = 0, locked_until = NULL, updated_at = ? WHERE id = ?`,
+    [newHash, ts, userId]
   )
 
   return { success: true }
+}
+
+export async function resetCashierPin(cashierId: string, newPin: string): Promise<{ success: boolean; error?: string }> {
+  const user = await getUserById(cashierId)
+  if (!user) {
+    return { success: false, error: 'Utilisateur introuvable' }
+  }
+  if (user.role !== 'cashier') {
+    return { success: false, error: 'Seul un caissier peut avoir son PIN réinitialisé' }
+  }
+
+  if (!/^\d{4,6}$/.test(newPin)) {
+    return { success: false, error: 'Le PIN doit contenir entre 4 et 6 chiffres' }
+  }
+
+  try {
+    const newHash = await sha256(newPin)
+    const ts = nowLocal()
+
+    await dbExecute(
+      `UPDATE users SET 
+         pin_hash = ?, 
+         failed_pin_attempts = 0, 
+         locked_until = NULL, 
+         updated_at = ? 
+       WHERE id = ?`,
+      [newHash, ts, cashierId]
+    )
+
+    return { success: true }
+  } catch (error: any) {
+    console.error('Erreur réinitialisation PIN:', error)
+    return { success: false, error: error?.message || 'Erreur lors de la réinitialisation du PIN' }
+  }
+}
+
+// ─── PRÉSENCE DES CAISSIERS ───────────────────────────────────────────────────
+
+export type PresenceStatus = 'online' | 'offline'
+
+const STALE_ONLINE_SECONDS = 300 // garde-fou : "en ligne" en DB mais inactif depuis 5min -> hors ligne
+
+export function getPresenceStatus(user: Pick<AppUserRow, 'isOnline' | 'lastActivity'>): PresenceStatus {
+  if (!user.isOnline) return 'offline'
+  if (!user.lastActivity) return 'offline'
+  const diffSeconds = (Date.now() - parseFlexibleTimestamp(user.lastActivity)) / 1000
+  if (diffSeconds > STALE_ONLINE_SECONDS) return 'offline'
+  return 'online'
+}
+
+export function getPresenceColor(status: PresenceStatus): string {
+  return status === 'online' ? '#22C55E' : '#6B7280'
+}
+
+/** Texte "dernière connexion" — seule info de présence affichée dans la table */
+export function getLastConnectionText(user: Pick<AppUserRow, 'isOnline' | 'lastActivity'>): string {
+  const status = getPresenceStatus(user)
+  if (status === 'online') return 'En ligne maintenant'
+
+  if (!user.lastActivity) return 'Jamais connecté'
+
+  const diffSeconds = Math.floor((Date.now() - parseFlexibleTimestamp(user.lastActivity)) / 1000)
+  if (diffSeconds < 60) return "Il y a moins d'1 minute"
+
+  const diffMinutes = Math.floor(diffSeconds / 60)
+  if (diffMinutes < 60) return `Il y a ${diffMinutes} minute${diffMinutes > 1 ? 's' : ''}`
+
+  const diffHours = Math.floor(diffMinutes / 60)
+  if (diffHours < 24) return `Il y a ${diffHours} heure${diffHours > 1 ? 's' : ''}`
+
+  const diffDays = Math.floor(diffHours / 24)
+  return `Il y a ${diffDays} jour${diffDays > 1 ? 's' : ''}`
+}
+
+export async function updateLastActivity(userId: string): Promise<void> {
+  const ts = nowLocal()
+  await dbExecute(
+    `UPDATE users SET last_activity = ?, updated_at = ? WHERE id = ?`,
+    [ts, ts, userId]
+  )
+}
+
+// ─── CASHIER SETTINGS PERSISTENCE ──────────────────────────────────────────
+// Ces fonctions permettent de sauvegarder et récupérer les préférences
+// des caissiers (thème, langue, paramètres d'affichage, etc.)
+// Les données sont persistées dans la table `cashier_settings`.
+
+import { 
+  getCashierSettings as getCashierSettingsFromDb,
+  setCashierSetting as setCashierSettingInDb,
+  setCashierSettings as setCashierSettingsInDb,
+  getCashierSetting as getCashierSettingFromDb,
+  deleteCashierSetting as deleteCashierSettingFromDb
+} from './cashier-settings'
+
+/**
+ * Sauvegarde toutes les préférences d'un caissier
+ * @param userId - ID du caissier
+ * @param preferences - Objet contenant les paires clé/valeur des préférences
+ */
+export async function saveCashierPreferences(userId: string, preferences: Record<string, string>): Promise<void> {
+  await setCashierSettingsInDb(userId, preferences)
+}
+
+/**
+ * Récupère toutes les préférences d'un caissier
+ * @param userId - ID du caissier
+ * @returns Objet contenant les paires clé/valeur des préférences
+ */
+export async function getCashierPreferences(userId: string): Promise<Record<string, string>> {
+  return await getCashierSettingsFromDb(userId)
+}
+
+/**
+ * Sauvegarde une préférence individuelle d'un caissier
+ * @param userId - ID du caissier
+ * @param key - Clé de la préférence
+ * @param value - Valeur de la préférence
+ */
+export async function saveCashierPreference(userId: string, key: string, value: string): Promise<void> {
+  await setCashierSettingInDb(userId, key, value)
+}
+
+/**
+ * Récupère une préférence individuelle d'un caissier
+ * @param userId - ID du caissier
+ * @param key - Clé de la préférence
+ * @returns La valeur de la préférence ou null si non trouvée
+ */
+export async function getCashierPreference(userId: string, key: string): Promise<string | null> {
+  return await getCashierSettingFromDb(userId, key)
+}
+
+/**
+ * Supprime une préférence d'un caissier
+ * @param userId - ID du caissier
+ * @param key - Clé de la préférence à supprimer
+ */
+export async function deleteCashierPreference(userId: string, key: string): Promise<void> {
+  await deleteCashierSettingFromDb(userId, key)
+}
+
+/**
+ * Supprime toutes les préférences d'un caissier
+ * @param userId - ID du caissier
+ */
+export async function deleteAllCashierPreferences(userId: string): Promise<void> {
+  await dbExecute(
+    `DELETE FROM cashier_settings WHERE user_id = ?`,
+    [userId]
+  )
 }

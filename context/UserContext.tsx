@@ -9,21 +9,16 @@
  * the admin (identified via Supabase session) or a cashier (identified by
  * their local PIN login).
  *
- * This context is the single source of truth consumed by all components
- * and permission guards. It replaces the scattered `setUser(data.user)` calls.
- *
- * NOTE: The admin bootstrap (Supabase session → upsertAdminFromSupabase →
- * setCurrentUser) and the cashier restore-on-refresh logic both live in
- * app/dashboard/layout.tsx (DashboardContent's initSession). This context
- * only restores a LOCAL session on mount (for cases outside the dashboard
- * layout's own effect, or a quick re-render before it runs) — it does not
- * duplicate the Supabase bootstrap to avoid two competing init flows.
+ * Ce contexte est le point de passage unique pour tout changement de
+ * profil actif : c'est ici, et pas dans les écrans de PIN, qu'on marque
+ * un caissier "hors ligne" dès qu'on le quitte — ce qui corrige le bug
+ * de présence qui restait figée sur "en ligne/actif".
  */
 
-import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, useEffect, useRef, type ReactNode } from 'react'
 import type { Permission } from '@/lib/rbac'
 import { hasPermission } from '@/lib/rbac'
-import { getUserById } from '@/lib/user-data'
+import { getUserById, markUserOffline, markUserOnline } from '@/lib/user-data'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -35,8 +30,8 @@ export interface AppUser {
   avatarUrl: string | null
   role: 'admin' | 'cashier'
   permissions: Permission[]
-  active: boolean  // ← AJOUTÉ
-  supabaseUser?: any   // populated for admin only
+  active: boolean
+  supabaseUser?: any
 }
 
 interface UserContextValue {
@@ -44,16 +39,8 @@ interface UserContextValue {
   isLoading: boolean
   setCurrentUser: (user: AppUser | null) => void
   setIsLoading: (loading: boolean) => void
-  /**
-   * Returns true if the active user has the given permission.
-   * Admins always return true regardless of the permission key.
-   */
   can: (permission: Permission) => boolean
-  /**
-   * Returns true if the active user's role matches.
-   */
   isRole: (role: 'admin' | 'cashier') => boolean
-  /** Clears the active session (used on logout or user switch). */
   clearUser: () => void
 }
 
@@ -66,13 +53,8 @@ const UserContext = createContext<UserContextValue | null>(null)
 export function UserProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUserState] = useState<AppUser | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const previousUserRef = useRef<AppUser | null>(null)
 
-  // ─── Restore a local session on mount ───────────────────────────────────
-  // Reads the last active user id from sessionStorage and reloads their
-  // row from SQLite. If the user was deactivated in the meantime (or the
-  // id is stale), the stored session is cleared. If nothing is stored,
-  // this is a no-op — DashboardLayout's initSession is responsible for
-  // resolving the admin from the Supabase session in that case.
   useEffect(() => {
     const savedId = sessionStorage.getItem('barkahflow_active_user_id')
 
@@ -88,7 +70,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         if (cancelled) return
 
         if (row && row.active) {
-          setCurrentUserState({
+          const restored: AppUser = {
             id: row.id,
             name: row.name,
             email: row.email,
@@ -96,8 +78,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
             avatarUrl: row.avatarUrl,
             role: row.role,
             permissions: row.permissions,
-            active: row.active,  // ← AJOUTÉ
-          })
+            active: row.active,
+          }
+          previousUserRef.current = restored
+          setCurrentUserState(restored)
         } else {
           sessionStorage.removeItem('barkahflow_active_user_id')
           sessionStorage.removeItem('barkahflow_active_user_role')
@@ -117,9 +101,22 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const setCurrentUser = useCallback((user: AppUser | null) => {
+    const previous = previousUserRef.current
+
+    // ⚠️ Correction du bug de présence figée : dès qu'on quitte le profil
+    // d'un caissier (vers un autre profil ou vers rien), il est marqué
+    // hors-ligne immédiatement en base.
+    if (previous && previous.role === 'cashier' && previous.id !== user?.id) {
+      markUserOffline(previous.id).catch(() => {})
+    }
+
+    if (user && user.role === 'cashier' && previous?.id !== user.id) {
+      markUserOnline(user.id).catch(() => {})
+    }
+
+    previousUserRef.current = user
     setCurrentUserState(user)
-    // Persist the active user's ID in sessionStorage so a page refresh
-    // can restore context without requiring a new PIN entry.
+
     if (user) {
       sessionStorage.setItem('barkahflow_active_user_id', user.id)
       sessionStorage.setItem('barkahflow_active_user_role', user.role)
@@ -130,6 +127,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const clearUser = useCallback(() => {
+    const previous = previousUserRef.current
+    if (previous && previous.role === 'cashier') {
+      markUserOffline(previous.id).catch(() => {})
+    }
+    previousUserRef.current = null
     setCurrentUserState(null)
     sessionStorage.removeItem('barkahflow_active_user_id')
     sessionStorage.removeItem('barkahflow_active_user_role')

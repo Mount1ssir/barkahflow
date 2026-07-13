@@ -9,6 +9,22 @@
     "sql:allow-execute",
     "sql:allow-select",
     "sql:allow-load",
-    "shell:allow-open"
+    "shell:allow-open",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "https://world.openfoodfacts.org/*" },
+        { "url": "https://images.openfoodfacts.org/*" },
+        { "url": "https://static.openfoodfacts.org/*" },
+
+        { "url": "https://world.openproductsfacts.org/*" },
+        { "url": "https://images.openproductsfacts.org/*" },
+        { "url": "https://static.openproductsfacts.org/*" },
+
+        { "url": "https://world.openbeautyfacts.org/*" },
+        { "url": "https://images.openbeautyfacts.org/*" },
+        { "url": "https://static.openbeautyfacts.org/*" }
+      ]
+    }
   ]
 }

@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import {
   DropdownMenu,
@@ -31,11 +30,18 @@ import {
   UserX,
   UserCheck,
   Trash2,
-  Search,
   ShieldCheck,
 } from 'lucide-react'
-import { deactivateCashier, updateCashier, deleteCashier, type AppUserRow } from '@/lib/user-data'
-import { getInvoicesByUser, type Invoice } from '@/lib/invoice-data'
+import {
+  deactivateCashier,
+  updateCashier,
+  deleteCashier,
+  type AppUserRow,
+  getPresenceStatus,
+  getPresenceColor,
+  getLastConnectionText,
+} from '@/lib/user-data'
+import { getCashierStatsRealTime, type CashierStatsToday } from '@/lib/invoice-data'
 import { toast } from 'sonner'
 
 interface UserListTableProps {
@@ -48,11 +54,6 @@ interface UserListTableProps {
   onRefresh: () => void
 }
 
-type FilterType = 'all' | 'active' | 'inactive'
-
-// ─── Cache pour les stats ──────────────────────────────────────────
-const statsCache = new Map<string, { sales: number; revenue: number }>()
-
 export function UserListTable({
   users,
   loading,
@@ -63,73 +64,71 @@ export function UserListTable({
   onRefresh,
 }: UserListTableProps) {
   const router = useRouter()
-  const [searchQuery, setSearchQuery] = useState('')
-  const [filter, setFilter] = useState<FilterType>('all')
   const [deleteTarget, setDeleteTarget] = useState<AppUserRow | null>(null)
-  const [userStats, setUserStats] = useState<Record<string, { sales: number; revenue: number }>>({})
+  const [userStats, setUserStats] = useState<Record<string, CashierStatsToday>>({})
   const [loadingStats, setLoadingStats] = useState(true)
 
-  // ─── Charger les stats ──────────────────────────────────────────────
+  // Charger les stats immédiatement au montage
   useEffect(() => {
-    async function loadAllStats() {
-      if (users.length === 0) {
-        setLoadingStats(false)
-        return
-      }
-
-      setLoadingStats(true)
-      const stats: Record<string, { sales: number; revenue: number }> = {}
-      
-      for (const user of users) {
-        if (statsCache.has(user.id)) {
-          stats[user.id] = statsCache.get(user.id)!
-          continue
-        }
-
-        try {
-          const invoices = await getInvoicesByUser(user.id, 100)
-          
-          const now = new Date()
-          const todayStr = now.toISOString().split('T')[0]
-          
-          const todayInvoices = invoices.filter(inv => {
-            const invDate = new Date(inv.createdAt)
-            return invDate.toISOString().split('T')[0] === todayStr
-          })
-          
-          const sales = todayInvoices.length
-          const revenue = todayInvoices.reduce((sum, inv) => sum + (inv.total / 100), 0)
-          
-          const userStat = { sales, revenue }
-          statsCache.set(user.id, userStat)
-          stats[user.id] = userStat
-        } catch (error) {
-          console.error(`Erreur chargement stats pour ${user.name}:`, error)
-          stats[user.id] = { sales: 0, revenue: 0 }
-        }
-      }
-      
-      setUserStats(stats)
-      setLoadingStats(false)
-    }
-
     loadAllStats()
   }, [users])
 
+  // Rafraîchir les stats toutes les 30 secondes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadAllStats()
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [users])
+
+  // Rafraîchir les stats après une nouvelle vente
+  useEffect(() => {
+    const handleSaleCreated = () => {
+      console.log('🔄 Sale created event received')
+      loadAllStats()
+    }
+    window.addEventListener('barkahflow:sale-created', handleSaleCreated)
+    return () => window.removeEventListener('barkahflow:sale-created', handleSaleCreated)
+  }, [users])
+
+  // Rafraîchir les stats après modification
+  useEffect(() => {
+    const handleStatsChanged = () => {
+      console.log('🔄 Stats changed event received')
+      loadAllStats()
+    }
+    window.addEventListener('barkahflow:stats-changed', handleStatsChanged)
+    return () => window.removeEventListener('barkahflow:stats-changed', handleStatsChanged)
+  }, [users])
+
+  const loadAllStats = async () => {
+    if (users.length === 0) {
+      setLoadingStats(false)
+      return
+    }
+
+    console.log('📊 Loading real-time stats for', users.length, 'users...')
+    setLoadingStats(true)
+    const stats: Record<string, CashierStatsToday> = {}
+
+    for (const user of users) {
+      try {
+        const result = await getCashierStatsRealTime(user.id)
+        stats[user.id] = result
+        console.log(`📊 Stats for ${user.name}:`, result)
+      } catch (error) {
+        console.error(`Erreur chargement stats pour ${user.name}:`, error)
+        stats[user.id] = { sales: 0, revenue: 0, discount: 0, debt: 0 }
+      }
+    }
+
+    setUserStats(stats)
+    setLoadingStats(false)
+    console.log('📊 All stats loaded:', stats)
+  }
+
   const initials = (name: string) =>
     name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
-
-  // Filtrage
-  const filteredUsers = users.filter((user) => {
-    const matchesSearch = user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (user.email && user.email.toLowerCase().includes(searchQuery.toLowerCase()))
-    
-    const matchesFilter = filter === 'all' || 
-      (filter === 'active' && user.active) ||
-      (filter === 'inactive' && !user.active)
-    
-    return matchesSearch && matchesFilter
-  })
 
   const handleToggleActive = async (user: AppUserRow) => {
     try {
@@ -141,6 +140,7 @@ export function UserListTable({
         toast.success(`${user.name} réactivé`)
       }
       onRefresh()
+      setTimeout(() => loadAllStats(), 500)
     } catch (err: any) {
       toast.error(err?.message || 'Erreur')
     }
@@ -157,28 +157,24 @@ export function UserListTable({
     }
   }
 
-  const formatLastLogin = (date: string | null) => {
-    if (!date) return 'Jamais'
-    try {
-      const now = new Date()
-      const last = new Date(date)
-      const diff = now.getTime() - last.getTime()
-      
-      if (diff < 60000) {
-        return 'À l\'instant'
-      } else if (diff < 3600000) {
-        const minutes = Math.floor(diff / 60000)
-        return `Il y a ${minutes} minute${minutes > 1 ? 's' : ''}`
-      } else if (diff < 86400000) {
-        return `Aujourd'hui ${last.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`
-      } else if (diff < 172800000) {
-        return 'Hier'
-      } else {
-        const days = Math.floor(diff / 86400000)
-        return `Il y a ${days} jour${days > 1 ? 's' : ''}`
-      }
-    } catch {
-      return 'Date invalide'
+  // 🔥 Fonction pour gérer le clic sur "Voir les détails"
+  const handleViewDetailsClick = (user: AppUserRow) => {
+    console.log('👆 Clic sur Voir les détails pour:', user.name, user.id)
+    if (onViewDetails) {
+      onViewDetails(user)
+    } else {
+      // Fallback si onViewDetails n'est pas défini
+      router.push(`/dashboard/settings/utilisateurs/${user.id}`)
+    }
+  }
+
+  // 🔥 Fonction pour gérer le clic sur le nom
+  const handleNameClick = (user: AppUserRow) => {
+    console.log('👆 Clic sur le nom:', user.name, user.id)
+    if (onViewDetails) {
+      onViewDetails(user)
+    } else {
+      router.push(`/dashboard/settings/utilisateurs/${user.id}`)
     }
   }
 
@@ -194,237 +190,189 @@ export function UserListTable({
 
   return (
     <div className="space-y-4">
-      {/* Barre de recherche et filtres */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <Input
-            placeholder="Rechercher un caissier..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 rounded-xl h-10"
-          />
-        </div>
-        <div className="flex gap-1.5">
-          {(['all', 'active', 'inactive'] as FilterType[]).map((f) => (
-            <Button
-              key={f}
-              variant={filter === f ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setFilter(f)}
-              className={`rounded-xl h-10 px-4 ${
-                filter === f 
-                  ? 'bg-sky-500 hover:bg-sky-600 text-white' 
-                  : 'text-gray-600 dark:text-gray-300'
-              }`}
-            >
-              {f === 'all' && 'Tous'}
-              {f === 'active' && 'Actifs'}
-              {f === 'inactive' && 'Inactifs'}
-            </Button>
-          ))}
-        </div>
-      </div>
+      {/* ─── Message total simplifié ──────────────────────────────── */}
+      {users.length > 0 && (
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          {users.length} {users.length === 1 ? 'caissier' : 'caissiers'} au total
+        </p>
+      )}
 
-      {filteredUsers.length === 0 && (
+      {users.length === 0 && (
         <div className="flex flex-col items-center justify-center py-16 text-center">
           <div className="w-16 h-16 rounded-full bg-gray-100 dark:bg-zinc-800 flex items-center justify-center mb-4">
             <ShieldCheck className="w-8 h-8 text-gray-300 dark:text-zinc-600" />
           </div>
           <p className="font-semibold text-gray-700 dark:text-gray-300">
-            {searchQuery ? 'Aucun résultat' : 'Aucun caissier'}
+            Aucun caissier
           </p>
           <p className="text-sm text-gray-400 mt-1">
-            {searchQuery 
-              ? 'Essayez une autre recherche' 
-              : 'Créez votre premier caissier avec le bouton ci-dessus'}
+            Créez votre premier caissier avec le bouton ci-dessus
           </p>
         </div>
       )}
 
-      {/* Tableau */}
-      <div className="overflow-x-auto rounded-2xl border border-gray-100 dark:border-zinc-800">
-        <table className="w-full">
-          <thead>
-            <tr className="bg-gray-50 dark:bg-zinc-800/50 border-b border-gray-100 dark:border-zinc-800">
-              <th className="text-left text-xs font-medium text-gray-400 py-3 px-4">Caissier</th>
-              <th className="text-left text-xs font-medium text-gray-400 py-3 px-4">Email</th>
-              <th className="text-left text-xs font-medium text-gray-400 py-3 px-4">Statut</th>
-              <th className="text-left text-xs font-medium text-gray-400 py-3 px-4">Dernière connexion</th>
-              <th className="text-left text-xs font-medium text-gray-400 py-3 px-4">Ventes</th>
-              <th className="text-left text-xs font-medium text-gray-400 py-3 px-4">CA</th>
-              <th className="text-left text-xs font-medium text-gray-400 py-3 px-4">Permissions</th>
-              <th className="text-right text-xs font-medium text-gray-400 py-3 px-4">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredUsers.map((user) => {
-              const isCurrentAdmin = user.id === currentAdminId
-              const stats = userStats[user.id] || { sales: 0, revenue: 0 }
+      {users.length > 0 && (
+        <div className="overflow-x-auto rounded-2xl border border-gray-100 dark:border-zinc-800">
+          <table className="w-full">
+            <thead>
+              <tr className="bg-gray-50 dark:bg-zinc-800/50 border-b border-gray-100 dark:border-zinc-800">
+                <th className="text-left text-xs font-medium text-gray-400 py-3 px-4">Caissier</th>
+                <th className="text-left text-xs font-medium text-gray-400 py-3 px-4">Email</th>
+                <th className="text-left text-xs font-medium text-gray-400 py-3 px-4">Dernière connexion</th>
+                <th className="text-left text-xs font-medium text-gray-400 py-3 px-4">Ventes</th>
+                <th className="text-left text-xs font-medium text-gray-400 py-3 px-4">CA</th>
+                <th className="text-left text-xs font-medium text-gray-400 py-3 px-4">Remises</th>
+                <th className="text-left text-xs font-medium text-gray-400 py-3 px-4">Dette</th>
+                <th className="text-left text-xs font-medium text-gray-400 py-3 px-4">Permissions</th>
+                <th className="text-right text-xs font-medium text-gray-400 py-3 px-4">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((user) => {
+                const isCurrentAdmin = user.id === currentAdminId
+                const stats = userStats[user.id] || { sales: 0, revenue: 0, discount: 0, debt: 0 }
+                const status = getPresenceStatus(user)
+                const presenceColor = getPresenceColor(status)
+                const connectionText = getLastConnectionText(user)
 
-              return (
-                <tr
-                  key={user.id}
-                  className={`border-b border-gray-100 dark:border-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors ${
-                    !user.active ? 'opacity-60' : ''
-                  }`}
-                >
-                  {/* ─── Caissier ──────────────────────────────────────── */}
-                  <td className="py-3 px-4">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-9 w-9 shrink-0">
-                        {user.avatarUrl && <AvatarImage src={user.avatarUrl} />}
-                        <AvatarFallback
-                          className="text-xs font-bold text-white"
-                          style={{
-                            background: 'linear-gradient(135deg, #38BDF8, #0EA5E9)',
-                          }}
+                return (
+                  <tr
+                    key={user.id}
+                    className={`border-b border-gray-100 dark:border-zinc-800 hover:bg-gray-50 dark:hover:bg-zinc-800/50 transition-colors ${
+                      !user.active ? 'opacity-60' : ''
+                    }`}
+                  >
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-9 w-9 shrink-0">
+                          {user.avatarUrl && <AvatarImage src={user.avatarUrl} />}
+                          <AvatarFallback
+                            className="text-xs font-bold text-white"
+                            style={{ background: 'linear-gradient(135deg, #38BDF8, #0EA5E9)' }}
+                          >
+                            {initials(user.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        {/* 🔥 Le nom redirige vers la page de détails */}
+                        <button
+                          onClick={() => handleNameClick(user)}
+                          className="font-medium text-sm text-gray-800 dark:text-gray-100 hover:text-sky-500 dark:hover:text-sky-400 transition-colors cursor-pointer"
                         >
-                          {initials(user.name)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <button
-                        onClick={() => router.push(`/dashboard/settings/utilisateurs/${user.id}`)}
-                        className="font-medium text-sm text-gray-800 dark:text-gray-100 hover:text-sky-500 dark:hover:text-sky-400 transition-colors"
-                      >
-                        {user.name}
-                      </button>
-                    </div>
-                  </td>
+                          {user.name}
+                        </button>
+                      </div>
+                    </td>
 
-                  {/* ─── Email ────────────────────────────────────────── */}
-                  <td className="py-3 px-4">
-                    <p className="text-sm text-gray-600 dark:text-gray-300">
-                      {user.email || '—'}
-                    </p>
-                  </td>
+                    <td className="py-3 px-4">
+                      <p className="text-sm text-gray-600 dark:text-gray-300">{user.email || '—'}</p>
+                    </td>
 
-                  {/* ─── Statut ────────────────────────────────────────── */}
-                  <td className="py-3 px-4">
-                    <Badge
-                      variant="outline"
-                      className={user.active
-                        ? 'border-green-300 text-green-600 dark:border-green-600 dark:text-green-400'
-                        : 'border-gray-300 text-gray-400'
-                      }
-                    >
-                      {user.active ? 'Actif' : 'Inactif'}
-                    </Badge>
-                  </td>
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-1.5">
+                        <div
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{
+                            backgroundColor: presenceColor,
+                            animation: status === 'online' ? 'pulse 1.5s ease-in-out infinite' : 'none',
+                          }}
+                        />
+                        <span className="text-sm text-gray-600 dark:text-gray-300">{connectionText}</span>
+                      </div>
+                    </td>
 
-                  {/* ─── Dernière connexion ───────────────────────────── */}
-                  <td className="py-3 px-4">
-                    <p className="text-sm text-gray-600 dark:text-gray-300">
-                      {formatLastLogin(user.lastLogin || null)}
-                    </p>
-                  </td>
+                    <td className="py-3 px-4">
+                      <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                        {loadingStats ? '...' : stats.sales}
+                      </p>
+                    </td>
 
-                  {/* ─── Ventes aujourd'hui ───────────────────────────── */}
-                  <td className="py-3 px-4">
-                    <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                      {loadingStats ? '...' : stats.sales}
-                    </p>
-                  </td>
+                    <td className="py-3 px-4">
+                      <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                        {loadingStats ? '...' : `${stats.revenue.toFixed(2)} DH`}
+                      </p>
+                    </td>
 
-                  {/* ─── CA aujourd'hui ────────────────────────────────── */}
-                  <td className="py-3 px-4">
-                    <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
-                      {loadingStats ? '...' : `${stats.revenue.toFixed(2)} DH`}
-                    </p>
-                  </td>
+                    <td className="py-3 px-4">
+                      <p className="text-sm font-semibold text-orange-500">
+                        {loadingStats ? '...' : `${stats.discount.toFixed(2)} DH`}
+                      </p>
+                    </td>
 
-                  {/* ─── Permissions ───────────────────────────────────── */}
-                  <td className="py-3 px-4">
-                    <Badge variant="secondary" className="text-xs">
-                      {user.permissions?.length || 0}
-                    </Badge>
-                  </td>
+                    <td className="py-3 px-4">
+                      <p className={`text-sm font-semibold ${stats.debt > 0 ? 'text-red-500' : 'text-gray-400'}`}>
+                        {loadingStats ? '...' : `${stats.debt.toFixed(2)} DH`}
+                      </p>
+                    </td>
 
-                  {/* ─── Actions ───────────────────────────────────────── */}
-                  <td className="py-3 px-4 text-right">
-                    {!isCurrentAdmin ? (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-zinc-800"
-                          >
-                            <MoreVertical className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="rounded-xl w-48">
-                          <DropdownMenuItem 
-                            onClick={() => router.push(`/dashboard/settings/utilisateurs/${user.id}`)}
-                            className="cursor-pointer"
-                          >
-                            <Eye className="w-3.5 h-3.5 mr-2" />
-                            Voir les détails
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => onEdit(user)} className="cursor-pointer">
-                            <Pencil className="w-3.5 h-3.5 mr-2" />
-                            Modifier
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => onResetPin(user)} className="cursor-pointer">
-                            <Key className="w-3.5 h-3.5 mr-2" />
-                            Réinitialiser le PIN
-                          </DropdownMenuItem>
-                          <DropdownMenuItem 
-                            onClick={() => handleToggleActive(user)}
-                            className={`cursor-pointer ${user.active ? 'text-amber-600' : 'text-green-600'}`}
-                          >
-                            {user.active 
-                              ? <UserX className="w-3.5 h-3.5 mr-2" />
-                              : <UserCheck className="w-3.5 h-3.5 mr-2" />
-                            }
-                            {user.active ? 'Désactiver' : 'Activer'}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem 
-                            onClick={() => setDeleteTarget(user)}
-                            className="cursor-pointer text-red-600 hover:text-red-700"
-                          >
-                            <Trash2 className="w-3.5 h-3.5 mr-2" />
-                            Supprimer
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    ) : (
-                      <span className="text-xs text-gray-400">Admin</span>
-                    )}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+                    <td className="py-3 px-4">
+                      <Badge variant="secondary" className="text-xs">
+                        {user.permissions?.length || 0}
+                      </Badge>
+                    </td>
 
-      {/* Pagination */}
-      {filteredUsers.length > 0 && (
-        <div className="flex items-center justify-between text-sm text-gray-400">
-          <p>1 – {filteredUsers.length} sur {filteredUsers.length} caissiers</p>
-          <div className="flex gap-1">
-            <Button variant="outline" size="sm" className="rounded-xl" disabled>
-              Précédent
-            </Button>
-            <Button variant="default" size="sm" className="rounded-xl bg-sky-500 hover:bg-sky-600 text-white">
-              1
-            </Button>
-            <Button variant="outline" size="sm" className="rounded-xl" disabled>
-              Suivant
-            </Button>
-          </div>
+                    <td className="py-3 px-4 text-right">
+                      {!isCurrentAdmin ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-zinc-800"
+                            >
+                              <MoreVertical className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="rounded-xl w-48">
+                            {/* 🔥 CORRECTION : "Voir les détails" utilise handleViewDetailsClick */}
+                            <DropdownMenuItem
+                              onClick={() => handleViewDetailsClick(user)}
+                              className="cursor-pointer"
+                            >
+                              <Eye className="w-3.5 h-3.5 mr-2" />
+                              Voir les détails
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => onEdit(user)} className="cursor-pointer">
+                              <Pencil className="w-3.5 h-3.5 mr-2" />
+                              Modifier
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => onResetPin(user)} className="cursor-pointer">
+                              <Key className="w-3.5 h-3.5 mr-2" />
+                              Réinitialiser le PIN
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleToggleActive(user)}
+                              className={`cursor-pointer ${user.active ? 'text-amber-600' : 'text-green-600'}`}
+                            >
+                              {user.active ? <UserX className="w-3.5 h-3.5 mr-2" /> : <UserCheck className="w-3.5 h-3.5 mr-2" />}
+                              {user.active ? 'Désactiver' : 'Activer'}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => setDeleteTarget(user)}
+                              className="cursor-pointer text-red-600 hover:text-red-700"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 mr-2" />
+                              Supprimer
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : (
+                        <span className="text-xs text-gray-400">Admin</span>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
-      {/* Dialog de confirmation suppression */}
       <AlertDialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
         <AlertDialogContent className="rounded-2xl">
           <AlertDialogHeader>
             <AlertDialogTitle>Supprimer {deleteTarget?.name} ?</AlertDialogTitle>
             <AlertDialogDescription>
-              Cette action est irréversible. Toutes les données associées à ce caissier
-              seront définitivement supprimées.
+              Cette action est irréversible. Toutes les données associées à ce caissier seront définitivement supprimées.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -438,6 +386,14 @@ export function UserListTable({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <style>{`
+        @keyframes pulse {
+          0% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.4; transform: scale(0.8); }
+          100% { opacity: 1; transform: scale(1); }
+        }
+      `}</style>
     </div>
   )
 }

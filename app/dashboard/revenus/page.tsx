@@ -117,13 +117,9 @@ interface KpiCardProps {
   value: string
   subtitle: string
   icon: React.ReactNode
-  trend?: number
 }
 
-function KpiCard({ title, value, subtitle, icon, trend }: KpiCardProps) {
-  const isPositive = trend !== undefined && trend > 0
-  const isZero = trend === 0 || trend === undefined
-
+function KpiCard({ title, value, subtitle, icon }: KpiCardProps) {
   return (
     <Card
       className="rounded-xl border shadow-sm bg-white dark:bg-gray-900 transition-all hover:shadow-md"
@@ -138,27 +134,6 @@ function KpiCard({ title, value, subtitle, icon, trend }: KpiCardProps) {
           </div>
           <div className="text-green-500">{icon}</div>
         </div>
-        {trend !== undefined && (
-          <div className="mt-2 flex items-center justify-end gap-1">
-            {!isZero ? (
-              <>
-                {isPositive ? (
-                  <TrendingUp size={12} className="text-green-500" />
-                ) : (
-                  <TrendingDown size={12} className="text-red-500" />
-                )}
-                <span
-                  className={`text-[10px] font-medium ${isPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}
-                >
-                  {isPositive ? '+' : ''}{trend}%
-                </span>
-              </>
-            ) : (
-              <span className="text-[10px] text-gray-400">—</span>
-            )}
-            <span className="text-[10px] text-gray-400">vs période préc.</span>
-          </div>
-        )}
       </CardContent>
     </Card>
   )
@@ -497,35 +472,30 @@ function RevenusContent() {
               value={summary ? formatMAD(summary.caHT) : '0 MAD'}
               subtitle="Hors taxes"
               icon={<Receipt className="h-4 w-4" />}
-              trend={12.5}
             />
             <KpiCard
               title="CA TTC"
               value={summary ? formatMAD(summary.caTTC) : '0 MAD'}
               subtitle="Toutes taxes comprises"
               icon={<DollarSign className="h-4 w-4" />}
-              trend={8.3}
             />
             <KpiCard
               title="Encaissé"
               value={summary ? formatMAD(summary.encaisse) : '0 MAD'}
               subtitle={`${encaissementRate}% du CA TTC`}
               icon={<Wallet className="h-4 w-4" />}
-              trend={5.1}
             />
             <KpiCard
               title="Créances"
               value={summary ? formatMAD(summary.creances) : '0 MAD'}
               subtitle="Factures impayées"
               icon={<ShoppingBag className="h-4 w-4" />}
-              trend={-2.0}
             />
             <KpiCard
               title="Marge brute"
               value={summary ? formatMAD(summary.margeBrute) : '0 MAD'}
               subtitle="CA HT - Coût d'achat"
               icon={<TrendingUp className="h-4 w-4" />}
-              trend={3.2}
             />
             <KpiCard
               title="Panier moyen"

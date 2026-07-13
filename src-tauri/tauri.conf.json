@@ -21,7 +21,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://supabase.co http://localhost:3000 http://localhost:* ws://localhost:*; img-src 'self' data: blob: https://*.supabase.co; font-src 'self' data:"
+      "csp": "default-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://supabase.co https://world.openfoodfacts.org https://images.openfoodfacts.org https://static.openfoodfacts.org https://world.openproductsfacts.org https://images.openproductsfacts.org https://static.openproductsfacts.org https://world.openbeautyfacts.org https://images.openbeautyfacts.org https://static.openbeautyfacts.org http://localhost:3000 http://localhost:* ws://localhost:*; img-src 'self' data: blob: https://*.supabase.co https://static.openfoodfacts.org https://images.openfoodfacts.org https://static.openproductsfacts.org https://images.openproductsfacts.org https://static.openbeautyfacts.org https://images.openbeautyfacts.org; font-src 'self' data:"
     }
   },
   "bundle": {
