@@ -616,49 +616,8 @@ export async function createInvoice(input: {
 }
 
 // ─── Suppression ──────────────────────────────────────────────────
-export async function deleteInvoice(invoiceId: string): Promise<void> {
-  const hasInvoices = await tableExists('invoices')
-  if (!hasInvoices) {
-    return
-  }
-
-  const invoice = await getInvoiceById(invoiceId)
-  const userId = invoice?.userId
-  
-  try {
-    // Supprimer les transactions liées à cette facture (encaissé réel)
-    await dbExecute('DELETE FROM transactions WHERE source_id = ? AND source_type = ?', [invoiceId, 'invoice'])
-    
-    // Supprimer les dettes liées à cette facture
-    await dbExecute('DELETE FROM debt_ledger WHERE invoice_id = ?', [invoiceId])
-    
-    // Supprimer les lignes de facture
-    await dbExecute('DELETE FROM line_items WHERE invoice_id = ?', [invoiceId])
-    
-    // Supprimer la facture
-    await dbExecute('DELETE FROM invoices WHERE id = ?', [invoiceId])
-    
-  } catch (error) {
-    console.warn('⚠️ Erreur deleteInvoice:', error)
-    throw error
-  }
-  
-  // FORCER LE RAFAÎCHISSEMENT DES STATS après suppression
-  if (userId) {
-    try {
-      const today = todayLocal()
-      const stats = await calculateStatsForDate(userId, today)
-      await saveStatsToCache(userId, today, stats)
-      console.log(`✅ Stats recalculées pour le caissier après suppression: ${userId}`)
-    } catch (error) {
-      console.warn('⚠️ Erreur rafraîchissement stats après suppression:', error)
-    }
-  }
-  
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new Event('barkahflow:stats-changed'))
-    window.dispatchEvent(new Event('barkahflow:sale-deleted'))
-  }
+export async function deleteInvoice(_invoiceId: string): Promise<void> {
+  throw new Error("La suppression de facture n'est pas autorisée dans BarkahFlow.");
 }
 
 // ─── Dettes ───────────────────────────────────────────────────────
