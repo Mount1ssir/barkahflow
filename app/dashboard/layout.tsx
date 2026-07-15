@@ -56,8 +56,22 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
         const isPlaceholder =
           !process.env.NEXT_PUBLIC_SUPABASE_URL ||
           process.env.NEXT_PUBLIC_SUPABASE_URL.includes('placeholder')
+        const hasMockSession = isPlaceholder && sessionStorage.getItem('barkahflow_mock_logged_in') === 'true'
 
-        // ─── 🔴 PRIORITÉ 1 : Le flag showSwitch est-il actif ? ───
+        // ─── 1. Vérifier la vraie session Supabase ou session mockée ───
+        const { data } = await supabase.auth.getSession()
+        const supabaseUser = data.session?.user || (hasMockSession
+          ? { id: 'dev-admin', email: 'dev@barkahflow.com', user_metadata: { full_name: 'Developer' } }
+          : null)
+
+        if (!supabaseUser) {
+          sessionStorage.clear()
+          localStorage.removeItem('barkahflow_show_switch')
+          window.location.href = '/'
+          return
+        }
+
+        // ─── 🔴 PRIORITÉ 2 : Le flag showSwitch est-il actif ? ───
         if (showSwitch) {
           sessionStorage.removeItem('barkahflow_active_user_role')
           sessionStorage.removeItem('barkahflow_active_user_id')
@@ -103,64 +117,48 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
           }
         }
 
-        // ─── 3. Vérifier la vraie session Supabase ───
-        const { data } = await supabase.auth.getSession()
-        const supabaseUser = data.session?.user || (isPlaceholder
-          ? { id: 'dev-admin', email: 'dev@barkahflow.com', user_metadata: { full_name: 'Developer' } }
-          : null)
+        // ─── 3. Session active et pas de caissier actif -> Admin connecté ───
+        localStorage.removeItem('barkahflow_show_switch')
+        sessionStorage.removeItem('barkahflow_active_user_role')
+        sessionStorage.removeItem('barkahflow_active_user_id')
+        sessionStorage.removeItem('barkahflow_active_session')
+        if (showSwitch) setShowSwitch(false)
 
-        if (supabaseUser) {
-          localStorage.removeItem('barkahflow_show_switch')
-          sessionStorage.removeItem('barkahflow_active_user_role')
-          sessionStorage.removeItem('barkahflow_active_user_id')
-          sessionStorage.removeItem('barkahflow_active_session')
-          if (showSwitch) setShowSwitch(false)
-
-          try {
-            const adminRow = await upsertAdminFromSupabase(supabaseUser as any)
-            setCurrentUser({
-              id: adminRow.id,
-              name: adminRow.name,
-              email: adminRow.email,
-              phone: adminRow.phone,
-              avatarUrl: adminRow.avatarUrl,
-              role: 'admin',
-              permissions: [],
-              supabaseUser: supabaseUser,
-              active: true,
-            })
-          } catch (error) {
-            console.error('Erreur upsert admin:', error)
-            setCurrentUser({
-              id: supabaseUser.id,
-              name: (supabaseUser as any).user_metadata?.full_name || (supabaseUser as any).email || 'Admin',
-              email: (supabaseUser as any).email || null,
-              phone: null,
-              avatarUrl: (supabaseUser as any).user_metadata?.avatar_url || null,
-              role: 'admin',
-              permissions: [],
-              supabaseUser: supabaseUser,
-              active: true,
-            })
-          }
-
-          setIsLoading(false)
-          setChecking(false)
-          return
+        try {
+          const adminRow = await upsertAdminFromSupabase(supabaseUser as any)
+          setCurrentUser({
+            id: adminRow.id,
+            name: adminRow.name,
+            email: adminRow.email,
+            phone: adminRow.phone,
+            avatarUrl: adminRow.avatarUrl,
+            role: 'admin',
+            permissions: [],
+            supabaseUser: supabaseUser,
+            active: true,
+          })
+        } catch (error) {
+          console.error('Erreur upsert admin:', error)
+          setCurrentUser({
+            id: supabaseUser.id,
+            name: (supabaseUser as any).user_metadata?.full_name || (supabaseUser as any).email || 'Admin',
+            email: (supabaseUser as any).email || null,
+            phone: null,
+            avatarUrl: (supabaseUser as any).user_metadata?.avatar_url || null,
+            role: 'admin',
+            permissions: [],
+            supabaseUser: supabaseUser,
+            active: true,
+          })
         }
 
-        // ─── 4. Ni session, ni switch, ni caissier actif → retour au login ───
-        if (!isPlaceholder) {
-          sessionStorage.clear()
-          localStorage.removeItem('barkahflow_show_switch')
-          window.location.href = '/'
-          return
-        }
+        setIsLoading(false)
+        setChecking(false)
       } catch (error) {
         console.error('Erreur initialisation session:', error)
-        if (!sessionStorage.getItem('barkahflow_active_user_role') && !showSwitch) {
-          window.location.href = '/'
-        }
+        sessionStorage.clear()
+        localStorage.removeItem('barkahflow_show_switch')
+        window.location.href = '/'
       } finally {
         setIsLoading(false)
         setChecking(false)

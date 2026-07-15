@@ -44,7 +44,7 @@ import {
 import { verifyAdminPin, setPinCode } from '@/lib/pin-storage'
 import { sendPinResetNotification } from '@/lib/notifications-data'
 import type { AppUser } from '@/context/UserContext'
-import { ArrowLeft, Loader2, Mail, Lock, User, Shield, Key, Eye, EyeOff, AlertCircle, CheckCircle } from 'lucide-react'
+import { ArrowLeft, Loader2, Mail, Lock, User, Shield, Key, Eye, EyeOff, AlertCircle, CheckCircle, LogOut } from 'lucide-react'
 import { toast } from 'sonner'
 import Rive from '@rive-app/react-canvas'
 import { supabase } from '@/src/lib/supabase'
@@ -347,6 +347,18 @@ export default function UserSwitchScreen({ open, onOpenChange, onSuccess }: User
     } finally {
       setAdminLoading(false)
     }
+  }
+
+  // ─── ADMIN LOGOUT - Se déconnecter de Supabase ────────────────────────
+  const handleAdminLogout = async () => {
+    try {
+      await supabase.auth.signOut()
+    } catch (err) {
+      console.error('Erreur déconnexion admin:', err)
+    }
+    sessionStorage.clear()
+    localStorage.removeItem('barkahflow_show_switch')
+    window.location.href = '/'
   }
 
   // ─── ADMIN RESET PIN - Envoyer le code par email ─────────────────────
@@ -799,6 +811,15 @@ export default function UserSwitchScreen({ open, onOpenChange, onSuccess }: User
               >
                 <Mail className="h-3 w-3" />
                 {loadingReset ? 'Envoi en cours...' : 'PIN oublié ? Réinitialiser par email'}
+              </button>
+
+              {/* ─── ADMIN: Se déconnecter ─────────────────────────────── */}
+              <button
+                onClick={handleAdminLogout}
+                className="w-full text-center text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 mt-2 underline flex items-center justify-center gap-1"
+              >
+                <LogOut className="h-3 w-3" />
+                Se déconnecter
               </button>
             </div>
           </>

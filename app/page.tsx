@@ -122,9 +122,14 @@ export default function LoginPage() {
   }, []);
 
   const checkSession = async () => {
+    const isPlaceholder =
+      !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+      process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder");
+    const hasMockSession = isPlaceholder && sessionStorage.getItem("barkahflow_mock_logged_in") === "true";
+
     const { data } = await supabase.auth.getSession();
 
-    if (!data.session) {
+    if (!data.session && !hasMockSession) {
       setAuthState("needs-login");
       setChecked();
       return;
@@ -138,6 +143,7 @@ export default function LoginPage() {
       !process.env.NEXT_PUBLIC_SUPABASE_URL ||
       process.env.NEXT_PUBLIC_SUPABASE_URL.includes("placeholder");
     if (isPlaceholder) {
+      sessionStorage.setItem("barkahflow_mock_logged_in", "true");
       window.location.href = "/dashboard";
       return;
     }
