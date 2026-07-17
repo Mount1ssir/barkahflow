@@ -3,7 +3,7 @@ import { ParsedCommand, CommandResult } from './voice-types'
 import { getAllClients, deleteClient, getClientById, type Client } from '@/lib/client-data'
 import { getDashboardStats } from '@/lib/stats-data'
 import { getAllProducts, deleteProduct, toggleProductStatus, getProductById, type Product } from '@/lib/products-data'
-import { getAllInvoices, deleteInvoice, getInvoiceById, type Invoice } from '@/lib/invoice-data'
+import { getAllInvoices, type Invoice } from '@/lib/invoice-data'
 import { cartStore, type CartItem } from '@/lib/store/cart-store'
 
 // ✅ CORRECTION : conserve les tirets et les points
@@ -607,35 +607,11 @@ export async function executeCommand(
     }
 
     if (intent === 'INVOICE_DELETE') {
-      const rawNumber = entities.find(e => e.type === 'invoice')?.value as string
-      if (!rawNumber) {
-        return { success: false, message: 'Veuillez préciser le numéro de la facture.', data: null, requiresConfirmation: false }
-      }
-      const invoices = await getAllInvoices()
-      const invoice = findInvoiceByNumber(invoices, rawNumber)
-      if (!invoice) {
-        return { success: false, message: `Facture "${rawNumber}" introuvable.`, data: null, requiresConfirmation: false }
-      }
-      if (!isConfirmed) {
-        return {
-          success: true,
-          message: `Suppression de la facture "${invoice.invoiceNumber}"`,
-          data: { invoiceId: invoice.id },
-          requiresConfirmation: true,
-          confirmationMessage: `Voulez-vous supprimer la facture "${invoice.invoiceNumber}" ? Cette action est irréversible.`,
-        }
-      }
-      try {
-        await deleteInvoice(invoice.id)
-        return {
-          success: true,
-          message: `Facture "${invoice.invoiceNumber}" supprimée.`,
-          data: { invoiceId: invoice.id },
-          requiresConfirmation: false,
-          shouldRefresh: true,
-        }
-      } catch (error) {
-        return { success: false, message: `Impossible de supprimer cette facture.`, data: null, requiresConfirmation: false }
+      return {
+        success: false,
+        message: "La suppression de facture n'est pas autorisée.",
+        data: null,
+        requiresConfirmation: false,
       }
     }
 

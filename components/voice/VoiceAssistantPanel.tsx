@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { toast } from 'sonner'
 import { VoiceState, ParsedCommand } from '@/lib/voice/voice-types'
-import { parseCommand } from '@/lib/voice/intent-parser'
+import { orchestrateCommand } from '@/lib/voice/voice-orchestrator'
 import { executeCommand } from '@/lib/voice/voice-executor'
 import { speak, cancelSpeech } from '@/lib/voice/voice-feedback'
 import { useRouter } from 'next/navigation'
@@ -46,8 +46,23 @@ export function VoiceAssistantPanel({ onClose }: VoiceAssistantPanelProps) {
   const [confirmationMessage, setConfirmationMessage] = useState('')
   const [result, setResult] = useState<{ message: string; success: boolean; fallbackIntent?: string } | null>(null)
   const [lastNavigateTo, setLastNavigateTo] = useState<string | null>(null)
+  const [isOnline, setIsOnline] = useState(
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  )
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Network status listeners
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
 
   // Charger l'historique depuis localStorage au montage
   useEffect(() => {
@@ -95,7 +110,13 @@ export function VoiceAssistantPanel({ onClose }: VoiceAssistantPanelProps) {
 
     setState('PROCESSING')
 
-    const parsed = parseCommand(text, window.location.pathname)
+    const { command: parsed, source } = await orchestrateCommand(text, window.location.pathname)
+
+    // Inform the user if the offline fallback was used
+    if (source === 'offline-fallback') {
+      toast.info('Mode hors-ligne — commandes limitées disponibles')
+    }
+
     if (!parsed) {
       const msg = t('voice.not_understood', "Désolé, je n'ai pas compris votre commande.")
       addMessage('assistant', msg)
@@ -252,7 +273,7 @@ export function VoiceAssistantPanel({ onClose }: VoiceAssistantPanelProps) {
 
   const stopListening = () => {
     if (recognition) {
-      try { recognition.stop() } catch (e) {}
+      try { recognition.stop() } catch (e) { }
     }
     setIsListening(false)
     setState('IDLE')
@@ -298,6 +319,16 @@ export function VoiceAssistantPanel({ onClose }: VoiceAssistantPanelProps) {
           <span className="text-sm font-semibold text-gray-900 dark:text-white">
             Assistant Barkah AI
           </span>
+          {/* Network status badge */}
+          <span
+            title={isOnline ? 'IA cloud active (Gemini)' : 'Hors-ligne — mode limité'}
+            className={`text-xs px-2 py-0.5 rounded-full font-medium transition-colors ${isOnline
+                ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+              }`}
+          >
+            {isOnline ? '● IA active' : '◎ Mode limité'}
+          </span>
           <span className="text-xs text-gray-400 bg-gray-100 dark:bg-zinc-800 px-2 py-0.5 rounded-full">
             {messages.length} messages
           </span>
@@ -316,7 +347,7 @@ export function VoiceAssistantPanel({ onClose }: VoiceAssistantPanelProps) {
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1 p-4">
+      <div className="flex-1 overflow-y-auto min-h-0 p-4">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-gray-400 text-sm">
             <Sparkles className="h-8 w-8 mb-2 text-gray-300" />
@@ -367,7 +398,7 @@ export function VoiceAssistantPanel({ onClose }: VoiceAssistantPanelProps) {
           )}
           <div ref={messagesEndRef} />
         </div>
-      </ScrollArea>
+      </div>
 
       {/* Commandes rapides */}
       <div className="px-4 py-2 border-t border-gray-100 dark:border-zinc-800">

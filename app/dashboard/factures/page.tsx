@@ -61,7 +61,7 @@ import {
   X,
   AlertTriangle,
 } from 'lucide-react'
-import { getAllInvoices, deleteInvoice, getPendingDebtTotal, type Invoice } from '@/lib/invoice-data'
+import { getAllInvoices, getPendingDebtTotal, type Invoice } from '@/lib/invoice-data'
 import { formatMAD } from '@/lib/stats-data'
 
 // ─── Couleurs ──────────────────────────────────────────────────────
@@ -189,7 +189,6 @@ function InvoicesContent() {
   const canView = can(PERMISSIONS.INVOICES_VIEW)
   const canAdd = can(PERMISSIONS.INVOICES_ADD)
   const canEdit = can(PERMISSIONS.INVOICES_EDIT)
-  const canDelete = can(PERMISSIONS.INVOICES_DELETE)
   const canExport = can(PERMISSIONS.INVOICES_EXPORT)
 
   // ─── Si l'utilisateur n'a ni "Voir" ni "Ajouter" ────────────────
@@ -215,7 +214,6 @@ function InvoicesContent() {
   const [search, setSearch] = useState('')
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [currentPage, setCurrentPage] = useState(1)
-  const [deleteTarget, setDeleteTarget] = useState<Invoice | null>(null)
   const [isLoaded, setIsLoaded] = useState(false)
   const pageSize = 5
 
@@ -365,33 +363,7 @@ function InvoicesContent() {
     }
   }
 
-  const handleDeleteSelected = async () => {
-    if (!canDelete) {
-      toast.warning('Vous n\'avez pas la permission de supprimer')
-      return
-    }
-    if (selectedIds.length === 0) return
-    try {
-      await Promise.all(selectedIds.map((id) => deleteInvoice(id)))
-      toast.success(`${selectedIds.length} facture(s) supprimée(s)`)
-      setSelectedIds([])
-      loadInvoices()
-    } catch {
-      toast.error('Erreur lors de la suppression')
-    }
-  }
-
-  const handleDelete = async () => {
-    if (!deleteTarget || !canDelete) return
-    try {
-      await deleteInvoice(deleteTarget.id)
-      toast.success(`Facture ${deleteTarget.invoiceNumber} supprimée`)
-      setDeleteTarget(null)
-      loadInvoices()
-    } catch {
-      toast.error('Erreur lors de la suppression')
-    }
-  }
+  // Deletion of invoices is disabled in BarkahFlow.
 
   const exportAllCSV = () => {
     if (!canExport) {
@@ -518,11 +490,7 @@ function InvoicesContent() {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-3 py-1 rounded-full">{totalItems}</span>
-            {selectedIds.length > 0 && canDelete && (
-              <Button variant="outline" size="sm" className="gap-2 rounded-xl h-9 border-red-200 text-red-600 hover:bg-red-50" onClick={handleDeleteSelected}>
-                <Trash2 className="h-4 w-4" /> Supprimer ({selectedIds.length})
-              </Button>
-            )}
+            {/* Bulk delete button removed */}
             {selectedIds.length > 0 && canExport && (
               <Button variant="outline" size="sm" className="gap-2 rounded-xl h-9 border-gray-200" onClick={exportSelected}>
                 <Download className="h-4 w-4" /> Exporter sélection
@@ -639,14 +607,7 @@ function InvoicesContent() {
                                   <Pencil className="h-4 w-4" /> {t('common.edit', 'Modifier')}
                                 </DropdownMenuItem>
                               )}
-                              {canDelete && (
-                                <>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem onClick={() => setDeleteTarget(inv)} className="gap-2 text-red-500">
-                                    <Trash2 className="h-4 w-4" /> {t('common.delete', 'Supprimer')}
-                                  </DropdownMenuItem>
-                                </>
-                              )}
+                              {/* Row delete menu item removed */}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
@@ -663,20 +624,7 @@ function InvoicesContent() {
         </CardContent>
       </Card>
 
-      <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirmer la suppression</AlertDialogTitle>
-            <AlertDialogDescription>
-              Êtes-vous sûr de vouloir supprimer la facture {deleteTarget?.invoiceNumber} ? Cette action est irréversible.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Annuler</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-red-500 hover:bg-red-600 text-white">Supprimer</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Delete confirmation AlertDialog removed */}
     </div>
   )
 }
