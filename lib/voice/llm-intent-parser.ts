@@ -1,7 +1,7 @@
 // lib/voice/llm-intent-parser.ts
 // ─────────────────────────────────────────────────────────────────────────────
-// Calls Groq directly via the server-side proxy (/api/voice/parse) as the
-// primary and only online API (Gemini removed due to quota limits).
+// Calls Gemini directly via the server-side proxy (/api/voice/parse) as the
+// primary and only online API.
 // Includes a generous 15-second timeout and robust response validation.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -9,7 +9,7 @@ import type { ParsedCommand, Intent } from './voice-types'
 import { buildSystemPrompt } from './llm-schema'
 
 // ── Constants ──────────────────────────────────────────────────────────────
-const GROQ_PROXY_ENDPOINT = '/api/voice/parse' // Next.js API route (server-side)
+const GEMINI_PROXY_ENDPOINT = '/api/voice/parse' // Next.js API route (server-side)
 const REQUEST_TIMEOUT_MS  = 15000              // 15-second hard timeout for the online request
 
 // ── LLM Response shape before we attach originalText ──────────────────────
@@ -45,10 +45,10 @@ function isValidLLMResponse(obj: unknown): obj is LLMRawResponse {
   )
 }
 
-// ── Groq via server-side proxy ─────────────────────────────────────────────
-// The actual GROQ_API_KEY lives server-side inside /api/voice/parse/route.ts.
+// ── Gemini via server-side proxy ─────────────────────────────────────────────
+// The actual GEMINI_API_KEY lives server-side inside /api/voice/parse/route.ts.
 // This function sends the user input + system prompt to that internal route.
-async function callGroqProxy(
+async function callGeminiProxy(
   input: string,
   systemPrompt: string
 ): Promise<LLMRawResponse> {
@@ -64,7 +64,7 @@ async function callGroqProxy(
     origin = process.env.NEXT_PUBLIC_API_URL ?? ''
   }
 
-  const endpoint = origin ? `${origin.replace(/\/$/, '')}${GROQ_PROXY_ENDPOINT}` : GROQ_PROXY_ENDPOINT
+  const endpoint = origin ? `${origin.replace(/\/$/, '')}${GEMINI_PROXY_ENDPOINT}` : GEMINI_PROXY_ENDPOINT
 
   const res = await fetch(endpoint, {
     method: 'POST',
@@ -74,13 +74,13 @@ async function callGroqProxy(
 
   if (!res.ok) {
     const errorText = await res.text().catch(() => 'unknown error')
-    throw new Error(`[llm-parser] Groq proxy HTTP ${res.status}: ${errorText}`)
+    throw new Error(`[llm-parser] Gemini proxy HTTP ${res.status}: ${errorText}`)
   }
 
   const parsed: unknown = await res.json()
 
   if (!isValidLLMResponse(parsed)) {
-    throw new Error('[llm-parser] Groq proxy response failed validation')
+    throw new Error('[llm-parser] Gemini proxy response failed validation')
   }
 
   return parsed
@@ -88,7 +88,7 @@ async function callGroqProxy(
 
 // ── Public API ─────────────────────────────────────────────────────────────
 /**
- * Parses a user command using the Groq online API.
+ * Parses a user command using the Gemini online API.
  * Returns a full ParsedCommand or throws if the provider fails or times out.
  * The caller (voice-orchestrator.ts) handles the throw by routing to the offline fallback.
  */
@@ -103,11 +103,11 @@ export async function parseCommandWithLLM(
 
   try {
     const raw = await withTimeout(
-      callGroqProxy(trimmed, systemPrompt),
+      callGeminiProxy(trimmed, systemPrompt),
       REQUEST_TIMEOUT_MS,
-      'Groq'
+      'Gemini'
     )
-    console.info('[llm-parser] ✅ Groq succeeded')
+    console.info('[llm-parser] ✅ Gemini succeeded')
     return {
       intent: raw.intent,
       entities: raw.entities.map(e => ({ type: e.type as any, value: e.value })),
@@ -115,8 +115,8 @@ export async function parseCommandWithLLM(
       requiresConfirmation: raw.requiresConfirmation,
       originalText: input,
     }
-  } catch (groqErr) {
-    console.warn('[llm-parser] ⚠️ Groq failed:', groqErr)
-    throw groqErr
+  } catch (geminiErr) {
+    console.warn('[llm-parser] ⚠️ Gemini failed:', geminiErr)
+    throw geminiErr
   }
 }

@@ -94,21 +94,104 @@ Supports dual-tier security for POS terminals:
 
 ### 4. AI Voice Assistant & Speech Modules (`lib/voice/`)
 
-BarkahFlow integrates complex artificial intelligence, natural language parsing, fuzzy search, and speech synthesis systems to facilitate hands-free warehouse and merchant operations:
+BarkahFlow integrates artificial intelligence, natural language parsing, fuzzy search, and speech synthesis systems to facilitate hands-free warehouse and merchant operations. Below is a comprehensive analysis of the system architecture, how components interact, and the critical issues causing the system to fallback to offline features even when the device is online.
 
-*   **Primary Online LLM Intent Engine (`lib/voice/llm-intent-parser.ts`):**
-    *   **LLM Model:** Utilizes the state-of-the-art `llama-3.3-70b-versatile` model hosted on the Groq API.
-    *   **Architecture:** Calls are proxied through a server-side route `/api/voice/parse` (see [route.ts](file:///c:/Users/HP/Desktop/main/barkahflow/app/api/voice/parse/route.ts)) to protect the API key.
-    *   **Context-Aware Prompts:** Dynamically injects context state (e.g. current UI path) into the system prompt (see [llm-schema.ts](file:///c:/Users/HP/Desktop/main/barkahflow/lib/voice/llm-schema.ts)).
-    *   **Output Control:** Enforces strict JSON formatting via `{ type: 'json_object' }` with low temperature (`0.1`) to resolve user speech to predefined structured actions (`NAVIGATE`, `POS_ADD`, `STATS_REVENUE`, etc.) and arguments.
-*   **Dual-Pass Offline Fallback Engine (`lib/voice/offline-fallback.ts`):**
-    *   **Performance:** Completes local intent parsing in under 5ms, operating fully offline.
-    *   **Pass 1 (Regex Rules):** Matches incoming spoken strings against high-confidence regex patterns for French, English, and Arabic keywords (e.g., matching confirmation phrases, numerical values, or navigation destinations).
-    *   **Pass 2 (Fuzzy Logic):** Matches unmatched inputs against templates using `Fuse.js` fuzzy matching to handle typos, accents, or transcript variations.
-*   **Voice Execution & Action Binding (`lib/voice/voice-executor.ts`):**
-    *   Applies resolved intents directly to the react context, zustand stores (adding items to [cart-store.ts](file:///c:/Users/HP/Desktop/main/barkahflow/lib/store/cart-store.ts)), or programmatic page routers.
-*   **Text-to-Speech (TTS) Feedback Loop (`lib/voice/voice-feedback.ts`):**
-    *   Speaks responses back to the cashier in their local language using the native `SpeechSynthesis` API.
+#### 🗺️ AI Architecture & Execution Flow
+The AI assistant works as a coordinated pipeline from speech recognition to structured action execution:
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Panel as VoiceAssistantPanel (UI)
+    participant Orch as voice-orchestrator.ts
+    participant LLM as llm-intent-parser.ts (Online)
+    participant API as /api/voice/parse (Server)
+    participant Fallback as offline-fallback.ts (Offline)
+    participant Exec as voice-executor.ts
+
+    User->>Panel: Speaks or types command
+    Panel->>Orch: orchestrateCommand(input, pathname)
+    
+    alt Device is Online (navigator.onLine is true)
+        Orch->>LLM: parseCommandWithLLM(trimmed, path)
+        LLM->>API: HTTP POST /api/voice/parse
+        alt API Success
+            API-->>LLM: JSON (Intent + Entities)
+            LLM-->>Orch: ParsedCommand
+        else API Failure (404 / Timeout / Network Error)
+            LLM-->>Orch: Throws error
+            Orch->>Fallback: parseCommandOffline(trimmed) (Recovery)
+            Fallback-->>Orch: ParsedCommand (Offline limited)
+        end
+    else Device is Offline
+        Orch->>Fallback: parseCommandOffline(trimmed)
+        Fallback-->>Orch: ParsedCommand (Offline limited)
+    end
+    
+    Orch-->>Panel: Returns ParsedCommand + Source
+    Panel->>Exec: executeCommand(command)
+    Exec-->>Panel: Executes action (Navigation, POS Add, etc.)
+```
+
+1.  **Orchestration (`lib/voice/voice-orchestrator.ts`):** 
+    *   Acts as the main coordinator.
+    *   Determines connectivity via `navigator.onLine`.
+    *   If online, calls [llm-intent-parser.ts](file:///c:/Users/HP/Desktop/main/barkahflow/lib/voice/llm-intent-parser.ts) to parse via LLM. If that fails (e.g. timeout, rate limit, HTTP error), it degrades to the offline fallback.
+    *   If offline, immediately uses [offline-fallback.ts](file:///c:/Users/HP/Desktop/main/barkahflow/lib/voice/offline-fallback.ts).
+2.  **Online LLM Engine (`lib/voice/llm-intent-parser.ts`):**
+    *   Uses a Next.js server-side route `/api/voice/parse` as a proxy to keep the API key safe.
+    *   Enforces JSON output adhering to a strict schema specified in [llm-schema.ts](file:///c:/Users/HP/Desktop/main/barkahflow/lib/voice/llm-schema.ts).
+    *   Uses a 15-second timeout via `AbortController` and rejects intents with confidence scores below `0.5`.
+3.  **Offline Intent Engine (`lib/voice/offline-fallback.ts`):**
+    *   Evaluates local intents under 5ms without network calls.
+    *   **Pass 1 (Regex):** Predefined regexes for common French expressions to check commands (confirmations, stats, navigation).
+    *   **Pass 2 (Fuse.js Fuzzy Matching):** Runs fuzzy string distances against standard phrases to handle typos, accents, or transcript variations.
+4.  **Action Executor (`lib/voice/voice-executor.ts`):**
+    *   Exposes `executeCommand` to perform operations (e.g., adding products to cart in [cart-store.ts](file:///c:/Users/HP/Desktop/main/barkahflow/lib/store/cart-store.ts), navigating pages, or fetching stats).
+5.  **Text-to-Speech (`lib/voice/voice-feedback.ts`):**
+    *   Fires voice confirmation messages back to the cashier in their local language using the native `SpeechSynthesis` API.
+
+---
+
+#### ⚠️ Bug Analysis: Why It Always Falls Back to Offline Features Even When Online
+If a user is online, the AI assistant will still fallback to the offline modes/features due to the following critical architectural and configuration bugs:
+
+##### 1. Next.js Static Export Limitations (`output: 'export'`)
+*   **The Problem:** BarkahFlow is configured in `next.config.ts` for static HTML exports (`output: 'export'`) to enable native packaging for desktop (Tauri) and mobile (Capacitor).
+*   **The Bug:** Next.js static exports **completely strip out** server-side API routes. The proxy route [route.ts](file:///c:/Users/HP/Desktop/main/barkahflow/app/api/voice/parse/route.ts) is not compiled or packaged inside Tauri or Capacitor.
+*   **The Impact:** When compiled and run on desktop/mobile, the frontend executes `fetch('/api/voice/parse')`. Because there is no server-side backend on the client device, this fetch will fail with a `404 Not Found` or protocol resolution failure. The orchestrator catches this error and silently degrades to the offline intent engine.
+
+##### 2. Local IP Binding and Network Isolation
+*   **The Problem:** In [.env.local](file:///c:/Users/HP/Desktop/main/barkahflow/.env.local), the dev api URL is set to: `NEXT_PUBLIC_API_URL=http://192.168.43.93:3000`.
+*   **The Bug:** When running on a mobile device or tablet (Capacitor) using cellular data (4G/5G) or connected to a different network subnet, the private IP address `192.168.43.93` is unreachable.
+*   **The Impact:** Although the device is "online" (making `navigator.onLine` true), the fetch call to `http://192.168.43.93:3000/api/voice/parse` times out. The orchestrator handles the exception by routing the request to the offline fallback engine, restricting features.
+
+##### 3. Server-side API Key Isolation
+*   **The Problem:** The Gemini API key is configured as `GEMINI_API_KEY` (without the `NEXT_PUBLIC_` prefix) to keep it server-side.
+*   **The Bug:** In a static application, there is no server to read `process.env.GEMINI_API_KEY`. As a result, the frontend cannot make direct API requests to Google Generative Language endpoints.
+*   **The Impact:** Because client-side queries directly to Gemini would expose the API key (unless highly restricted via GCP referring rules) and require the `NEXT_PUBLIC_` prefix, the app relies entirely on the server route, which fails to run in native builds.
+
+##### 4. Documentation Mismatch
+*   **The Bug:** The previous `skill.md` stated that the online system used Groq's `llama-3.3-70b-versatile` model. 
+*   **The Reality:** The proxy route [route.ts](file:///c:/Users/HP/Desktop/main/barkahflow/app/api/voice/parse/route.ts) connects directly to Google Generative Language API using the model `gemini-flash-lite-latest`.
+
+---
+
+#### 💡 Recommended Solutions
+To solve the online-fallback bug while preserving the offline-first capability of Tauri and Capacitor:
+
+1.  **Expose a Public API Endpoint:**
+    *   Deploy the `/api/voice/parse` server route to a cloud platform (e.g. Vercel, Supabase Edge Functions, or a VPS).
+    *   Update `NEXT_PUBLIC_API_URL` to point to the production domain instead of a local private IP.
+2.  **Enable Direct Client-Side Gemini Requests:**
+    *   Create a browser-restricted API key on Google AI Studio (restricted by HTTP Referrer or Package ID).
+    *   Store it in `NEXT_PUBLIC_GEMINI_API_KEY` to allow the client to access it.
+    *   Modify [llm-intent-parser.ts](file:///c:/Users/HP/Desktop/main/barkahflow/lib/voice/llm-intent-parser.ts) to check if the app is running in a static webview environment (e.g. `window.location.origin` starting with `tauri:` or `capacitor:`). If so, perform the fetch directly to Google's Generative Language API from the client instead of calling the server-side proxy route.
+3.  **Active API Endpoint Health Checking:**
+    *   Modify `isNetworkAvailable()` in [voice-orchestrator.ts](file:///c:/Users/HP/Desktop/main/barkahflow/lib/voice/voice-orchestrator.ts) to execute a quick head request to the API server to confirm reachability, instead of relying purely on the broad `navigator.onLine` check.
+
+---
+
 *   **Barcode Lookup & Data Aggregation (`lib/barcode-lookup.ts`):**
     *   Integrates native platform APIs (MLKit on Android/iOS via Capacitor community barcode scanning and Tauri Rust-based barcode scanner) to process and parse image data.
     *   Queries Open Food Facts, Open Products Facts, and Open Beauty Facts using parallel, abort-controlled fetch calls to pull missing product metadata (images, French names, brands) from external databases.

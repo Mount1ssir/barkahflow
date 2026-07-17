@@ -66,7 +66,12 @@ export function QuickActions({ onInvoiceClick }: QuickActionsProps) {
           <img
             src="/slides/analytics-person.png"
             alt={t('dashboard.quick_actions.image_alt', 'Analytics illustration')}
-            className="w-[130px] h-auto object-contain pointer-events-none select-none"
+            className="block dark:hidden w-[130px] h-auto object-contain pointer-events-none select-none"
+          />
+          <img
+            src="/slides/dark_mode.jpg"
+            alt={t('dashboard.quick_actions.image_alt', 'Analytics illustration')}
+            className="hidden dark:block w-[130px] h-auto object-contain pointer-events-none select-none"
           />
         </div>
 

@@ -1,14 +1,14 @@
 // app/api/voice/parse/route.ts
 // ─────────────────────────────────────────────────────────────────────────────
-// Server-side proxy for the Groq API.
-// GROQ_API_KEY never reaches the browser — it lives here only.
-// Called by llm-intent-parser.ts when Gemini fails.
+// Server-side proxy for the Gemini API.
+// GEMINI_API_KEY never reaches the browser — it lives here.
+// Called by llm-intent-parser.ts.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { NextRequest, NextResponse } from 'next/server'
+import { PARSED_COMMAND_SCHEMA } from '@/lib/voice/llm-schema'
 
-const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions'
-const GROQ_MODEL   = 'llama-3.3-70b-versatile'
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -24,11 +24,11 @@ export async function OPTIONS(): Promise<NextResponse> {
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  const GROQ_KEY = process.env.GROQ_API_KEY ?? ''
+  const GEMINI_KEY = process.env.GEMINI_API_KEY || ''
 
-  if (!GROQ_KEY) {
+  if (!GEMINI_KEY) {
     return NextResponse.json(
-      { error: 'GROQ_API_KEY is not configured on the server.' },
+      { error: 'Gemini API key is not configured on the server.' },
       { status: 503, headers: corsHeaders }
     )
   }
@@ -52,38 +52,40 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const groqRes = await fetch(GROQ_API_URL, {
+    const geminiRes = await fetch(`${GEMINI_API_URL}?key=${GEMINI_KEY}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${GROQ_KEY}`,
       },
       body: JSON.stringify({
-        model: GROQ_MODEL,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user',   content: input },
+        contents: [
+          { role: 'user', parts: [{ text: input }] }
         ],
-        response_format: { type: 'json_object' },
-        temperature: 0.1,
-        max_tokens: 300,
+        systemInstruction: {
+          parts: [{ text: systemPrompt }]
+        },
+        generationConfig: {
+          responseMimeType: 'application/json',
+          responseSchema: PARSED_COMMAND_SCHEMA,
+          temperature: 0.1,
+        },
       }),
     })
 
-    if (!groqRes.ok) {
-      const errText = await groqRes.text().catch(() => 'unknown')
+    if (!geminiRes.ok) {
+      const errText = await geminiRes.text().catch(() => 'unknown')
       return NextResponse.json(
-        { error: `Groq API error ${groqRes.status}: ${errText}` },
+        { error: `Gemini API error ${geminiRes.status}: ${errText}` },
         { status: 502, headers: corsHeaders }
       )
     }
 
-    const groqData = await groqRes.json()
-    const content: string | undefined = groqData?.choices?.[0]?.message?.content
+    const geminiData = await geminiRes.json()
+    const content: string | undefined = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text
 
     if (!content) {
       return NextResponse.json(
-        { error: 'Groq returned empty content' },
+        { error: 'Gemini returned empty content' },
         { status: 502, headers: corsHeaders }
       )
     }
@@ -94,7 +96,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       parsed = JSON.parse(content)
     } catch {
       return NextResponse.json(
-        { error: `Groq content was not valid JSON: ${content}` },
+        { error: `Gemini content was not valid JSON: ${content}` },
         { status: 502, headers: corsHeaders }
       )
     }
