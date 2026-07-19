@@ -64,3 +64,6 @@ android/app/build
 # Tauri
 src-tauri/target
 src-tauri/gen
+
+# local documentation / skills
+/skill.md
